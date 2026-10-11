@@ -50,18 +50,21 @@
 - [x] Object fields +$22/+24 = sin/cos Q2.14 (written by 00C2C8A6)
 - [x] Builder A+B sequential via orchestrator 00C2C4B2 (A1 += $92 between)
 - [x] Frame path calls matrix orchestrator via 00C2C4F4
+- [x] Exact 3×3 element formulas for builders A and B
 
 
 ## Next Steps
 1. [x] Builder A + B are sequential (orchestrator 00C2C4B2); A1 advances +$92 between them
-2. [ ] Confirm geometric role of the two matrices (view vs inverse / object vs camera)
-3. [ ] Resolve $12/$5ee targets once object count > 0
-4. [ ] Bridge post-transform → vertex walker 0x2844e
-5. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-6. [ ] Remaining object fields within the 64-byte stride
-7. [ ] Action clear body (overlay past file end)
-8. [ ] $4202 edge descriptor full layout
-9. [ ] Wire C++ mat_from_angles to the exact 7200-circle + Q2.14 dual-builder sequence
+2. [x] Exact element formulas for builder A and B (9-element 3×3 each)
+3. [ ] Helper 00C2D14E: map D0–D5 to sin/cos of which Euler angles
+4. [ ] Confirm geometric role of the two matrices (view vs inverse / object vs camera)
+5. [ ] Resolve $12/$5ee targets once object count > 0
+6. [ ] Bridge post-transform → vertex walker 0x2844e
+7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+8. [ ] Remaining object fields within the 64-byte stride
+9. [ ] Action clear body (overlay past file end)
+10. [ ] $4202 edge descriptor full layout
+11. [ ] Wire C++ mat_from_angles to the exact dual-builder sequence
 
 ## Analysis Notes
 - Object pool: base $642, stride $40 (64), max 20, count $b8f

@@ -596,3 +596,67 @@ Also called from `00C2468C` (secondary path).
 (The +$80 destination is relative to whatever A1 the caller passes;
 when A1 is an object pointer this lands inside or just past the
 64-byte pool stride — may instead be a global matrix buffer.)
+
+## Builder B element formulas (exact)
+
+After `asr #3` on D0/D2/D4, helper `00C2D14E`, and trig `00C2D232`:
+
+Registers hold Q2.14 sin/cos terms.  All `>>` below are `asr.l #14`.
+
+```
+M[0] = ( D5*D3 - ((D4*D0)>>14)*D2 ) >> 14
+M[1] = -( ((D5*D0)>>14)*D2 + D4*D3 ) >> 14
+M[2] = ( D1*D2 ) >> 14
+M[3] = ( D4*D1 ) >> 14
+M[4] = ( D5*D1 ) >> 14
+M[5] = D0
+M[6] = -( ((D4*D0)>>14)*D3 + D5*D2 ) >> 14
+M[7] = ( D4*D2 - ((D5*D0)>>14)*D3 ) >> 14
+M[8] = ( D1*D3 ) >> 14
+```
+
+Nine elements = full 3×3, row-major, written via `(A1)+`.
+
+### Builder A element formulas (exact)
+
+Same setup sequence; different combination pattern:
+
+```
+M[0] = ( ((D2*D0)>>14)*D4 + D3*D5 ) >> 14
+M[1] = -( D1*D4 ) >> 14
+M[2] = ( ((D3*D0)>>14)*D4 - D2*D5 ) >> 14
+M[3] = ( ((D2*D0)>>14)*D5 - D3*D4 ) >> 14
+M[4] = ( D1*D5 ) >> 14
+M[5] = ( ((D3*D0)>>14)*D5 + D2*D4 ) >> 14
+M[6] = -( D2*D1 ) >> 14
+M[7] = -D0
+M[8] = ( D3*D1 ) >> 14
+```
+
+(Builder A has a `SWAP D7` mid-sequence that is dead / overwritten by
+the following `MOVEQ #14,D7`; it does not affect the result.)
+
+### Port implementation sketch
+
+```cpp
+static inline int16_t mul14(int16_t a, int16_t b) {
+  return int16_t((int32_t(a) * int32_t(b)) >> 14);
+}
+
+void builder_B(int16_t d0, int16_t d1, int16_t d2,
+               int16_t d3, int16_t d4, int16_t d5,
+               int16_t out[9]) {
+  out[0] = int16_t((int32_t(d5)*d3 - int32_t(mul14(d4,d0))*d2) >> 14);
+  out[1] = int16_t(-(int32_t(mul14(d5,d0))*d2 + int32_t(d4)*d3) >> 14);
+  out[2] = mul14(d1, d2);
+  out[3] = mul14(d4, d1);
+  out[4] = mul14(d5, d1);
+  out[5] = d0;
+  out[6] = int16_t(-(int32_t(mul14(d4,d0))*d3 + int32_t(d5)*d2) >> 14);
+  out[7] = int16_t((int32_t(d4)*d2 - int32_t(mul14(d5,d0))*d3) >> 14);
+  out[8] = mul14(d1, d3);
+}
+```
+
+Register-to-angle mapping (which of D0–D5 is sin/cos of yaw vs
+pitch vs roll) depends on helper `00C2D14E` and is the next target.
