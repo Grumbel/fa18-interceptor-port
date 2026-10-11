@@ -10,6 +10,7 @@
 #include "gfx_state.hpp"
 #include "input_state.hpp"
 #include "transform.hpp"
+#include "flight.hpp"
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
@@ -126,32 +127,16 @@ int main(int argc, char* argv[]) {
       fa18::draw_line(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
                       fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
 
-      // Wireframe demo: rotating cube via recovered transform path
-      // (file 0x7ad8 matrix multiply + clamp + line).
+      // Object loop ($72dc) → transform ($77d8) → clamp/line
       static float yaw = 0.f;
       yaw += 0.8f;
       if (yaw > 360.f) yaw -= 360.f;
-      fa18::Mat3 M = fa18::mat_yaw(yaw);
-      // Unit cube vertices, pushed forward in Z
-      const fa18::Vec3 cube[8] = {
-        {-1,-1,-1},{ 1,-1,-1},{ 1, 1,-1},{-1, 1,-1},
-        {-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1},{-1, 1, 1},
-      };
-      int sx[8], sy[8];
-      for (int i = 0; i < 8; ++i) {
-        fa18::Vec3 w = fa18::transform_point(M, cube[i]);
-        w.z += 5.f;  // distance from camera
-        fa18::project(w, sx[i], sy[i]);
-      }
-      auto edge = [&](int a, int b) {
-        fa18::draw_line(ren, sx[a], sy[a], sx[b], sy[b], 0xe0, 0xe0, 0xff);
-      };
-      // 12 edges of the cube
-      edge(0,1); edge(1,2); edge(2,3); edge(3,0);
-      edge(4,5); edge(5,6); edge(6,7); edge(7,4);
-      edge(0,4); edge(1,5); edge(2,6); edge(3,7);
+      fa18::Object cube = fa18::make_cube(1.f);
+      cube.orient = fa18::mat_yaw(yaw);
+      cube.pos = {0.f, 0.f, 5.f};
+      fa18::draw_object(ren, gfx, cube);
 
-      // Horizon line
+      // Horizon
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY,
                       fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 0x60, 0x80, 0xa0);
 
