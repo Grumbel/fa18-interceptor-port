@@ -10,8 +10,10 @@ namespace fa18 {
 // Draw modes recovered from move.w #MODE, $36e / jsr $12 pattern.
 // See docs/draw_modes.md.
 enum class DrawMode : uint16_t {
-  Line = 0x1b,   // hunk 35 – clamp + blitter line
-  // many others exist ($01–$46); add as identified
+  Span    = 0x01,  // DDA span/poly edge
+  Line    = 0x1b,  // blitter line (sole issuer 0x28274)
+  VtxWalk = 0x16,  // projected vertex walker entry
+  // 42 additional modes catalogued in docs/draw_modes.md
 };
 
 inline void clamp_to_playfield(int& x, int& y) {
