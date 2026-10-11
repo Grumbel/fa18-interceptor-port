@@ -75,3 +75,25 @@ This block is almost certainly referenced by the early OpenLibrary / file-open c
 2. Resolve what library is opened at 0x4b8 and what the subsequent bases are
 3. Trace the path from early init to the title / qualification screens using the known string addresses
 4. Locate planar graphics data (look for copper-list patterns or large zero-padded bitplane blocks)
+
+## Early init – refined (0x300 region)
+
+```
+0x300  move.l d0, $40
+0x306  move.l a0, $44
+0x30e  movem.l …,-(sp)
+…      move.l 4, a0 / a6 setup
+0x32e  jsr FindTask
+…      more setup, absolute stores
+0x48e  move.l 4.w, a6          ; ExecBase
+0x492  jsr Forbid
+0x4b0  lea $50, a1             ; expected library name pointer
+0x4b6  moveq #0, d0            ; version = any
+0x4b8  jsr OpenLibrary
+0x4bc  move.l d0, $30          ; store base
+0x4c4  rts
+```
+
+The absolute addresses ($30, $40, $44, $50, …) indicate the game expects a
+fixed load address or performs its own relocation / low-memory setup after
+the overlay loader runs. This is common for large Amiga titles of the era.
