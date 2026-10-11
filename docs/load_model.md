@@ -114,3 +114,22 @@ Consequence: static resolution works for `$ef4`, `$996`, `$cce`,
 `$01c8`, … but **not** for `$84`, `$30`, `$1c`, etc. without dynamic
 tracing or finding the installation code that writes JMP/BRA opcodes
 into those slots.
+
+## Live ADF load deltas (2026-10-12 session)
+
+When booting the raw ADF the primary CODE and the data/variable area
+are relocated independently:
+
+| Segment | Example static → live | Delta |
+|---------|----------------------|-------|
+| Primary CODE | `$1124` → `00C0DB2C` | `+$00C0CA08` |
+| Data / low vars | `$2aa` → `00C44612` | `+$00C44368` |
+
+Classic absolute vectors such as `$12` / `$5ee` / `$c6` are **not**
+present at their original low addresses (those slots hold Kickstart
+vectors).  The game’s runtime vector table is installed into the
+relocated data area and is only filled after overlays run (observed
+zero while object count `$b8f` == 0).
+
+Re-derive both deltas from a known frame prologue if the memory map
+changes between runs.

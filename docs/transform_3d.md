@@ -323,3 +323,115 @@ object loop:
   bsr $7ad8             ; transform (reads $be6–$bf6 → $422/$426/$42a)
   … post-transform 0x784c …
 ```
+## Matrix coefficient writer (dynamic trace, 2026-10-12)
+
+The writer is **absent from the static primary image**; it lives in a
+runtime-loaded CODE region.  Located via FS-UAE memory dump + live
+breakpoint.
+
+### Live addresses (ADF boot, this session)
+
+| Item | Live address | Notes |
+|------|--------------|-------|
+| Primary CODE base delta | `+$00C0CA08` | static `$1124` → `00C0DB2C` |
+| Data segment delta | `+$00C44368` | static `$2aa` → `00C44612` |
+| Matrix base (`$be6`) | `00C44F4E` | 9 × int16 |
+| Sin/cos table | `00C3D320` | see below |
+| Builder B entry | `00C2D07A` | main fill loop |
+| Trig lookup helper | `00C2D232` | angle → sin/cos |
+| Transform (`$77d8`) | `00C141E0` | consumer of matrix |
+| Object loop (`$72dc`) | `00C13CE4` | |
+| Frame (`$1124`) | `00C0DB2C` | |
+
+(These absolute addresses are session-specific; re-derive from the
+frame prologue if the load base changes.)
+
+### Sin/cos table (`00C3D320`)
+
+- 16-bit unsigned entries, Q2.14 style (`0x4000` = 1.0)
+- Index 0 → 0, index 896 → `0x4000` (exactly 1.0)
+- Covers **0° … 90°** in 897 steps
+- Quadrant handling done by the lookup helper (negation + index reflection)
+
+Sample head:
+
+```
+0000 001D 0039 0056 0072 008F 00AC 00C8 …
+```
+
+### Builder B core (live `00C2D07A`)
+
+```
+; inputs: D0–D5 hold sin/cos terms (Q2.14), A1 → matrix write ptr
+move.w  D4, D6
+muls.w  D0, D6
+moveq   #14, D7
+asr.l   D7, D6          ; ÷ 16384
+muls.w  D2, D6
+move.w  D5, D7
+muls.w  D3, D7
+sub.l   D6, D7
+moveq   #14, D6
+asr.l   D6, D7
+move.w  D7, (A1)+       ; store element
+… (repeats for remaining elements)
+```
+
+Fixed-point: **asr #14** (not the #6 used later by the transform multiply).
+Matrix coefficients are therefore Q2.14; the transform path then does
+another `asr #6` when applying the matrix to a vertex.
+
+### Trig helper sketch (`00C2D232`)
+
+```
+lea     $00C3D320, A0   ; table base
+cmp.w   #$0708, D4      ; quadrant / range test
+… index arithmetic …
+move.w  (A0, D4.w), D4  ; sin or cos
+move.w  (A0, D6.w), D5  ; the other
+… possible negations …
+; falls into (or returns to) builder
+```
+
+### Two near-identical builders
+
+| Label | Approx. range | Notes |
+|-------|---------------|-------|
+| Builder A | `00C2CFE0`–`00C2D06A` | ends with RTS |
+| Builder B | `00C2D07A`–… | the one observed writing the live matrix |
+
+Selection criterion (view mode / object type / player vs world) still
+open; both use the same table and #14 shift.
+
+### Port mapping (updated)
+
+```cpp
+// Q2.14  (1.0 == 0x4000)
+constexpr int kOne = 0x4000;
+constexpr int kShift = 14;          // builder
+constexpr int kXformShift = 6;      // later transform multiply
+
+int16_t sin_table[897];             // 0°..90°, value 0..0x4000
+
+void build_rotation_matrix(/* angles */, int16_t out[9]) {
+  // 1. lookup sin/cos via table + quadrant logic (00C2D232)
+  // 2. run the muls/asr#14 sequence from 00C2D07A
+  //    writing nine int16 coefficients into out[]
+}
+
+Vec3 transform_point_fp(const int16_t M[9], int16_t x, int16_t y, int16_t z) {
+  auto row = [&](int r) {
+    return (int32_t(M[r*3+0])*x + int32_t(M[r*3+1])*y + int32_t(M[r*3+2])*z)
+           >> kXformShift;
+  };
+  return { float(row(0)), float(row(1)), float(row(2)) };
+}
+```
+
+### Remaining open points
+
+1. Exact angle sources (which low-mem / object fields feed D0–D5).
+2. When builder A vs B is chosen.
+3. Full quadrant logic of the trig helper (table is only 0..90°).
+4. Installation of runtime vectors `$12` / `$5ee` (still zero while
+   object count `$b8f` == 0).

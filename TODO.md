@@ -40,26 +40,32 @@
 - [x] Complete 45-mode catalogue; $c6 dynamic install via table $151a / index $220
 - [x] Overlay/HUNK map; action clear body past binary end (separate overlay); DrawMode enum expanded
 - [x] Object pool: base $642, stride 64 bytes, max 20; active count $b8f
+- [x] Dynamic trace: matrix writer located (live builders @ 00C2D07A / 00C2CFE0)
+- [x] Sin/cos table @ 00C3D320 (897 entries, 0°–90°, Q2.14, 0x4000=1.0)
+- [x] Builder uses asr #14; transform multiply still asr #6
+- [x] ADF load deltas: CODE +$00C0CA08, data +$00C44368 (session-specific)
 
 ## Next Steps
-1. [ ] Dynamic trace: breakpoint on write to $be6; resolve $12/$5ee targets after overlay load
-2. [ ] Bridge post-transform → vertex walker 0x2844e (no mode issue in object loop; via runtime vector)
-3. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-4. [ ] Remaining object fields within the 64-byte stride
-5. [ ] Action clear body (lives in overlay past file end; needs load map)
-6. [ ] $4202 edge descriptor full layout (fields +6/+8/+a = clip bounds)
+1. [ ] Angle sources that feed the trig helper / builders (D0–D5 inputs)
+2. [ ] Builder A vs B selection criterion
+3. [ ] Resolve $12/$5ee targets once object count > 0 (overlays install them)
+4. [ ] Bridge post-transform → vertex walker 0x2844e
+5. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+6. [ ] Remaining object fields within the 64-byte stride
+7. [ ] Action clear body (overlay past file end)
+8. [ ] $4202 edge descriptor full layout
 
 ## Analysis Notes
-- Object pool: base $642, stride $40 (64), max 20, current $c, count $b8f
+- Object pool: base $642, stride $40 (64), max 20, count $b8f
 - Object loop called from frame at 0x1528/0x1542/0x156e
-- No draw-mode issue inside object loop — draw via runtime vectors
-- ~60 CODE hunks; primary at 0x2f8; geometry at 0x2826c; action at 0x4bf0c
-- Matrix $be6–$bf6: zero absolute writers; needs dynamic trace
+- Matrix writer lives in runtime CODE (not static primary); two near-identical builders
+- Sin table only covers 0–90°; quadrant logic in helper @ live 00C2D232
 - Perspective: (x*160)/z+160, (y*90)/z+90
+- Runtime vectors $12/$5ee still zero while no objects active
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
-- (next: 053.x)
+- (next: 053.x – matrix-writer-dynamic-trace)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
