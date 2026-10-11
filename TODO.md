@@ -59,6 +59,7 @@
 - [x] Post-transform 0x784c: state gate, jsr $c6, set state=2
 - [x] CMake install() rules for Nix packaging
 - [x] $be/$c6 sibling install from table $151a; no static $12/$5ee stores
+- [x] Geometry hunk pipeline: walker 0x2844e → perspective 0x2864a → jsr $5ee
 
 
 ## Next Steps
@@ -68,7 +69,7 @@
 4. [ ] Label angle0/1/2 as yaw/pitch/roll from gameplay
 5. [x] Transform reads global $be6 matrix (live 00C44F4E); second matrix role still open
 5. [ ] Resolve $12/$5ee targets (overlay-only; no static stores in primary)
-6. [x] Post-transform 0x784c gates on +$26/+$28, calls $c6; bridge to walker still via live $c6
+6. [x] Post-transform 0x784c → $c6; geometry walker/perspective/$5ee path documented (live $c6 still open)
 7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 8. [x] Object +$22/+$24 sin/cos, +$26 type; dual angle scales documented
 9. [ ] Action clear body (overlay past file end)

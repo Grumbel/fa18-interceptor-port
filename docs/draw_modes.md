@@ -162,3 +162,74 @@ For the C++ port, `$c6` can be modelled as a function pointer set when
 the “geometry hunk” is logically active.  Candidate targets are the
 perspective/walker entry points in the geometry CODE hunk (file
 0x2864a / 0x2844e).  `$12` remains the mode dispatcher front-end.
+
+## Geometry CODE hunk pipeline (file 0x2826c+, size 0x205 longs)
+
+```
+HUNK_CODE @ 0x2826c
+│
+├─ 0x28274  mode $1b wrapper
+│             move.w #$1b, $36e
+│             jsr $12
+│             rts
+│
+├─ 0x2844e  vertex walker
+│             link a6, #-4
+│             lea $4202, a1        ; edge / clip descriptor
+│             lea $3000, a0        ; projected vertex buffer
+│             ; clip tests vs a1+6 / +8 / +$a
+│             bsr 0x286ca / 0x286f8 / 0x2872c / 0x2875a  ; octant helpers
+│             → falls into perspective
+│
+├─ 0x2864a  perspective
+│             screen_x = (x * 160) / z + 160   ; divs, clamp [0,320)
+│             screen_y = (y *  90) / z +  90   ; clamp [0,180)
+│             move.w d3, (a0)+     ; store sx
+│             move.w d4, (a0)+     ; store sy
+│             movem.w $3000, …     ; reload projected pair
+│             jsr $5ee             ; ★ edge/line handoff
+│             unlk / moveq #1,d0 / rts
+│
+├─ 0x28698  mode $16 entry
+│             move.w #$16, $36e
+│             bra 0x28448          ; into walker
+│
+└─ 0x286ca..0x2875a  four octant / clip helpers
+              (sign flips + muls/divs for edge subdivision)
+```
+
+### $4202 edge descriptor (fields used by walker)
+
+| Offset | Use |
+|--------|-----|
+| +6 | clip bound (compared to projected coord) |
+| +8 | clip bound |
+| +$a | clip bound |
+
+Exact semantics (min/max x/y vs viewport) still partly open; values are
+read as words and used in signed compares before the octant BSRs.
+
+### $3000 vertex buffer
+
+Filled by perspective as packed screen-space word pairs `(sx, sy)`.
+`$5ee` receives the current pair via `movem.w $3000, …` immediately
+before the call.
+
+### How this connects to the object loop
+
+```
+object_loop
+  transform $77d8       → world coords in object+0/+4/+8
+  post-transform 0x784c → jsr $c6
+                            │
+                            ▼
+                    (live $c6 target — likely enters geometry path
+                     or sets up $3000 / $4202 then calls walker)
+                            │
+                            ▼
+                    walker → perspective → jsr $5ee → line draw
+```
+
+Static analysis cannot resolve `$c6`/`$5ee` targets (overlay installs).
+The geometry hunk itself is the clear implementation of projection and
+edge setup once those vectors point here.
