@@ -262,3 +262,17 @@ and 36 (title-transition actions).  Likely from overlay load / mode
 entry code that is not yet mapped.  The primary-segment callers of the
 dispatcher (`$9d7a`, `0xa046`, `0xa08e`) only *trigger* already-filled
 slots.
+
+## Action slots $8c / $90 (indices 35 / 36)
+
+| Addr | Index | Notes |
+|------|-------|-------|
+| `$8c` | 35 | `35 × 4 = $8c` |
+| `$90` | 36 | `36 × 4 = $90` |
+
+Created during early init (file 0x9960, called from 0x756):
+1. `jsr $1a6` creates slot 35
+2. `jsr $22c` creates slot 36 (paired with 35)
+3. Fields +8 / +16 customised; bit 2 of `$52a` set
+
+See `docs/action_create.md` for the full create path.

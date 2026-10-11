@@ -29,29 +29,28 @@
 - [x] Blitter Dn geometry: $352=Y, ×40 row-bytes, BLTCPT/SIZE/MOD mapping
 - [x] Line endpoints $350/$352 (Y0/Y1); BLTSIZE = (dy+1)<<6 | width; $b2 bitplane base
 - [x] X path: lsr#4 word offset, modulo = 39−2·Δx; param block $34c–$352; vertex buf $3000
+- [x] Action create call sites for slots 35/36 (file 0x9960, called from early init 0x756)
 
 ## Next Steps
-1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
+1. [ ] Confirm $34c/$34e as X0/X1 vs other X-related values
 2. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
-3. [ ] Resolve runtime targets of $12 / $c6 / $68a / $f4 / $88 (need dynamic trace or overlay load map)
+3. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c (need dynamic trace or overlay load map)
 4. [ ] Find overlay sites that issue mode $1b for projected geometry
 5. [ ] Perspective divide / reciprocal location
 6. [ ] Bodies of other draw modes
 7. [ ] Populate real object list from mission data once format known
-8. [ ] Confirm $34c/$34e as X0/X1 vs other X-related values
+8. [ ] Action clear function body; full structure layout beyond +8/+c/+10/+20
 
 ## Analysis Notes
-- $34c–$352 param block via movem.w d0-d3; $350=Y0, $352=Y1
-- X: lsr#4 → word offset; BLTMOD = 39 − 2·Δx_words
-- BLTCON1=$000a fixed for primary line; octant via endpoint ordering
-- Vertex buffer at $3000 (screen-space X,Y words)
-- $b2 = bitplane base; addr = $b2 + Y×40 + x_byte
-- Draw dispatcher: set $36e = mode, jsr $12
+- Slots $8c/$90 = indices 35/36 (index×4); created at init via $1a6/$22c vectors
+- Create: file 0x9960, sole caller file 0x756 (early init)
+- Create body in overlay 0x4bf14: index×4 into table base 0, writes +8/$01660000, +c/$003f0000, +10/1
+- $34c–$352 param block; $350=Y0, $352=Y1; X via lsr#4
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-041.1-line-endpoints-bltsize-dc0339a.bundle (superseded)
-- (next: 042.x)
+- fa18-port-042.1-x-coord-bltmod-paramblock-dc0339a.bundle (superseded)
+- (next: 043.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
