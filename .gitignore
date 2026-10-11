@@ -1,0 +1,7 @@
+build/
+*.o
+*.a
+*.so
+*.bundle
+.DS_Store
+*~
