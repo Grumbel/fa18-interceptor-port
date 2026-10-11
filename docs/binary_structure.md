@@ -43,3 +43,35 @@ Amiga Hunk executable with **overlays**.
 2. Locate the true entry point and initial OpenLibrary calls
 3. Identify planar bitmap / copper-list data for title & cockpit
 4. Map the 3D transformation / projection routines
+
+## Entry-point / early initialisation notes (2026-10-11)
+
+First large `HUNK_CODE` starts at file offset **0x000300** (payload).
+
+Observed early sequence (crude disasm):
+
+```
+0x300: move.l d0, $40          ; or absolute store
+0x306: move.l a0, $44
+0x30c: move.l a7, d0
+0x30e: movem.l …,-(a7)         ; save regs
+… get ExecBase …
+0x48e: move.l 4.w, a6
+0x492: jsr -108(a6)            ; possibly Forbid / other
+0x4b0: lea $50, a1             ; library name pointer?
+0x4b8: jsr -552(a6)            ; OpenLibrary
+0x4bc: move.l d0, $30          ; store library base
+```
+
+Only **one** clear `jsr -552(a6)` (OpenLibrary) was found in the whole binary (at 0x4b8).  
+Several `move.l 4.w, a6` (ExecBase) sites exist.
+
+Library name strings are clustered around **0xd5a0** together with the `df0:pix/…` and `df0:text/…` paths.  
+This block is almost certainly referenced by the early OpenLibrary / file-open code.
+
+## Next concrete RE tasks
+
+1. Full disassembly of the 0x300–0x600 region (with a proper 68k tool or Ghidra later)
+2. Resolve what library is opened at 0x4b8 and what the subsequent bases are
+3. Trace the path from early init to the title / qualification screens using the known string addresses
+4. Locate planar graphics data (look for copper-list patterns or large zero-padded bitplane blocks)

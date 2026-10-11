@@ -5,32 +5,33 @@
 
 ## Completed
 - [x] Extracted original ADF + assets
-- [x] Project scaffolding (AGENTS, README, CMake, SDL2 skeleton)
-- [x] Confirmed multi-hunk **overlay** structure
-- [x] Converted available ILBMs (frnt5, inst5)
-- [x] Basic CODE/DATA hunk scanner
-- [x] String extraction utility + curated interesting-string dump
-- [x] Documented libraries, file paths, mission UI strings, credits
+- [x] Project scaffolding (CMake, SDL2 skeleton)
+- [x] Confirmed multi-hunk overlay structure
+- [x] Converted available ILBMs
+- [x] String extraction + curated dumps
+- [x] Documented libraries, paths, credits, mission text
+- [x] Located primary OpenLibrary site (0x4b8) and early init in first CODE hunk (0x300)
+- [x] Identified library-name + path data block at ~0xd5a0
+- [x] Added tools/analyze_binary.py for quick static checks
 
 ## Next Steps
-1. [ ] Proper overlay-table parser (reconstruct loadable segments + relocs)
-2. [ ] Locate entry point + first AmigaOS calls (OpenLibrary sequence)
-3. [ ] Search binary for planar bitmaps / copper lists (title, cockpit, terrain)
-4. [ ] Map high-level flow: title → qualification → mission select → flight
-5. [ ] Begin isolating 3D math (matrix / projection / clip) routines
-6. [ ] Asset pipeline that can display the small ILBMs with correct palette
-7. [ ] Study any available JOTD WHDLoad notes / EAB disassembly fragments
+1. [ ] Proper overlay-table / segment reconstruction
+2. [ ] Full disassembly of early init (0x300–0x600) – resolve which library is opened and subsequent bases
+3. [ ] Trace from early init to title/qualification using known string addresses
+4. [ ] Search for planar bitmaps / copper lists
+5. [ ] High-level flow map (title → qualification → mission select → flight loop)
+6. [ ] Isolate 3D math / projection routines
+7. [ ] Asset pipeline for ILBMs with correct palette
 
 ## Analysis Notes
-- Binary: 311832 B, many small CODE hunks + DATA + RELOC + SYMBOL + BREAK
-- Overlay header explains table-size 185
-- Credits & mission text fully recoverable from strings
-- Most graphics beyond the two tiny ILBMs are embedded or procedural
+- First large CODE hunk @ file 0x300 appears to be the main program
+- Only one clear OpenLibrary call found; library bases stored at low absolute addresses ($30 etc.)
+- Library names + df0: paths clustered together – classic Amiga resource table
 
 ## Bundle History
-- fa18-port-001.1-… (superseded)
-- fa18-port-002.1-hunk-scanner-sdl-skeleton-dc0339a.bundle
-- (next: 003.x)
+- …-002.1-… (superseded)
+- fa18-port-003.1-strings-and-docs-dc0339a.bundle
+- (next: 004.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
