@@ -55,3 +55,9 @@ not present as standalone ILBM files on the disk.
 2. Disassemble the blitter region (0x28800+) to identify bitplane
    pointers, copper-list setup and polygon-fill entry points.
 3. Search for copper-list data (moves to $dff080–$dff08c, COLOR registers).
+
+## Picture-wait / title path (updated)
+
+See `docs/load_model.md` for the resolved call chain inside the function
+that contains the BUTTONWAIT site.  The private helpers `$996` and `$cce`
+are the next place to look for splash / ILBM loading logic.

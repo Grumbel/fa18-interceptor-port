@@ -53,3 +53,31 @@ file_offset ≈ 0x300 + xxxx
 ```
 
 This turns the absolute call graph into ordinary static analysis.
+
+## Picture-wait function structure (file ~0x5e0–0x6cc)
+
+The BUTTONWAIT patch site (`0x6b4`) sits inside a larger function that
+ends at `0x6cc` (`unlk a6 / rts`).  Outline:
+
+```
+… (function body, uses jsr $30, jsr $a8, bit packing)
+0x680  jsr $ef4          ; widely-used helper (also called from 0x538…)
+0x6a0  jsr $996          ; only called from here – image/structure parser?
+0x6ae  jsr $cce          ; only called from here – pointer adjust helper
+0x6ba  jsr $1c           ; BUTTONWAIT hook (WHDLoad patches here)
+0x6ca  unlk a6
+0x6cc  rts
+
+0x6ce  link a6,#-24      ; NEXT function
+0x6d6  move.w #3, $112   ; state / mode variable
+0x6de  moveq #29, d0
+…
+```
+
+`$ef4` is a general-purpose helper (many call sites).  
+`$996` and `$cce` are private to this path – strong candidates for
+title/splash asset preparation.
+
+`$30` is called as `jsr $30` from this function; under the load model
+that is file 0x330 (inside early init) unless the slot was later
+overwritten with a different function pointer.
