@@ -60,6 +60,7 @@
 - [x] CMake install() rules for Nix packaging
 - [x] $be/$c6 sibling install from table $151a; no static $12/$5ee stores
 - [x] Geometry hunk pipeline: walker 0x2844e → perspective 0x2864a → jsr $5ee
+- [x] Transform world store: $422+$b68→obj+0, Y/Z similar; $4202 clip fields +6/+8/+$a
 
 
 ## Next Steps
@@ -73,7 +74,7 @@
 7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 8. [x] Object +$22/+$24 sin/cos, +$26 type; dual angle scales documented
 9. [ ] Action clear body (overlay past file end)
-10. [ ] $4202 edge descriptor full layout
+10. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
 11. [x] Wire C++ mat_from_angles_q14 + builder_A/B (Q2.14, 7200-circle)
 
 ## Analysis Notes

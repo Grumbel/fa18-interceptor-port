@@ -756,3 +756,52 @@ consumed by the object transform.  The dual-builder path that writes at
 (or a bulk copy follows).  The second matrix ($92 later) is not read by
 this transform; its role (inverse, alternate view, object-local) remains
 open but is not required for the basic flight path.
+
+## Transform body complete (file 0x7ad8) — world store
+
+After the matrix×vector multiply into `$422/$426/$42a`:
+
+```
+movea.l $c, a0
+move.w  $b5a, $30(a0)        ; copy counter scratch → object+0x30
+move.w  $b5c, $32(a0)        ; → object+0x32
+
+; X
+move.l  $b68, d0
+andi.l  #$3fffff, d0         ; mask view X
+add.l   $422, d0
+move.l  d0, (a0)             ; object+0 = transformed_x + view_x
+
+; Y
+move.l  $426, d0
+add.l   $b6c, d0
+move.l  d0, 4(a0)            ; object+4
+
+; Z (same pattern with $b70 & $3fffff → object+8)
+```
+
+View/camera translation is absolute `$b68/$b6c/$b70`.  X and Z are
+masked to 22 bits (`$3fffff`) before add; Y is unmasked.
+
+### Prologue flag paths
+
+Before the multiply, the routine inspects object+0x26 bits and may
+short-circuit with fixed local vector components (`#$fff8`, `#1`,
+`#$18`, etc.) written into stack locals that feed the muls.  Several
+object-type / state combinations skip the full matrix path.
+
+## Alternate geometry path at 0x28374
+
+Inside the geometry hunk, a second routine also does perspective and
+`jsr $5ee` without going through the walker at 0x2844e:
+
+```
+lea $4202, a1
+; read vertex pairs from (a1)+
+; perspective-style muls/divs with 160/90
+; clamp
+jsr $5ee
+```
+
+Likely a simpler “already-projected or pre-clipped edge list” drawer
+that still uses `$4202` as its source descriptor.

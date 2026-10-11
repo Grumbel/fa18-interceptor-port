@@ -233,3 +233,24 @@ object_loop
 Static analysis cannot resolve `$c6`/`$5ee` targets (overlay installs).
 The geometry hunk itself is the clear implementation of projection and
 edge setup once those vectors point here.
+
+## $4202 usage summary
+
+| Site (file) | Access |
+|-------------|--------|
+| 0x28452 | walker: `lea $4202, a1` then `6(a1)` / `8(a1)` / `$a(a1)` as clip bounds |
+| 0x28374 | alternate drawer: `lea $4202, a1` then sequential `(a1)+` vertex reads |
+| 0x15654, 0x15d40, 0x16d72, 0x16dde | primary-segment LEAs (setup / other modes) |
+| 0x25b76 | another LEA A1 |
+
+Clip fields read by the walker:
+
+| Offset | Register | Role |
+|--------|----------|------|
+| +6 | D2 | bound A (compared around projected X/Y) |
+| +8 | D2 | bound B (alternate octant path) |
+| +$a | D6 | bound C |
+
+Full structure of `$4202` (whether it also holds edge endpoints, counts,
+or flags beyond the three bounds) is not yet exhausted; the alternate
+path at 0x28374 treats it as a stream of vertex words via `(a1)+`.
