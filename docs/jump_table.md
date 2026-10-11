@@ -67,3 +67,17 @@ This is why:
   OpenLibrary / file loading).
 - Once a few vectors are resolved, the picture-wait and empty-loop
   paths become fully traceable.
+
+## Update: load-base resolution
+
+The “jump table” interpretation is partially refined.  Many absolute
+targets are simply **offsets within the first CODE segment loaded at
+runtime address 0** (see `docs/load_model.md`).
+
+```
+file_offset = 0x300 + runtime_address
+```
+
+Targets such as `$ef4`, `$996`, `$cce` are ordinary functions inside that
+segment.  Very low addresses may still be special (data, mid-function
+entry, or separately installed vectors).

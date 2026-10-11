@@ -200,3 +200,9 @@ Dense cluster of `lea $dff000, …` and blitter-wait loops at
 ~197 unique `jsr abs.l` targets below $1000.  The game installs a
 low-memory vector table during startup; most inter-routine calls go
 through it.  See `docs/jump_table.md`.
+
+## Load model
+
+First CODE hunk payload (file 0x300) ↔ runtime address 0.
+`file_offset = 0x300 + runtime_addr` for addresses in that segment.
+See `docs/load_model.md`.
