@@ -134,3 +134,33 @@ To locate code that uses a particular string we will need either:
 3. Dynamic tracing under an emulator (WinUAE / FS-UAE with a debugger).
 
 This is a normal limitation of fixed-address Amiga executables.
+
+## WHDLoad slave notes (JOTD)
+
+Source available at https://github.com/jotd666/whdload_slaves (F/F-18Interceptor).
+
+Key observations from `F-18InterceptorHD.s`:
+
+- Protection removal comment: offset `1ce70` : `13fc00ff -> 13fc0001`
+- After `LoadSeg` the slave patches the segment list with:
+
+```
+PL_PS   $8E2, _emulate_empty_loop
+PL_B    $19737, 1          ; protection-passed flag
+PL_B    $3a964, 1          ; another protection flag
+PL_NOP  $01a78, 6
+PL_L    $fd7c, $4EB80100
+PL_PSS  $11468, _fix_af_2, 2
+PL_P    $451c8, sound_delay
+PL_PSS  $01590, keyboard_test, 2
+PL_PS   $006b4, wait_pic   (BUTTONWAIT)
+PL_PS   $08286 / $092e6    speed regulation / VBL hooks
+```
+
+These offsets are relative to the loaded segment base (post-LoadSeg).  
+They give us concrete runtime addresses once the load base of the first
+code segment is known, and they mark important control points
+(protection, keyboard, speed regulation, picture wait).
+
+The slave also forces a protection-passed flag and installs a small
+empty-loop emulator and keyboard/VBL hooks.
