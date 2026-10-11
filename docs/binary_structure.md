@@ -206,3 +206,19 @@ through it.  See `docs/jump_table.md`.
 First CODE hunk payload (file 0x300) ↔ runtime address 0.
 `file_offset = 0x300 + runtime_addr` for addresses in that segment.
 See `docs/load_model.md`.
+
+## Early-init library calls (refined)
+
+After OpenLibrary stores the base at `$30`, subsequent code does:
+
+```
+move.l $30, a6
+jsr -126(a6)          ; file 0x404
+…
+jsr -30(a6)           ; file 0x414  → dos.Open if dosbase
+move.l d0, $48
+```
+
+`$30` is correctly used as a **library base** (loaded into a6 for LVO
+calls).  Absolute `jsr $30` sites elsewhere remain runtime vectors or
+need dynamic confirmation.

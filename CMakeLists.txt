@@ -12,6 +12,8 @@ add_executable(fa18
   src/amiga_hunk.hpp
   src/game_state.cpp
   src/game_state.hpp
+  src/ilbm.cpp
+  src/ilbm.hpp
 )
 
 target_include_directories(fa18 PRIVATE ${SDL2_INCLUDE_DIRS} src)
