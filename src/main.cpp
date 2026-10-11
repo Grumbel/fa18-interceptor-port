@@ -5,6 +5,8 @@
 #include "amiga_hunk.hpp"
 #include "game_state.hpp"
 #include "ilbm.hpp"
+#include "display.hpp"
+#include "draw.hpp"
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
@@ -31,7 +33,7 @@ int main(int argc, char* argv[]) {
   SDL_Window* win = SDL_CreateWindow(
       "FA-18 Interceptor (port) - Startup",
       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      640, 400, SDL_WINDOW_SHOWN);
+      fa18::WINDOW_W, fa18::WINDOW_H, SDL_WINDOW_SHOWN);
   if (!win) {
     std::cerr << "SDL_CreateWindow failed\n";
     SDL_Quit();
@@ -43,21 +45,15 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     return 1;
   }
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest-neighbour
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
 
   IlbmImage frnt5, inst5;
   SDL_Texture* tex_frnt = nullptr;
   SDL_Texture* tex_inst = nullptr;
-  if (frnt5.load("assets/pix/frnt5")) {
+  if (frnt5.load("assets/pix/frnt5"))
     tex_frnt = frnt5.to_texture(ren);
-    std::cout << "Loaded frnt5: " << frnt5.width << "x" << frnt5.height
-              << " " << frnt5.planes << " planes\n";
-  }
-  if (inst5.load("assets/pix/inst5")) {
+  if (inst5.load("assets/pix/inst5"))
     tex_inst = inst5.to_texture(ren);
-    std::cout << "Loaded inst5: " << inst5.width << "x" << inst5.height
-              << " " << inst5.planes << " planes\n";
-  }
 
   auto colour_for = [](GameState s) -> SDL_Color {
     switch (s) {
@@ -66,7 +62,7 @@ int main(int argc, char* argv[]) {
       case GameState::Enlistment:     return {0x20, 0x60, 0x20, 255};
       case GameState::Qualification:  return {0x60, 0x40, 0x00, 255};
       case GameState::MissionSelect:  return {0x40, 0x00, 0x60, 255};
-      case GameState::Flight:         return {0x00, 0x40, 0x80, 255};
+      case GameState::Flight:         return {0x00, 0x30, 0x60, 255};
       case GameState::FlightLog:      return {0x40, 0x40, 0x40, 255};
       case GameState::Exit:           return {0x20, 0x00, 0x00, 255};
     }
@@ -107,16 +103,24 @@ int main(int argc, char* argv[]) {
     SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
     SDL_RenderClear(ren);
 
-    // Scale ILBM assets 2x with nearest-neighbour for a more visible placeholder
     if (game.state() == GameState::Title && tex_frnt) {
       int w = frnt5.width * 2, h = frnt5.height * 2;
-      SDL_Rect dst = { (640-w)/2, (400-h)/2, w, h };
+      SDL_Rect dst = { (fa18::WINDOW_W-w)/2, (fa18::WINDOW_H-h)/2, w, h };
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
-    } else if ((game.state() == GameState::Flight ||
-                game.state() == GameState::Qualification) && tex_inst) {
-      int w = inst5.width * 2, h = inst5.height * 2;
-      SDL_Rect dst = { (640-w)/2, 400-h-8, w, h };
-      SDL_RenderCopy(ren, tex_inst, nullptr, &dst);
+    } else if (game.state() == GameState::Flight ||
+               game.state() == GameState::Qualification) {
+      // Demo: horizon line + crosshair using the recovered 320×180 space
+      fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY, fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY,
+                      0x80, 0xa0, 0xc0);
+      fa18::draw_line(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
+                      fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 0xff, 0xff, 0x00);
+      fa18::draw_line(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
+                      fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
+      if (tex_inst) {
+        int w = inst5.width * 2, h = inst5.height * 2;
+        SDL_Rect dst = { (fa18::WINDOW_W-w)/2, fa18::WINDOW_H-h-8, w, h };
+        SDL_RenderCopy(ren, tex_inst, nullptr, &dst);
+      }
     }
 
     SDL_RenderPresent(ren);

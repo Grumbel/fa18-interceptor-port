@@ -63,3 +63,41 @@ These primitives map cleanly onto SDL2 software/hardware line and
 rectangle draws.  Implementing screen-space clamp + draw-line stubs
 will let the higher-level 3D code (once identified) produce visible
 output without a cycle-accurate blitter.
+
+## Blitter register setup (hunk 35/36 boundary)
+
+### Wait loop (file 0x288c8)
+
+```
+lea   $dff000, a2
+btst  #6, 2(a2)        ; DMACONR bit 14–6 = BBUSY
+beq   ready
+nop
+nop
+bra   wait
+move.w #0,      $42(a2) ; BLTCON1 = 0
+move.w #$ffff,  $74(a2) ; BLTADAT = $ffff (for line fill)
+```
+
+### Modulo setup (file 0x29222, hunk 36 area)
+
+```
+move.w #$28, $66(a0)   ; BLTDMOD = 40
+move.w #$28, $60(a0)   ; BLTCMOD = 40
+```
+
+**40 bytes = 320 pixels** at 1 bitplane depth. Confirms the playfield
+width used by the blitter is 320.
+
+### Hunk 36 entry stubs (file 0x28b4c)
+
+```
+move.l #$fffff, $b6    ; mask / plane enable?
+rts
+move.l #$fffff, $b6
+move.w #$d, $324       ; mode word
+… load d0–d3 with small constants (0,0,8,9) or (8,0,0,9)
+```
+
+Likely plane-mask and draw-mode selectors invoked before the heavier
+blitter sequences.
