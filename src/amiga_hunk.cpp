@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iomanip>
 #include <map>
+#include <cctype>
 
 static const std::map<uint32_t, const char*> kHunkNames = {
   {0x3E7, "HUNK_UNIT"}, {0x3E8, "HUNK_NAME"}, {0x3E9, "HUNK_CODE"},
@@ -27,27 +28,27 @@ bool AmigaExecutable::load(const std::string& path) {
   std::ifstream f(path, std::ios::binary);
   if (!f) return false;
   f.seekg(0, std::ios::end);
-  size_t sz = f.tellg();
+  size_t sz = static_cast<size_t>(f.tellg());
   f.seekg(0);
   data.resize(sz);
-  f.read(reinterpret_cast<char*>(data.data()), sz);
+  f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(sz));
   if (!f) return false;
 
-  // Scan for known hunk markers (the file uses overlays; full sequential
-  // parse of the overlay table is future work).
-  hunks.clear();
+  // Scan for CODE/DATA hunks. Full overlay table parsing is future work;
+  // the presence of many small CODE segments + HUNK_BREAK confirms overlays.
+  code_data_hunks.clear();
   for (size_t i = 0; i + 8 <= data.size(); i += 4) {
     uint32_t t = read_be32(&data[i]);
     uint32_t tt = t & 0xFFFF;
-    if (tt == 0x3E9 || tt == 0x3EA) { // CODE or DATA
-      if (i + 8 > data.size()) continue;
+    if (tt == 0x3E9 || tt == 0x3EA) {
       uint32_t size = read_be32(&data[i + 4]);
-      if (size > 0 && size < 200000 && i + 8 + size * 4u <= data.size()) {
+      if (size > 0 && size < 200000 &&
+          i + 8 + static_cast<size_t>(size) * 4 <= data.size()) {
         HunkInfo hi;
         hi.type = t;
         hi.size_longs = size;
         hi.file_offset = i + 8;
-        hunks.push_back(hi);
+        code_data_hunks.push_back(hi);
       }
     }
   }
@@ -56,21 +57,36 @@ bool AmigaExecutable::load(const std::string& path) {
 
 void AmigaExecutable::dump_summary() const {
   std::cout << "Amiga executable: " << data.size() << " bytes, "
-            << hunks.size() << " CODE/DATA hunks found\n";
+            << code_data_hunks.size() << " CODE/DATA hunks found\n";
   size_t total_code = 0, total_data = 0;
-  for (const auto& h : hunks) {
+  for (const auto& h : code_data_hunks) {
     if ((h.type & 0xFFFF) == 0x3E9) total_code += h.size_longs * 4;
     else total_data += h.size_longs * 4;
   }
-  std::cout << "  Approx CODE: " << total_code << " bytes, DATA: "
-            << total_data << " bytes\n";
-  // Print first few
-  for (size_t i = 0; i < std::min(hunks.size(), size_t(8)); ++i) {
-    const auto& h = hunks[i];
-    std::cout << "  [" << i << "] " << hunk_type_name(h.type)
-              << " @" << std::hex << h.file_offset << std::dec
-              << " size=" << h.size_longs * 4 << " B\n";
+  std::cout << "  Approx pure CODE payload: " << total_code << " bytes\n"
+            << "  Approx pure DATA payload: " << total_data << " bytes\n";
+  std::cout << "  First 8 CODE/DATA hunks:\n";
+  for (size_t i = 0; i < std::min(code_data_hunks.size(), size_t(8)); ++i) {
+    const auto& h = code_data_hunks[i];
+    std::cout << "    [" << i << "] " << hunk_type_name(h.type)
+              << " @0x" << std::hex << h.file_offset << std::dec
+              << "  " << (h.size_longs * 4) << " B\n";
   }
-  if (hunks.size() > 8)
-    std::cout << "  ... and " << (hunks.size() - 8) << " more\n";
+  if (code_data_hunks.size() > 8)
+    std::cout << "    ... and " << (code_data_hunks.size() - 8) << " more\n";
+}
+
+std::vector<std::string> AmigaExecutable::extract_strings(size_t min_len) const {
+  std::vector<std::string> out;
+  std::string cur;
+  for (uint8_t b : data) {
+    if (b >= 32 && b < 127) {
+      cur.push_back(static_cast<char>(b));
+    } else {
+      if (cur.size() >= min_len) out.push_back(cur);
+      cur.clear();
+    }
+  }
+  if (cur.size() >= min_len) out.push_back(cur);
+  return out;
 }
