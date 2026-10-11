@@ -61,3 +61,11 @@ not present as standalone ILBM files on the disk.
 See `docs/load_model.md` for the resolved call chain inside the function
 that contains the BUTTONWAIT site.  The private helpers `$996` and `$cce`
 are the next place to look for splash / ILBM loading logic.
+
+## Overlay placement
+
+Blitter code lives in **overlay CODE hunks** (file ~0x2826c+), not in
+the primary segment.  20+ `btst #6, 2(an)` blitter-wait sites confirmed.
+Almost no `link a6` – register-based calling convention.
+
+See `docs/overlays.md` for the multi-hunk map and analysis strategy.

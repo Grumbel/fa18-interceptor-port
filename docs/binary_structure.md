@@ -222,3 +222,9 @@ move.l d0, $48
 `$30` is correctly used as a **library base** (loaded into a6 for LVO
 calls).  Absolute `jsr $30` sites elsewhere remain runtime vectors or
 need dynamic confirmation.
+
+## Overlay architecture
+
+Multi-hunk executable.  Primary CODE at file 0x300 (41804 bytes) loads
+at runtime 0.  Dozens of overlay CODE hunks follow (blitter/drawing
+code in 0x2826c+).  See `docs/overlays.md`.
