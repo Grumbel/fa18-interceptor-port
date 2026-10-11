@@ -48,16 +48,20 @@
 - [x] Trig helper 00C2D232: byte-indexed table, quadrant fold + sign
 - [x] Builder A (00C2CFD2) vs B (00C2D06C) entry points and call sites
 - [x] Object fields +$22/+24 = sin/cos Q2.14 (written by 00C2C8A6)
+- [x] Builder A+B sequential via orchestrator 00C2C4B2 (A1 += $92 between)
+- [x] Frame path calls matrix orchestrator via 00C2C4F4
+
 
 ## Next Steps
-1. [ ] Builder A vs B selection criterion (which angles / which matrix layout)
-2. [ ] Resolve $12/$5ee targets once object count > 0
-3. [ ] Bridge post-transform → vertex walker 0x2844e
-4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-5. [ ] Remaining object fields within the 64-byte stride
-6. [ ] Action clear body (overlay past file end)
-7. [ ] $4202 edge descriptor full layout
-8. [ ] Wire C++ mat_from_angles to the exact 7200-circle + Q2.14 builder
+1. [x] Builder A + B are sequential (orchestrator 00C2C4B2); A1 advances +$92 between them
+2. [ ] Confirm geometric role of the two matrices (view vs inverse / object vs camera)
+3. [ ] Resolve $12/$5ee targets once object count > 0
+4. [ ] Bridge post-transform → vertex walker 0x2844e
+5. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+6. [ ] Remaining object fields within the 64-byte stride
+7. [ ] Action clear body (overlay past file end)
+8. [ ] $4202 edge descriptor full layout
+9. [ ] Wire C++ mat_from_angles to the exact 7200-circle + Q2.14 dual-builder sequence
 
 ## Analysis Notes
 - Object pool: base $642, stride $40 (64), max 20, count $b8f

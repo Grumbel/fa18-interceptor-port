@@ -543,3 +543,56 @@ void build_matrix_from_angles(/* yaw, pitch, roll in 7200-circle units */,
   // call sincos for each axis, then builder A or B muls/asr#14 sequence
 }
 ```
+
+## Builder A + B are sequential stages (not alternatives)
+
+The orchestrator at live `00C2C4B2` always runs **both**:
+
+```
+movem.l d3-d6/a1/a6, -(sp)
+move.w  d4, d0
+move.w  d5, d2
+move.w  d6, d4
+lea     $80(a1), a1          ; matrix destination
+bsr     $00C2CFD2            ; ★ Builder A
+movem.l (sp)+, …
+adda.w  #$92, a1             ; advance to second matrix
+clr.l   d0 / d2 / d4
+move.w  #$7080, d1
+; optional angle tweaks from d5/d6/d7
+bsr     $00C2D06C            ; ★ Builder B
+rts
+```
+
+- Builder A writes ~8 words at `A1` (original + $80)
+- A1 advances by **$92** (146 bytes)
+- Builder B writes ~8 words at the second location
+
+Two related matrices are produced per call (e.g. view + inverse, or
+object-local + camera). Exact geometric roles still to be confirmed
+from which address the transform (`$77d8`) reads.
+
+### Call chain into the orchestrator
+
+```
+frame $00C0DB2C
+  …
+  jsr $00C24674 / $00C24676   ; related setup
+  jsr $00C2C4F4               ; wrapper → flag test → orchestrator
+  jsr $00C1B0A6 / $00C24040   ; post-matrix work
+  …
+```
+
+Also called from `00C2468C` (secondary path).
+
+### Object structure additions
+
+| Offset | Content |
+|--------|---------|
+| +$22 | sin(angle) Q2.14 |
+| +$24 | cos(angle) Q2.14 |
+| +$80 | start of first matrix written by builder A (relative to object ptr used as A1) |
+
+(The +$80 destination is relative to whatever A1 the caller passes;
+when A1 is an object pointer this lands inside or just past the
+64-byte pool stride — may instead be a global matrix buffer.)
