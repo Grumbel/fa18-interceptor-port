@@ -33,26 +33,29 @@
 - [x] Param block confirmed X0/X1/Y0/Y1; clipper before movem; clear wrappers; perspective in overlays
 - [x] 0x1c1f4 is edge interpolation (DDA), not perspective; mode $01 = span/poly edge
 - [x] C++ ActionTable mirroring create/dispatch for slots 35/36
+- [x] Sole mode $1b issuer at 0x28274 (own CODE hunk); mode $16 companion; geometry path gap documented
 
 ## Next Steps
 1. [ ] Find An-relative writers that fill matrix coeffs at $be6–$bf6
 2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c (need dynamic trace or overlay load map)
-3. [ ] Find overlay sites that issue mode $1b for projected geometry
+3. [ ] Bridge post-transform ($c6/$68a) → $3000 vertex buffer → mode $1b / blitter
 4. [ ] Locate true perspective (reciprocal multiply or unresolved overlay)
-5. [ ] Bodies of other draw modes ($01 span, $1b line, …)
+5. [ ] Bodies of other draw modes in the 0x2826c CODE hunk
 6. [ ] Populate real object list from mission data once format known
 7. [ ] Action clear body; fuller structure layout
 8. [ ] Role of $bb4 (object-loop counter)
 
 ## Analysis Notes
-- 0x1c1f4: DDA edge slope (muls+divs) → mode $01 (span/poly), not perspective
+- Mode $1b: sole issuer file 0x28274 in HUNK_CODE size 0x205; thin wrapper → jsr $12
+- Mode $16 also in same hunk (0x28698)
+- Post-transform 0x784c → $c6/$68a; vertex buffer $3000 filled in overlay (no abs writers in primary)
+- 0x1c1f4: DDA edge slope → mode $01 (span/poly)
 - Matrix $be6–$bf6: no absolute stores; An-relative or overlay only
-- ActionTable C++ stubs create slots 35/36 at init; invoke 36 on title proceed
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-045.1-perspective-fn-matrix-status-dc0339a.bundle (superseded)
-- (next: 046.x)
+- fa18-port-046.1-edge-dda-action-table-dc0339a.bundle (superseded)
+- (next: 047.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

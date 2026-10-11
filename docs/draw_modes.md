@@ -91,3 +91,39 @@ Uses buffers at `$3c00`, `$3600` and low addresses `$1a2`/`$198`/`$fc`
 function lives in an overlay and is called relatively from within
 that overlay.  Likely edge-setup or span-fill rather than pure line
 draw (mode `$1b`).
+
+## Mode $1b sole issuer
+
+**Only one site** in the entire binary issues mode `$1b`:
+
+```
+; file 0x28274 – start of HUNK_CODE (size 0x205 longwords)
+move.w #$1b, $36e.L
+jsr    $12.L
+moveq  #0, d0
+rts
+```
+
+This is a thin wrapper: force line mode, call the draw engine at `$12`.
+It lives in its own CODE hunk (header at 0x2826c).
+
+### Companion mode in same hunk
+
+| Mode | File | Notes |
+|------|------|-------|
+| `$1b` (27) | 0x28274 | line |
+| `$16` (22) | 0x28698 | same hunk |
+
+### How projected geometry reaches the line drawer
+
+The flight-frame path does **not** call 0x28274 directly (no absolute
+callers).  Instead:
+
+1. Transform writes world coords to object+0/+4/+8
+2. Post-transform (0x784c) calls `$c6` / `$68a` with the object pointer
+3. Somewhere in the overlay chain, screen-space vertices land in `$3000`
+4. Line setup reads `$3000`, fills `$34c`–`$352`, programs the blitter
+5. Mode `$1b` wrapper (or the blitter path directly) is reached via `$12`
+
+Exact connection from step 2 → 4 still needs the overlay load map or a
+dynamic trace.

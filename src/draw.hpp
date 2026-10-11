@@ -51,4 +51,10 @@ inline void blitter_line_stub(SDL_Renderer* ren, GfxState& gfx,
   draw_line(ren, x0, y0, x1, y1);
 }
 
+
+// Mode $1b wrapper (file 0x28274): force line mode and dispatch.
+inline void mode_1b_line(GfxState& gs) {
+  gs.draw_mode = 0x1b;
+  // jsr $12 → draw engine reads gs.draw_mode
+}
 } // namespace fa18
