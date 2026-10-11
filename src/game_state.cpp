@@ -8,6 +8,8 @@ Game::Game() {
     {5, "Intercept Cruise Missile", "F5 - INTERCEPT INCOMING CRUISE MISSILE"},
     {6, "Carrier Sub", "F6 - CARRIER SUB MISSION"},
   };
+  // Early init mirrors file 0x756 → $9660 create slots 35/36
+  actions_.init_title_slots();
   enter(GameState::Startup);
 }
 
@@ -37,7 +39,10 @@ void Game::enter(GameState s) {
 void Game::request_next() {
   switch (state_) {
     case GameState::Startup:       enter(GameState::Title); break;
-    case GameState::Title:          enter(GameState::Enlistment); break;
+    case GameState::Title:
+      actions_.invoke(fa18::kSlotProceed);  // slot 36
+      enter(GameState::Enlistment);
+      break;
     case GameState::Enlistment:     enter(GameState::Qualification); break;
     case GameState::Qualification:  enter(GameState::MissionSelect); break;
     case GameState::MissionSelect:  enter(GameState::Flight); break;

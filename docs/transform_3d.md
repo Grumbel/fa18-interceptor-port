@@ -199,3 +199,24 @@ Candidates for the writer:
 
 Issued by the function above.  Body not yet identified (lives behind
 `$12` dispatcher switch).
+
+## File 0x1c1f4 – edge interpolation (not perspective)
+
+Closer analysis of the muls/divs inputs shows classic **polygon edge
+setup**:
+
+```
+movem.w (a0)+, d0-d2     ; edge/vertex data
+asl.l   #3, d0/d1/d2     ; scale
+sub.w   d4, d1           ; deltas
+…
+muls.w  d5, d1
+divs.w  d2, d1           ; slope = (Δ * scale) / Δother
+```
+
+This is DDA/Bresenham-style edge stepping for scan conversion, not a
+perspective divide.  Mode `$01` is therefore a **filled-span / poly
+edge** primitive rather than a projective transform.
+
+True perspective (world Z → screen) remains unlocated; it may use a
+reciprocal multiply (no divs) or live entirely in an unresolved overlay.

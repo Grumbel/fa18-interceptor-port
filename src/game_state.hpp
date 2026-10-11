@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "input_state.hpp"
+#include "action_table.hpp"
 
 enum class GameState {
   Startup,
@@ -29,10 +30,12 @@ public:
   void request_next();
   void request_prev();
   const std::vector<MissionInfo>& missions() const { return missions_; }
+  fa18::ActionTable& actions() { return actions_; }
 
 private:
   GameState state_ = GameState::Startup;
   std::vector<MissionInfo> missions_;
+  fa18::ActionTable actions_;
   void enter(GameState s);
 
   // Mirrors the mode dispatch at file 0x15f0:
