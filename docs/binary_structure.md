@@ -189,3 +189,8 @@ Key anchors now available for static analysis:
 - Keyboard test @ 0x1590
 - Speed/VBL hooks @ 0x8286 / 0x92e6
 - Picture-wait @ 0x06b4
+
+## Graphics / blitter region
+
+Dense cluster of `lea $dff000, …` and blitter-wait loops at
+**0x288c8 – 0x2aa30**.  See `docs/graphics_blitter.md`.
