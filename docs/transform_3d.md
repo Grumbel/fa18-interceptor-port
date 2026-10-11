@@ -1,70 +1,101 @@
-# 3D Transform / Projection Candidate
+# 3D Transform / Projection
 
-## Primary matrix multiply (file 0x7ad8, runtime `$77d8`)
+## Matrix multiply (file 0x7ad8, runtime `$77d8`)
 
 ```
 link a6, #-10
-movem …
-move.l $c.L, a0          ; structure / object base
+… setup …
+; input vector from stack locals:
+;   X = -2(a6)   Y = -4(a6)   Z = -6(a6)
+
+; ── row 0 → $422 ──
+move.w $be6, d0          ; M00
+muls.w X, d0
+move.w $be8, d2          ; M01
+muls.w Y, d2
+add.l  d2, d0
+move.w $bea, d2          ; M02
+muls.w Z, d2
+add.l  d2, d0
+asr.l  #6, d0
+move.l d0, $422          ; out_x
+
+; ── row 1 → $426 ──
+move.w $bec, d2          ; M10
+muls.w X, d2
+move.w $bee, d5          ; M11
+muls.w Y, d5
+add.l  d5, d2
+move.w $bf0, d5          ; M12
+muls.w Z, d5
+add.l  d5, d2
+asr.l  #6, d2
+move.l d2, $426          ; out_y
+
+; ── row 2 → $42a ──
+move.w $bf2, d0          ; M20
+muls.w X, d1             ; (d1 still holds X from earlier reload path)
 …
-; coefficient table at absolute $0be6–$0bf6 (file ~0xee6)
-muls.w  …                ; 9+ multiplies
-add.l
-asr.l  #6, …             ; fixed-point scale
-move.l d0, $422          ; result X?
-move.l d2, $426          ; result Y?
-move.l d1, $42a          ; result Z?
-…
-unlk / rts               ; ends ~0x7d26
+asr.l  #6, d1
+move.l d1, $42a          ; out_z
 ```
 
-### Coefficient / result addresses
+### Matrix layout (absolute words)
 
-| Runtime | File   | Role (inferred) |
-|---------|--------|-----------------|
-| `$0be6`–`$0bf6` | `0xee6`+ | 3×3 (or 3×4) matrix elements |
-| `$422`  | —      | transformed X |
-| `$426`  | —      | transformed Y |
-| `$42a`  | —      | transformed Z |
-| `$c`    | —      | current object / view structure |
+| Addr   | Element | Notes |
+|--------|---------|-------|
+| `$be6` | M00     | row0 col0 |
+| `$be8` | M01     | |
+| `$bea` | M02     | |
+| `$bec` | M10     | |
+| `$bee` | M11     | |
+| `$bf0` | M12     | |
+| `$bf2` | M20     | |
+| `$bf4` | M21     | |
+| `$bf6` | M22     | |
+
+### Fixed-point format
+
+- Coefficients: signed 16-bit
+- Accumulate in 32-bit, then **`asr.l #6`** (÷64)
+- Effective Q10.6 (or simply “× coeff / 64”)
+- Static image at file `0xee6` is **not** the matrix — coefficients are
+  written at runtime (no static absolute stores found in primary;
+  likely filled by orientation/physics code via register-indirect or
+  overlay).
+
+### Results
+
+| Addr  | Meaning |
+|-------|---------|
+| `$422` | transformed X |
+| `$426` | transformed Y |
+| `$42a` | transformed Z |
 
 ### Caller
 
-Single static caller found:
+`bsr.w $7ad8` at file `0x77f6` inside the object loop (`$72dc`).
 
+## Perspective / projection
+
+Only one `divs` found in the primary segment.  Perspective is likely
+done either:
+
+1. With a reciprocal multiply (common on 68000), or
+2. Inside an overlay hunk that owns the final screen-space conversion
+   before the clamp at hunk 35.
+
+The C++ port currently uses a simple `focal / z` perspective that is
+sufficient for the wireframe demo; the exact original method remains open.
+
+## Port mapping
+
+```cpp
+// Fixed-point: result = (M * v) >> 6
+Vec3 transform_point_fp(const int16_t M[3][3], int16_t x, int16_t y, int16_t z) {
+  auto row = [&](int r) {
+    return (int32_t(M[r][0])*x + int32_t(M[r][1])*y + int32_t(M[r][2])*z) >> 6;
+  };
+  return { float(row(0)), float(row(1)), float(row(2)) };
+}
 ```
-file 0x77f6  bsr.w  $7ad8
-```
-
-This sits inside a loop that iterates objects/vertices (branch-back at
-`0x7828 → 0x7612` region).  The surrounding function begins at least as
-early as file `0x75dc` (`link a6,#-22`) and performs flag tests on
-`$52b`, `$155`, `$25b`, `$17d` before entering the transform path.
-
-## Secondary multiply cluster (file 0x4a5c)
-
-Smaller set of `muls.w` + stores to `$534` / `$49c`.  Possibly a
-simpler 2-D scale or HUD projection helper.
-
-## Implications for the port
-
-1. The recovered matrix multiply is the natural place to inject a modern
-   4×4 (or 3×4) transform.
-2. Results land in low-memory slots that the later clamp + blitter line
-   path already consumes (via the geometry prep that feeds `$330`–`$33e`).
-3. Once the loop that calls `$77d8` is fully outlined, the flight-frame
-   sequence becomes:
-
-   ```
-   for each object/vertex:
-     transform ($77d8)
-     project / clamp (hunk 35)
-     blitter line/fill (0x29a88)
-   ```
-
-## Open
-
-- Exact layout of the matrix at `$0be6` (row-major? fixed-point format).
-- Perspective divide location (only one `divs` found in primary; may live
-  in an overlay or be done with reciprocal multiply).
-- Full bounds of the outer per-frame loop.

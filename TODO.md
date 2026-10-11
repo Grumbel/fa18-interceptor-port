@@ -19,14 +19,18 @@
 - [x] 3D transform candidate at file 0x7ad8 (matrix muls → $422/$426/$42a)
 - [x] C++ Mat3/Vec3 + project stub; rotating cube demo in Flight
 - [x] Full flight-frame call graph: $1124 → $72dc → $77d8 → blitter
+- [x] Exact 3×3 fixed-point matrix layout ($be6–$bf6) and asr #6 format
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
+      (no moveq #35/#36 near create; index comes from stack/table;
+       create lives in overlay → callers use vector or same-overlay relative)
 2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
-3. [ ] Recover matrix coefficient format at $0be6 and perspective divide
+3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
 4. [ ] Trace glue from transform results to blitter overlay entry
 5. [ ] Drive C++ state transitions from RE’d keyboard/action logic
 6. [ ] Object-list walk (where “next object” pointer lives)
+7. [ ] Perspective divide / reciprocal location
 
 ## Analysis Notes
 - Picture-wait $01c8: sole caller file 0x9d84 in func 0x9cca
@@ -36,13 +40,14 @@
 - Playfield 320×180; $155 key; $36e draw mode
 - Blitter: BLTCON0 $09f0 (primary), also $0dfc/$0d0c/$0d3c/$0fec/$0f4c
 - Blitter scratch: $330/$334/$338/$33e written just before BLTSIZE
-- Transform: file 0x7ad8, coeffs $0be6–$0bf6, results $422/$426/$42a
+- Transform: file 0x7ad8; M[3][3] words at $be6–$bf6; (Σ m*v) >> 6 → $422/$426/$42a
+- Input vector: X=-2(a6), Y=-4(a6), Z=-6(a6)
 - Transform caller: bsr at file 0x77f6 inside object iteration loop
 - Frame: file 0x1424–0x1812 ($1124); object loop 0x75dc–0x784a ($72dc)
 
 ## Bundle History
-- fa18-port-033.1-transform-3d-cube-dc0339a.bundle (superseded)
-- (next: 034.x)
+- fa18-port-034.1-flight-frame-loop-dc0339a.bundle (superseded)
+- (next: 035.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
