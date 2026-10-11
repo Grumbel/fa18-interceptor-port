@@ -726,3 +726,33 @@ angle unit at the orchestrator input** is 8× finer than the table’s
 
 Alternatively the stored attitude angles already incorporate this
 scale.  Live probing of known attitude values will settle it.
+
+## Transform reads the global matrix at `$be6` (confirmed live)
+
+Live transform at `00C141E0` (static `$77d8`):
+
+```
+move.w  $00C44F4E, d0    ; M00  (= static $be6)
+muls.w  x, d0
+move.w  $00C44F50, d2    ; M01
+muls.w  y, d2
+add.l   d2, d0
+move.w  $00C44F52, d2    ; M02
+muls.w  z, d2
+add.l   d2, d0
+asr.l   #6, d0
+move.l  d0, $00C4478A    ; out X (= static $422)
+
+move.w  $00C44F54, d2    ; M10
+… → $00C4478E            ; out Y (= $426)
+
+move.w  $00C44F5A, d0    ; M20
+… → out Z (= $42a)
+```
+
+So the **global matrix** at static `$be6` / live `00C44F4E` is the one
+consumed by the object transform.  The dual-builder path that writes at
+`A1` / `A1+$92` must point one of its destinations at this global slot
+(or a bulk copy follows).  The second matrix ($92 later) is not read by
+this transform; its role (inverse, alternate view, object-local) remains
+open but is not required for the basic flight path.
