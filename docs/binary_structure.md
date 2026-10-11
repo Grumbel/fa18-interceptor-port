@@ -97,3 +97,24 @@ This block is almost certainly referenced by the early OpenLibrary / file-open c
 The absolute addresses ($30, $40, $44, $50, …) indicate the game expects a
 fixed load address or performs its own relocation / low-memory setup after
 the overlay loader runs. This is common for large Amiga titles of the era.
+
+## Calling convention / absolute addressing
+
+The binary contains **~981 `jsr abs.l`** instructions.  
+The most frequent targets are low absolute addresses:
+
+| Address   | Approx. calls | Notes                          |
+|-----------|---------------|--------------------------------|
+| $00000000 | 69            | null / special                  |
+| $00000012 | 46            |                                |
+| $00000030 | 31            | library base stored here after OpenLibrary |
+| $00000164 | 35            |                                |
+| $00000c58 | 25            |                                |
+| …         |               | many more low addresses        |
+
+This indicates the game was built for a **fixed load address** (or performs its own relocation into a private low-memory layout).  
+Most inter-routine calls are absolute rather than PC-relative or via a relocatable jump table.  
+
+Consequence for RE / porting:
+- When analysing, treat the binary as loaded at a known base (or ignore the absolute values and focus on control flow + data).
+- A full overlay/reloc parser is less critical for understanding logic than for producing a byte-exact reassembly.

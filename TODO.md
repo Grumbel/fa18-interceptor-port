@@ -4,32 +4,30 @@
 (see latest commit)
 
 ## Completed
-- [x] Extracted ADF + assets, project scaffolding, SDL2 skeleton
-- [x] Confirmed multi-hunk overlay structure
-- [x] String extraction + docs for libraries / missions / credits
-- [x] Located primary OpenLibrary (0x4b8) and early init in first CODE hunk
-- [x] Identified library-name + path table (~0xd5a0)
-- [x] Refined early-init disassembly (Forbid → OpenLibrary → store base at $30)
-- [x] High-level flow sketch from strings (title → qualification → missions)
-- [x] Improved analyze_binary.py with more LVO recognition
+- [x] ADF extraction, scaffolding, SDL2 skeleton, Hunk scanner
+- [x] String extraction, library/path/credits documentation
+- [x] Early init disassembly (Forbid → OpenLibrary → $30)
+- [x] High-level flow sketch from strings
+- [x] Documented absolute-address calling convention (~981 jsr abs.l to low memory)
+- [x] Minimal C++ Game state machine (Startup → Title → Enlistment → Qualification → MissionSelect → Flight → Log)
 
 ## Next Steps
-1. [ ] Overlay / segment reconstruction (or load whole binary at a fixed address for analysis)
-2. [ ] Resolve which library is opened at 0x4b8 (name at runtime $50) and subsequent OpenLibrary/OpenDevice calls
-3. [ ] Trace control flow from early init to the enlistment / qualification screens
-4. [ ] Locate planar bitmaps / copper lists for title & cockpit
-5. [ ] Identify main flight loop and 3D transform entry points
-6. [ ] Asset pipeline for the existing ILBMs + palette
-7. [ ] Begin C++ reimplementation of the high-level state machine (menu / qualification / mission select)
+1. [ ] Resolve the library opened at 0x4b8 and subsequent device/file opens
+2. [ ] Trace control flow from early init to enlistment screen (using string addresses as anchors)
+3. [ ] Locate planar bitmaps / copper lists for title & cockpit
+4. [ ] Identify main flight loop and 3D transform entry points
+5. [ ] Expand the C++ state machine with real input handling and placeholder rendering
+6. [ ] Asset pipeline for the existing ILBMs (correct palette, scaling)
+7. [ ] Begin RE of the 3D math (look for matrix / projection constants)
 
 ## Analysis Notes
-- Game uses absolute low-memory addresses → fixed load address or custom loader
-- Only one OpenLibrary in the whole binary; other libraries may be opened via different patterns or after relocation
-- ~77 CODE hunks, 7 DATA hunks
+- Game uses fixed / low absolute addresses for almost all inter-routine calls
+- Large zero regions near end of file (possible BSS or padding for unpacked data)
+- Very few classic jsr d16(a6) LVO calls – most OS interaction is after bases are cached
 
 ## Bundle History
-- fa18-port-004.1-early-init-analysis-dc0339a.bundle
-- (next: 005.x)
+- fa18-port-005.1-… (superseded)
+- (next: 006.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
