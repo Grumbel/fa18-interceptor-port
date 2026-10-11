@@ -92,24 +92,24 @@ int main(int argc, char* argv[]) {
         // Map to $155-style key code (ASCII where applicable)
         if (e.key.keysym.sym < 128)
           input.key_code = static_cast<uint8_t>(e.key.keysym.sym);
-        switch (e.key.keysym.sym) {
-          case SDLK_ESCAPE: running = false; break;
-          case SDLK_SPACE:
-          case SDLK_RETURN:
-            game.request_next();
-            gfx.phase = static_cast<uint16_t>(game.state());
-            update_title();
-            if (game.state() == GameState::Exit) running = false;
-            break;
-          case SDLK_BACKSPACE:
-            game.request_prev();
-            gfx.phase = static_cast<uint16_t>(game.state());
-            update_title();
-            break;
-          default: break;
-        }
+        else if (e.key.keysym.sym == SDLK_ESCAPE)
+          input.key_code = 27;
+        else if (e.key.keysym.sym == SDLK_BACKSPACE)
+          input.key_code = 8;
+        input.input_enabled = true;
+        // Mode 2 ≈ $64c title/proceed path
+        input.input_mode = 2;
       }
     }
+
+    // Drive transitions from recovered keyboard path ($155 / $206 / $207)
+    GameState prev = game.state();
+    game.update(input);
+    if (game.state() != prev) {
+      gfx.phase = static_cast<uint16_t>(game.state());
+      update_title();
+    }
+    if (game.state() == GameState::Exit) running = false;
 
     SDL_Color c = colour_for(game.state());
     SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);

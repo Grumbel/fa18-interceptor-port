@@ -60,6 +60,33 @@ void Game::request_prev() {
   }
 }
 
-void Game::update() {
-  // Placeholder for per-frame logic
+// Mirrors the keyboard dispatch recovered at file 0x1590 / 0x15f0:
+//   key available ($155 ≠ 0) && input enabled ($206 ≠ 0)
+//     → mode from $207 selects handler
+// For the port we map SPACE/ENTER (any non-zero key while enabled)
+// to the title-proceed path that advances state.
+void Game::handle_input(fa18::InputState& input) {
+  if (input.key_code == 0 || !input.input_enabled)
+    return;
+
+  // Mode 2 mirrors $64c (title/proceed → action 35/36 path)
+  // Mode 0/1 are service ticks; we treat any key as proceed for now.
+  if (input.input_mode <= 2) {
+    // Consume key
+    uint8_t key = input.key_code;
+    input.key_code = 0;
+
+    if (key == 8 || key == 127) {          // BACKSPACE
+      request_prev();
+    } else if (key == 27) {                // ESC
+      enter(GameState::Exit);
+    } else {
+      // SPACE, ENTER, or any other key → proceed (like $64c path)
+      request_next();
+    }
+  }
+}
+
+void Game::update(fa18::InputState& input) {
+  handle_input(input);
 }

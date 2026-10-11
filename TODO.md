@@ -20,17 +20,17 @@
 - [x] C++ Mat3/Vec3 + project stub; rotating cube demo in Flight
 - [x] Full flight-frame call graph: $1124 → $72dc → $77d8 → blitter
 - [x] Exact 3×3 fixed-point matrix layout ($be6–$bf6) and asr #6 format
+- [x] Object-list iteration structure (-16(a6) counter, $c object ptr, $b8f/$bd1 tables)
+- [x] C++ state transitions driven by recovered keyboard path ($155/$206/$207)
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
-      (no moveq #35/#36 near create; index comes from stack/table;
-       create lives in overlay → callers use vector or same-overlay relative)
 2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
 4. [ ] Trace glue from transform results to blitter overlay entry
-5. [ ] Drive C++ state transitions from RE’d keyboard/action logic
-6. [ ] Object-list walk (where “next object” pointer lives)
-7. [ ] Perspective divide / reciprocal location
+5. [ ] Perspective divide / reciprocal location
+6. [ ] Object structure layout beyond +$26
+7. [ ] Populate real object list from mission data once format known
 
 ## Analysis Notes
 - Picture-wait $01c8: sole caller file 0x9d84 in func 0x9cca
@@ -44,10 +44,11 @@
 - Input vector: X=-2(a6), Y=-4(a6), Z=-6(a6)
 - Transform caller: bsr at file 0x77f6 inside object iteration loop
 - Frame: file 0x1424–0x1812 ($1124); object loop 0x75dc–0x784a ($72dc)
+- Object loop: counter -16(a6) += 2; object ptr $c; tables $b8f/$bd1
 
 ## Bundle History
-- fa18-port-034.1-flight-frame-loop-dc0339a.bundle (superseded)
-- (next: 035.x)
+- fa18-port-035.1-matrix-fixedpoint-dc0339a.bundle (superseded)
+- (next: 036.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
