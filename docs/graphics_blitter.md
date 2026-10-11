@@ -69,3 +69,8 @@ the primary segment.  20+ `btst #6, 2(an)` blitter-wait sites confirmed.
 Almost no `link a6` – register-based calling convention.
 
 See `docs/overlays.md` for the multi-hunk map and analysis strategy.
+
+## Hunk 35 summary
+
+Viewport clamp using 320×180 constants; small mode-set stubs; ~14
+primitives.  See `docs/blitter_hunk35.md`.

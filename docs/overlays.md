@@ -111,3 +111,10 @@ initial Open/Close.  Overlay loading is likely done via:
 If LoadSeg loads the entire executable resident, then absolute addresses
 in overlay hunks would be assigned by the OS loader and recorded in a
 segment list – recoverable dynamically or from the reloc tables.
+
+## DATA at 0xc390 – not a pure function table
+
+The longword sequence starting at `0xc39c` contains many small values
+that land on **data** (e.g. embedded absolute pointers `0x28d8`,
+`0x2894`) rather than `link a6` prologues.  Treat it as **global data /
+pointer initialisers** for the primary segment, not a dispatch table.
