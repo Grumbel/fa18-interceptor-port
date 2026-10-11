@@ -330,3 +330,75 @@ BLTSIZE = (height << 6) | width_bits
 
 X-coordinate contribution is still partially opaque (comes in via d2
 before the ×40 block and via d6 for the width field of BLTSIZE).
+
+## X-coordinate path and parameter block
+
+### Parameter block at `$34c`
+
+Before the blitter program, registers are spilled:
+
+```
+movem.w d0-d3, $34c.L
+; $34c = d0,  $34e = d1,  $350 = d2,  $352 = d3
+```
+
+Combined with the Y usage already recovered:
+
+| Addr | Content at blitter time |
+|------|-------------------------|
+| `$34c` | X-related (from d0) |
+| `$34e` | X-related (from d1) |
+| `$350` | **Y0** |
+| `$352` | **Y1** |
+
+### X → word offset → modulo
+
+```
+lsr.w  #4, d3          ; X / 16 → bitplane word offset
+move.w d3, d2          ; d2 = X word index (→ BLTAPT later)
+lsr.w  #4, d1
+sub.w  d1, d3          ; d3 = Δx_words
+move.w d3, d6          ; width term for BLTSIZE
+add.w  d3, d3
+neg.w  d3
+addi.w #39, d3         ; d3 = 39 − 2·Δx_words  → BLTMOD
+```
+
+`#39` = 40 − 1, the classic Amiga line-draw modulo for a 40-byte
+(320-pixel) row: `modulo = bytes_per_row − 2·ceil(dx/16)` (sign
+depends on direction).
+
+### Direction normalisation
+
+```
+move.w d2, d6
+sub.w  d0, d6          ; d6 = X1 − X0
+bge.s  positive
+neg.w  d6              ; abs(dx)
+```
+
+Endpoints are ordered so that dx ≥ 0 before the modulo math; octant
+handling is done by swapping/negating rather than packing an octant
+number into BLTCON1.
+
+### BLTCON0 / BLTCON1 values observed
+
+| BLTCON0 | BLTCON1 | Mode |
+|---------|---------|------|
+| `$09f0` | `$000a` | primary line |
+| `$0dfc` | `$0002` | alternate line / fill |
+| `$0d0c` | `$0002` | |
+| `$0d3c` | `$0002` | |
+| `$0fec` | `$0002` | |
+| `$0f4c` | `$0002` | |
+| (various) | `$0000` | copy / rect fill |
+
+BLTCON1 = `$000a` (bits 1+3) is fixed for the primary line path;
+octant is implicit in endpoint ordering and the sign of the modulo.
+
+### Vertex buffer `$3000`
+
+Many `lea $3000, aN` sites in the overlay.  The line setup reads
+word pairs from this buffer via `(a2)+`, suggesting `$3000` holds
+projected screen-space vertices (X,Y word pairs) that feed the
+parameter block and ultimately the blitter.

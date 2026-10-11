@@ -136,3 +136,19 @@ Filled at runtime before the hunk-35 line path runs.
 
 Runtime pointer to the active bitplane; added to the Y×40 row offset
 to form the BLTCPT destination address.
+
+## Line parameter block ($34c–$352)
+
+| Addr | Role |
+|------|------|
+| `$34c` | X-related (spilled d0) |
+| `$34e` | X-related (spilled d1) |
+| `$350` | Y0 – line start Y |
+| `$352` | Y1 – line end Y |
+
+Filled by `movem.w d0-d3, $34c` just before the blitter setup.
+
+## Vertex buffer ($3000)
+
+Runtime buffer of projected screen-space vertices (X,Y word pairs).
+The line setup walks this buffer with `(a2)+`.

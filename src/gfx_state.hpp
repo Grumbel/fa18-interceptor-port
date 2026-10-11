@@ -20,7 +20,9 @@ struct GfxState {
   uint32_t blt_param2 = 0;       // $338  – copy of dest
   uint16_t blt_size   = 0;       // $33e  – BLTSIZE = (h<<6)|w
 
-  // Line endpoints (screen space)
+  // Line parameter block ($34c–$352)
+  int16_t line_x0 = 0;           // $34c (spilled)
+  int16_t line_x1 = 0;           // $34e (spilled)
   int16_t line_y0 = 0;           // $350
   int16_t line_y1 = 0;           // $352
 
