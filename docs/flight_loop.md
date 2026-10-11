@@ -110,3 +110,40 @@ void object_loop() {
 - Precise object-list walk (where the “next object” pointer lives).
 - How transform results reach the blitter overlay (vector? direct call?).
 - Perspective divide location.
+
+## Post-transform draw call convention (file 0x784c)
+
+Called from the object loop with the iteration index on the stack:
+
+```
+; object loop (file 0x7818):
+move.w -16(a6), d0        ; counter (0, 2, 4, …)
+ext.l  d0
+move.l d0, -(sp)
+bsr    $784c              ; post-transform draw
+```
+
+Inside 0x784c the index lands at **10(a6)** and is forwarded to:
+
+| Call | Argument | On return |
+|------|----------|-----------|
+| `jsr $c6`  | index (long) | `tst.l d0` – zero → skip branch |
+| `jsr $68a` | index (long) | `tst.l d0` – zero → skip branch |
+| `jsr $f4`  | (later) | |
+| `jsr $88`  | (later) | |
+| `jsr $0`   | (later) | |
+
+`$c6` / `$68a` are runtime vectors (static image at those addresses is
+unrelated code).  They return a status in d0; non-zero continues the
+draw path (flag updates at object+$28, field manip at +$10/+30).
+
+### Status
+
+Without the runtime targets of `$c6`/`$68a`/`$12` the exact projection
+and blitter invocation for object edges remains behind the vector
+wall.  The recovered data flow is:
+
+```
+index → draw(0x784c) → $c6/$68a (status) → object field updates
+                      → (vectors eventually reach mode $1b / blitter)
+```

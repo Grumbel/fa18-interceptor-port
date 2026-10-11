@@ -25,12 +25,13 @@
 - [x] World translation ($b68/$b6c/$b70) + object structure offsets 0/4/8
 - [x] Post-transform draw path entry at file 0x784c
 - [x] Draw-mode dispatcher: move.w #MODE,$36e / jsr $12 (45 modes; $1b = line)
+- [x] $c6/$68a calling convention (index arg, status return); multi-object Flight demo
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
 2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
-4. [ ] Resolve low vectors $c6 / $68a / $f4 / $88 (and $12 body after install)
+4. [ ] Resolve runtime targets of $12 / $c6 / $68a / $f4 / $88 (need dynamic trace or overlay load map)
 5. [ ] Find overlay sites that issue mode $1b for projected geometry
 6. [ ] Perspective divide / reciprocal location
 7. [ ] Bodies of other draw modes
@@ -39,13 +40,15 @@
 ## Analysis Notes
 - Draw dispatcher: set $36e = mode, jsr $12 (runtime vector)
 - Mode $1b = line (hunk 35); 44 other modes exist
+- $c6/$68a take object-loop index, return status in d0
 - Transform + view translation → object+0/+4/+8
 - Post-transform draw 0x784c → jsr $c6/$68a/$f4/$88/$0
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
+- Low vectors $12/$c6/$68a/$f4/$88 are runtime-installed; static image ≠ target
 
 ## Bundle History
-- fa18-port-037.1-world-translate-drawpath-dc0339a.bundle (superseded)
-- (next: 038.x)
+- fa18-port-038.1-draw-mode-dispatcher-dc0339a.bundle (superseded)
+- (next: 039.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

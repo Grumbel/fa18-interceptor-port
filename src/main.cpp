@@ -127,18 +127,45 @@ int main(int argc, char* argv[]) {
       fa18::draw_line(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
                       fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
 
-      // Object loop ($72dc) → transform ($77d8) → clamp/line
+      // Object loop ($72dc) → transform ($77d8) → view translate → project → line
       static float yaw = 0.f;
-      yaw += 0.8f;
+      yaw += 0.6f;
       if (yaw > 360.f) yaw -= 360.f;
-      fa18::Object cube = fa18::make_cube(1.f);
-      cube.orient = fa18::mat_yaw(yaw);
-      cube.pos = {0.f, 0.f, 5.f};
-      fa18::draw_object(ren, gfx, cube);
 
       // Horizon
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY,
-                      fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 0x60, 0x80, 0xa0);
+                      fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 0x40, 0x60, 0x80);
+
+      // Ground grid (static, illustrates perspective)
+      for (int gz = 2; gz <= 12; gz += 2) {
+        float z = float(gz);
+        int sx0, sy0, sx1, sy1;
+        fa18::project({-6.f, -1.5f, z}, sx0, sy0);
+        fa18::project({ 6.f, -1.5f, z}, sx1, sy1);
+        fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
+      }
+      for (int gx = -6; gx <= 6; gx += 2) {
+        int sx0, sy0, sx1, sy1;
+        fa18::project({float(gx), -1.5f, 2.f}, sx0, sy0);
+        fa18::project({float(gx), -1.5f, 12.f}, sx1, sy1);
+        fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
+      }
+
+      // Multiple objects (mirrors object-list iteration)
+      fa18::Object cube = fa18::make_cube(0.8f);
+      cube.orient = fa18::mat_yaw(yaw);
+      cube.pos = {0.f, 0.f, 6.f};
+      fa18::draw_object(ren, gfx, cube);
+
+      fa18::Object cube2 = fa18::make_cube(0.5f);
+      cube2.orient = fa18::mat_yaw(-yaw * 1.5f);
+      cube2.pos = {3.f, 0.5f, 9.f};
+      fa18::draw_object(ren, gfx, cube2);
+
+      fa18::Object cube3 = fa18::make_cube(0.4f);
+      cube3.orient = fa18::mat_yaw(yaw * 0.7f);
+      cube3.pos = {-2.5f, -0.3f, 8.f};
+      fa18::draw_object(ren, gfx, cube3);
 
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;
