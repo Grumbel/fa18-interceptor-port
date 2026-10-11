@@ -56,6 +56,7 @@
 - [x] Transform confirmed to read global $be6 (not the +$92 secondary)
 - [x] Flight demo primary cube uses draw_object_fp / mat_from_angles_q14
 - [x] Object struct: +$22/+$24 Q14 sin/cos, +$26 type flags
+- [x] Post-transform 0x784c: state gate, jsr $c6, set state=2
 
 
 ## Next Steps
@@ -65,7 +66,7 @@
 4. [ ] Label angle0/1/2 as yaw/pitch/roll from gameplay
 5. [x] Transform reads global $be6 matrix (live 00C44F4E); second matrix role still open
 5. [ ] Resolve $12/$5ee targets once object count > 0
-6. [ ] Bridge post-transform → vertex walker 0x2844e
+6. [x] Post-transform 0x784c gates on +$26/+$28, calls $c6; bridge to walker still via live $c6
 7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 8. [x] Object +$22/+$24 sin/cos, +$26 type; dual angle scales documented
 9. [ ] Action clear body (overlay past file end)

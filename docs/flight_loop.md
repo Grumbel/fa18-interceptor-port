@@ -167,3 +167,77 @@ $784c post-transform:
 
 `$a0dc` tests bit 0 of `$52a` and pointer at `$18`.
 `$a2f0` tests pointer at `$28` and writes object fields.
+
+## Post-transform routine (file 0x784c, static `$754c`)
+
+Called after transform returns inside the object loop (path via flag
+tests; not a direct fall-through from the `bsr $7ad8`).
+
+```
+link a6, #-18
+movem.l a2, -(sp)
+movea.l $c, a0
+adda.w  #$26, a0          ; A0 → object+0x26
+movea.l $c, a1
+move.w  $28(a1), d0       ; state
+move.l  a0, -4(a6)
+tst.w   d0
+ble     exit_path
+
+move.l  a1, -10(a6)
+addq.l  #4, a1
+movea.l $c, a2
+addq.l  #8, a2            ; A2 → object+8 (world Z area)
+move.w  (a0), d0          ; type flags at +$26
+move.l  a1, -14(a6)
+move.l  a2, -18(a6)
+btst    #1, d0
+bne     alt_path
+
+move.w  10(a6), d0        ; stack arg?
+ext.l   d0
+move.l  d0, -(sp)
+jsr     $c6               ; ★ runtime vector (draw / project dispatch)
+addq.l  #4, sp
+tst.l   d0
+beq     skip
+
+; success path: clear some flag bits, set state=2
+movea.l -4(a6), a0
+move.w  (a0), d0
+andi.w  #$fff7, d0
+ori.w   #$0012, d0
+move.w  d0, (a0)
+movea.l $c, a0
+move.w  #2, $28(a0)       ; state = 2
+bra     more
+
+; other paths set state=2, shift flags at +$10 into $4a0, etc.
+```
+
+### Role
+
+1. Gate on object state (`+$28`) and type flags (`+$26`)
+2. Call runtime vector **`$c6`** with a stack argument — this is the
+   bridge toward projection / edge setup / draw
+3. Update object state to 2 and tweak flag bits
+
+`$c6` is installed dynamically (table `$151a`, index `$220`); static
+image at `$c6` is unrelated.  Resolving its live target (when objects
+are active) is the key remaining step for the post-transform → draw
+chain.
+
+### Object loop structure (refined)
+
+```
+$72dc object_loop:
+  … init locals, tables $b8f/$bd1 …
+  loop:
+    resolve object → $c
+    flag tests
+    bsr  $77d8          ; transform (reads $be6 → $422/$426/$42a)
+    … more flag tests …
+    bsr  $754c          ; post-transform (file 0x784c) → jsr $c6
+    next object
+  unlk / rts
+```
