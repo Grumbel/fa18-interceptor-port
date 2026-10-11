@@ -13,27 +13,28 @@
 - [x] flake.nix added
 - [x] Blitter region located (0x288c8–0x2aa30)
 - [x] Picture-wait function outlined
-- [x] $996 partially reversed – structure parser / validator (error -6)
+- [x] $996 fully bounded (0xc96–0xef6) and control flow documented;
+      structure parser with error codes -6/-7; not raw ILBM tag parser
 
 ## Next Steps
-1. [ ] Finish $996 disassembly past 0xe2a; identify the structure layout
-      (compare with ILBM BMHD / custom header)
-2. [ ] Reverse $cce fully
-3. [ ] Disassemble blitter region for bitplane pointers / polygon fill
-4. [ ] Trace keyboard test (0x1590) into menu logic
-5. [ ] Expand C++ state machine with ILBM / placeholder rendering
-6. [ ] Identify main flight loop and 3D transform entry points
-7. [ ] Begin RE of 3D math
+1. [ ] Identify who builds the structure passed to $996
+2. [ ] Reverse $ef4 in the context of these calls
+3. [ ] Resolve vector at $0000 after startup
+4. [ ] Reverse $cce
+5. [ ] Disassemble blitter region for bitplane pointers / polygon fill
+6. [ ] Trace keyboard test (0x1590) into menu logic
+7. [ ] Expand C++ state machine with ILBM / placeholder rendering
+8. [ ] Identify main flight loop and 3D transform entry points
 
 ## Analysis Notes
 - file_offset = 0x300 + runtime_addr
-- $996: packed bitfields, count 17, returns -6 on error, calls $ef4
-- $996 / $cce are private to picture-wait path
+- $996: 0xc96–0xef6, packed structure walker, errors -6/-7
+- On-disk ILBMs are standard 5-plane ByteRun1; $996 does not parse FORM/BMHD tags directly
 - Blitter-wait loops at 0x28800+
 
 ## Bundle History
-- fa18-port-015.1-… (superseded)
-- (next: 016.x)
+- fa18-port-016.1-… (superseded)
+- (next: 017.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
