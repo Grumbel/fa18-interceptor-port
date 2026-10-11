@@ -87,3 +87,9 @@ overwritten with a different function pointer.
 Private picture-wait helper (file 0x0c96).  Parses/validates a packed
 binary structure (error code -6), loops over a count of 17, then calls
 `$ef4`.  See `docs/func_996.md`.
+
+## Picture-wait entry
+
+Function at runtime `$01c8` (file 0x4c8–0x6cc), called from 0x9d84.
+Helpers: `$ef4` (bounds-checked consume), `$996` (structure walker),
+`$cce` (chunk advance).  See `docs/picwait_helpers.md`.
