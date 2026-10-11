@@ -184,3 +184,34 @@ matrix at `$be6`–`$bf6`.
 
 Installed at file 0x12664 via table lookup from base `$151a` indexed
 by `$220`.  Target is not a fixed address.
+
+## Attitude / input state machine (file 0x404c)
+
+Not a matrix builder — a **control decoder**:
+
+```
+link a6, #-12
+move.w $4b0, d0
+andi.w #$ff, d0          ; byte angle / input axis 0–255
+move.w $29c, d1          ; status flags
+btst   #0, d1
+… branch on $298 bit15, $2a6 bit5, $23e bits …
+ori/andi on $29c         ; update status
+; writes control codes to stack local -4(a6):
+;   $9c06, $4000, $8010, $8012, $c004, $c001, $8002, $8024, $800e, $0c09 …
+```
+
+| Addr | Role in this path |
+|------|-------------------|
+| `$4b0` | primary input axis (masked 8-bit) |
+| `$4b2` | secondary axis (referenced elsewhere in same region) |
+| `$29c` | sticky status flags (bit 0, bit 7 cleared/set) |
+| `$298` | bit15 test |
+| `$2a6` | bit5 test |
+| `$23e` | multi-bit input/condition flags |
+
+These control codes are consumed by later flight logic; they are **not**
+the 7200-circle Euler angles fed to the matrix builders.  The two angle
+systems remain separate in the primary image; any conversion lives in
+overlay code or is implicit in how builders are called with already-
+scaled values.

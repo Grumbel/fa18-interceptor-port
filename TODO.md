@@ -61,13 +61,14 @@
 - [x] $be/$c6 sibling install from table $151a; no static $12/$5ee stores
 - [x] Geometry hunk pipeline: walker 0x2844e → perspective 0x2864a → jsr $5ee
 - [x] Transform world store: $422+$b68→obj+0, Y/Z similar; $4202 clip fields +6/+8/+$a
+- [x] Attitude 0x404c is control decoder (not matrix); $4b0 stays 8-bit input
 
 
 ## Next Steps
 1. [x] Builder A + B are sequential (orchestrator 00C2C4B2); A1 advances +$92 between them
 2. [x] Exact element formulas for builder A and B (9-element 3×3 each)
 3. [x] Helper 00C2D14E = dual sincos; full Euler angle → D0..D5 map
-4. [ ] Label angle0/1/2 as yaw/pitch/roll from gameplay
+4. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
 5. [x] Transform reads global $be6 matrix (live 00C44F4E); second matrix role still open
 5. [ ] Resolve $12/$5ee targets (overlay-only; no static stores in primary)
 6. [x] Post-transform 0x784c → $c6; geometry walker/perspective/$5ee path documented (live $c6 still open)
