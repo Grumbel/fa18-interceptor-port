@@ -171,3 +171,36 @@ void blitter_fill(int x, int y, int w, int h, uint8_t pen);
 The exact register-to-argument mapping (which Dn holds start/end
 coordinates) still needs a few more traces, but the entry points and
 BLTCON0 values are now identified.
+
+## Register / argument mapping (file 0x29a00–0x29ac6)
+
+Coordinate prep ends with:
+
+```
+move.l d1, $338
+move.l d1, $330
+move.l d1, $334
+move.w d7, $33e
+```
+
+Then the blitter is programmed (a0 = $dff000):
+
+| Register | Blitter target | Offset |
+|----------|----------------|--------|
+| d2       | BLTAPT / BLTBPT | $50 / $54 |
+| d0       | BLTCPT         | $44 |
+| d3       | BLTAMOD / BLTCMOD / BLTDMOD | $64 / $62 / $66 |
+| d7       | BLTSIZE        | $58 |
+
+BLTCON0 is hard-coded `$09f0`, BLTCON1 `$000a`.
+
+Exact mapping from geometric endpoints (x0,y0,x1,y1) onto d0–d3/d7
+is still being refined; the intermediate stores to `$330`–`$33e` are
+the best static anchors for a later dynamic trace.
+
+### C++ status
+
+`src/draw.hpp` now exposes `draw_line`, `draw_fill` and
+`blitter_line_stub` that mirror the clamp + mode write.  A simple
+perspective runway is rendered in the Flight state as a stand-in for
+true 3D projector output.

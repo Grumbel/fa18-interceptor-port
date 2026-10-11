@@ -79,3 +79,19 @@ uint16_t g_phase;        // $112
 | `$206` | input-enable flag |
 | `$207` | input mode / sub-state |
 | `$2ac` | menu index |
+
+## Blitter parameter scratch ($330–$33e)
+
+Written by the coordinate-prep code immediately before the primary
+line/fill entry (file 0x29a50–0x29a84):
+
+| Addr | Type | Writer | Role |
+|------|------|--------|------|
+| `$330` | long | `move.l d1,$330` | intermediate (pointer / value) |
+| `$334` | long | `move.l d1,$334` | intermediate |
+| `$338` | long | `move.l d1,$338` | intermediate |
+| `$33e` | word | `move.w d7,$33e` | size word → later BLTSIZE |
+
+These are the last values computed from the geometric arguments before
+the blitter registers are programmed.  Useful for dynamic tracing and
+for the C++ `GfxState` mirror.

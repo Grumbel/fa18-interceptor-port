@@ -119,12 +119,29 @@ int main(int argc, char* argv[]) {
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
     } else if (game.state() == GameState::Flight ||
                game.state() == GameState::Qualification) {
+      // Horizon (recovered 320x180 playfield centre)
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY, fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY,
                       0x80, 0xa0, 0xc0);
+      // Crosshair
       fa18::draw_line(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
                       fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 0xff, 0xff, 0x00);
       fa18::draw_line(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
                       fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
+
+      // Simple wireframe runway / perspective demo driven by the
+      // recovered clamp + line path (stands in for 3D projector output).
+      const int cy = fa18::PLAYFIELD_CY;
+      const int cx = fa18::PLAYFIELD_CX;
+      // Near edge
+      fa18::draw_line(ren, cx-80, cy+70, cx+80, cy+70, 0xc0, 0xc0, 0xc0);
+      // Far edge
+      fa18::draw_line(ren, cx-20, cy+20, cx+20, cy+20, 0xa0, 0xa0, 0xa0);
+      // Sides
+      fa18::draw_line(ren, cx-80, cy+70, cx-20, cy+20, 0xb0, 0xb0, 0xb0);
+      fa18::draw_line(ren, cx+80, cy+70, cx+20, cy+20, 0xb0, 0xb0, 0xb0);
+      // Centre line
+      fa18::draw_line(ren, cx, cy+70, cx, cy+20, 0xff, 0xff, 0x80);
+
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;
         SDL_Rect dst = { (fa18::WINDOW_W-w)/2, fa18::WINDOW_H-h-8, w, h };
