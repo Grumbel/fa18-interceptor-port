@@ -164,3 +164,18 @@ move.w d0, $bb4     ; file 0x77ce
 ```
 
 Likely a per-frame or per-object phase counter.
+
+## $bb4 – object-loop phase timer
+
+Decremented by 3 each pass; clamped at 0.  Compared against 1 to
+gate work in the object loop.
+
+## $496 – edge-helper scratch (3 words)
+
+Written by vertex-walker octant helpers; not persistent.
+
+## $4b0 / $4b2 – attitude angles (0–255)
+
+Masked with `andi.w #$ff`.  Related to `$29c` / `$29e` attitude
+state.  Candidates for the inputs that eventually feed the rotation
+matrix at `$be6`–`$bf6`.

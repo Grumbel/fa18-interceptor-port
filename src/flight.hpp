@@ -8,14 +8,23 @@ namespace fa18 {
 
 // Mirrors the recovered flight-frame structure:
 //   frame $1124 → object_loop $72dc → transform $77d8 → world store → draw
+// Object layout: docs/object_list.md
 
 struct Object {
-  Vec3 pos;          // local origin before transform
-  Mat3 orient;       // local orientation (matrix at $be6)
-  Vec3 world;        // after transform + view translation (object+0/+4/+8)
+  // +0 / +4 / +8 – world position after transform + view
+  Vec3 world{};
+
+  // Local model space
+  Vec3 pos{};            // local origin before transform
+  Mat3 orient{};         // local orientation (matrix at $be6)
+
   std::vector<Vec3> local_verts;
   std::vector<std::pair<int,int>> edges;
-  uint16_t flags = 0;  // object+$26
+
+  uint32_t flags = 0;    // +16 ($10)
+  uint16_t state = 0;    // +40 ($28)
+  int16_t  counter_a = 0; // +48 ($30), clamp 0..$7f
+  int16_t  counter_b = 0; // +50 ($32)
 };
 
 inline Object make_cube(float scale = 1.f) {
@@ -47,7 +56,6 @@ inline void draw_object(SDL_Renderer* ren, GfxState& gfx, Object& obj) {
     w.y += obj.pos.y;
     w.z += obj.pos.z;
     w = apply_view(w, gfx.view_x, gfx.view_y, gfx.view_z);
-    // Store first vertex world pos as object origin (mirrors object+0/+4/+8)
     if (i == 0) obj.world = w;
     project(w, sx[i], sy[i]);
   }
