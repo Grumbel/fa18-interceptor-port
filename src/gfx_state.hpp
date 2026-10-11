@@ -2,7 +2,7 @@
 #include <cstdint>
 
 // Mirrors low-memory graphics state recovered from the Amiga binary.
-// See docs/lowmem_vars.md and docs/transform_3d.md.
+// See docs/lowmem_vars.md and docs/blitter_hunk35.md.
 
 namespace fa18 {
 
@@ -15,10 +15,17 @@ struct GfxState {
   uint16_t phase      = 0;       // $112  – high-level screen phase
 
   // Blitter parameter scratch (written by prep code before BLTSIZE)
-  uint32_t blt_param0 = 0;       // $330
-  uint32_t blt_param1 = 0;       // $334
-  uint32_t blt_param2 = 0;       // $338
-  uint16_t blt_size   = 0;       // $33e
+  uint32_t blt_param0 = 0;       // $330  – dest address
+  uint32_t blt_param1 = 0;       // $334  – copy of dest
+  uint32_t blt_param2 = 0;       // $338  – copy of dest
+  uint16_t blt_size   = 0;       // $33e  – BLTSIZE = (h<<6)|w
+
+  // Line endpoints (screen space)
+  int16_t line_y0 = 0;           // $350
+  int16_t line_y1 = 0;           // $352
+
+  // Bitplane base pointer
+  uint32_t bitplane_base = 0;    // $b2
 
   // View/camera translation applied after matrix multiply
   // (absolute $b68 / $b6c / $b70).

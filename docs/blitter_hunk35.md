@@ -265,3 +265,68 @@ bitplane (40 bytes/row).  Confirms playfield width = 320.
 - **d7**: BLTSIZE (line length / octant encoding)
 
 Exact octant/BLTCON1 bit encoding and the role of `$350` remain open.
+
+## Line endpoints and BLTSIZE encoding
+
+### Endpoint Y coordinates
+
+| Addr | Role |
+|------|------|
+| `$350` | **Y0** – start (or first) endpoint Y |
+| `$352` | **Y1** – end (or second) endpoint Y |
+
+```
+move.w $352, d5          ; Y1
+… Y1 × 40 → row byte offset …
+sub.w  $350, d5          ; d5 = Y1 − Y0
+addq.w #1, d5            ; d5 = dy + 1  (inclusive height)
+move.w d5, d7
+addq.w #1, d6            ; d6 holds a width-related term
+sub.w  d0, d7
+lsl.w  #6, d7            ; height << 6
+add.w  d6, d7            ; BLTSIZE = (height << 6) | width_term
+move.w d7, $33e
+```
+
+Standard Amiga BLTSIZE packs `Height` in bits 15–6 and `Width` in
+bits 5–0.  The `lsl #6` matches that layout exactly: the Y-delta
+(+1) is the blitter height component.
+
+### Clip bound
+
+`a4` is compared against Y (`cmp.w a4, d7`) and used to subtract a
+clipping adjustment when the line extends past the bound.  Likely
+holds the viewport bottom (or top) edge.
+
+### Bitplane base
+
+`$b2` is added to the computed row address before it is stored to
+`$330`/`$334` and used as BLTCPT:
+
+```
+add.l $b2, d1            ; d1 = row_offset + bitplane_base
+```
+
+`$b2` is written once in the primary segment (file 0xba2) and is the
+runtime pointer to the active bitplane memory.
+
+### Related low-memory (still open)
+
+| Addr | Seen in |
+|------|---------|
+| `$34c` | second line path (0x29c06) |
+| `$356` | second line path |
+| `$2a8` | subtracted from $352-derived value |
+
+### Geometric picture
+
+```
+Y0 = $350,  Y1 = $352
+row_bytes = 40                    ; 320 px bitplane
+addr = bitplane_base($b2) + Y1 × 40 + X_byte_offset
+height = (Y1 − Y0) + 1
+BLTSIZE = (height << 6) | width_bits
+```
+
+X-coordinate contribution is still partially opaque (comes in via d2
+before the ×40 block and via d6 for the width field of BLTSIZE).

@@ -27,10 +27,11 @@
 - [x] Draw-mode dispatcher: move.w #MODE,$36e / jsr $12 (45 modes; $1b = line)
 - [x] $c6/$68a calling convention (index arg, status return); multi-object Flight demo
 - [x] Blitter Dn geometry: $352=Y, ×40 row-bytes, BLTCPT/SIZE/MOD mapping
+- [x] Line endpoints $350/$352 (Y0/Y1); BLTSIZE = (dy+1)<<6 | width; $b2 bitplane base
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
-2. [ ] Exact BLTCON1 octant encoding and role of $350
+2. [ ] X-coordinate path into d2/d6 and BLTCON1 octant bits
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
 4. [ ] Resolve runtime targets of $12 / $c6 / $68a / $f4 / $88 (need dynamic trace or overlay load map)
 5. [ ] Find overlay sites that issue mode $1b for projected geometry
@@ -39,16 +40,16 @@
 8. [ ] Populate real object list from mission data once format known
 
 ## Analysis Notes
-- Draw dispatcher: set $36e = mode, jsr $12 (runtime vector)
+- $350=Y0, $352=Y1; height=(Y1-Y0)+1 → BLTSIZE bits 15–6
+- $b2 = bitplane base; addr = $b2 + Y×40 + x_byte
+- Draw dispatcher: set $36e = mode, jsr $12
 - Mode $1b = line (hunk 35); 44 other modes exist
-- $c6/$68a take object-loop index, return status in d0
-- $352 = screen Y → ×40 = bitplane row offset; d0=BLTCPT, d7=BLTSIZE, d3=modulo
 - Transform + view translation → object+0/+4/+8
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-039.1-vector-conv-multiobj-dc0339a.bundle (superseded)
-- (next: 040.x)
+- fa18-port-040.1-blitter-geometry-dn-dc0339a.bundle (superseded)
+- (next: 041.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

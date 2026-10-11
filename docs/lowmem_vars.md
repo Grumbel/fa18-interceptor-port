@@ -122,3 +122,17 @@ Results are written to the current object structure at offsets 0 / 4 / 8.
 | `$352` | screen Y (row index); multiplied by 40 for bitplane byte offset |
 
 Filled at runtime before the hunk-35 line path runs.
+
+## Line endpoints ($350 / $352)
+
+| Addr | Role |
+|------|------|
+| `$350` | Y0 – line start Y |
+| `$352` | Y1 – line end Y |
+
+`height = (Y1 − Y0) + 1` feeds BLTSIZE bits 15–6 (`lsl #6`).
+
+## Bitplane base ($b2)
+
+Runtime pointer to the active bitplane; added to the Y×40 row offset
+to form the BLTCPT destination address.
