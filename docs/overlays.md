@@ -1,69 +1,75 @@
 # Overlay / Multi-Hunk Architecture
 
-## Summary
+## HUNK_HEADER
 
-F/A-18 Interceptor is a **multi-hunk overlay executable**, not a single
-contiguous CODE image.
+```
+file 0x000000  HUNK_HEADER (0x3F3)
+  residual   = 0
+  tableSize  = 185
+  firstHunk  = 0
+  lastHunk   = 184
+  sizes[185]   (each: upper 2 bits = memory type, lower 30 = size in longs)
+file 0x0002f8  end of header / first hunk type word
+```
 
-## Primary CODE segment
+- **137 non-zero hunks**, total payload ≈ **299 KB**
+- Memory types: almost all `any`; hunk 62 is `chip`
+
+## Primary segment (hunk 0)
 
 | Item | Value |
 |------|-------|
-| HUNK_CODE at | file `0x2f8` |
-| Payload | file `0x300` |
-| Size | 41804 bytes |
-| Load model | **runtime address 0** → `file = 0x300 + runtime` |
+| Size | 10451 longs = **41804 bytes** |
+| Payload file offset | `0x300` |
+| Load model | runtime address **0** → `file = 0x300 + runtime` |
 
-This segment contains:
+Contains: early init, picture-wait path, keyboard/VBL hooks, vector setup,
+WHDLoad patch sites.  Static RE with the load model applies here.
 
-- Early init / OpenLibrary
-- Picture-wait path (`$01c8`, `$ef4`, `$996`, `$cce`)
-- Keyboard test, speed/VBL hooks
-- Low-memory vector table setup
-- WHDLoad-patched sites
+## Notable large hunks
 
-Static analysis with the load model is reliable **inside this segment**.
+| Hunk | Bytes | Notes |
+|------|-------|-------|
+| 0 | 41804 | Primary CODE |
+| 2 | 10756 | |
+| 5 | 5800 | |
+| 8 | 6420 | |
+| 17 | 6656 | |
+| 28 | 5300 | |
+| 36 | 4644 | near blitter cluster |
+| 39 | 6480 | |
+| 40 | 6124 | |
+| 64 | 9256 | |
+| 68 | 6224 | |
+| **71** | **11604** | large – possible graphics |
+| **72** | **25564** | largest – possible graphics / tables |
+| 73 | 5800 | |
 
-## Overlay CODE hunks
+## Blitter / drawing
 
-Dozens of additional `HUNK_CODE` blocks follow, for example:
+`lea $dff000` and blitter-wait loops sit in hunks whose file payloads
+fall around **0x2826c–0x2b000** (roughly hunks 35–39).  These use a
+register-based calling convention (few `link a6`).
 
-| File (hunk start) | Payload size | Notes |
-|-------------------|--------------|-------|
-| 0x0e4b4 | 5800 | |
-| 0x0101f0 | 472 | |
-| 0x0104e8 | 6420 | |
-| … | … | many more |
-| 0x02826c | 2068 | blitter-wait code (lea $dff000) |
-| 0x028b44 | 4644 | more blitter / drawing |
-| 0x02a128 | 2656 | |
-| 0x02b7e4 | 6480 | |
+Because overlay hunks are loaded at **runtime addresses ≠ file offsets**,
+absolute `jsr` targets into them cannot be resolved with the primary
+load model.  Options:
 
-These are loaded on demand by the Amiga overlay manager at **runtime
-addresses that are not equal to file offsets**.  Absolute `jsr` targets
-into overlay space cannot be resolved with the primary load model.
+1. Recover the runtime overlay table (custom loader – no standard
+   `HUNK_OVERLAY` marker found in the file).
+2. Dynamic trace under an emulator.
+3. Analyse each overlay hunk relative to its own payload start.
 
-## Blitter / drawing overlays
+## No standard HUNK_OVERLAY
 
-The dense `lea $dff000` + blitter-wait (`btst #6, 2(an)`) cluster sits
-in overlay CODE hunks starting around file **0x2826c–0x2b000**:
-
-- 20+ blitter-wait sites
-- Register-based calling convention (almost no `link a6`)
-- Performance-oriented drawing primitives
-
-To reverse these, either:
-
-1. Find the overlay table (HUNK_OVERLAY) and its load addresses, or
-2. Dynamic trace under an emulator to see where each hunk is placed, or
-3. Analyse each overlay hunk in isolation (relative to its own payload
-   start) without assuming global addresses.
+A scan for type `0x3F5` found nothing.  The game likely uses a **custom
+overlay loader** driven by tables inside the primary segment or data
+hunks, rather than the official linker overlay scheme.
 
 ## Implications for the port
 
-- Logic in the primary segment (menus, mission select, input, resource
-  descriptors) can be reimplemented from static RE.
-- Drawing / 3D code in overlays needs either overlay-table recovery or
-  behavioural RE (what pixels get written, from what inputs).
-- The C++ port can stub the blitter primitives and replace them with
-  SDL2 drawing without a full overlay reconstruction.
+- Menu / mission / resource logic in hunk 0 is statically RE-able.
+- Drawing / 3D in overlays can be replaced with SDL2 primitives without
+  reconstructing the full overlay graph.
+- Asset hunks (71, 72, …) are candidates for extracting title/cockpit
+  graphics once their format is identified.
