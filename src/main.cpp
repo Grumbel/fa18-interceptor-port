@@ -14,7 +14,8 @@
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
-            << "Keys: SPACE/ENTER = next state, BACKSPACE = prev, ESC = quit\n\n";
+            << "Keys: SPACE/ENTER = next, BACKSPACE = prev, ESC = quit\n"
+            << "Flight: arrows = pitch/yaw, A/D = roll\n\n";
 
   std::string exe_path = "assets/F-18_Interceptor_amiga";
   if (argc > 1) exe_path = argv[1];
@@ -98,6 +99,22 @@ int main(int argc, char* argv[]) {
         else if (e.key.keysym.sym == SDLK_BACKSPACE)
           input.key_code = 8;
         input.input_enabled = true;
+        // Flight axes ($4b0/$4b2 style, 0–255 centred at 128)
+        if (game.state() == GameState::Flight) {
+          auto clamp8 = [](int v) {
+            return static_cast<uint8_t>(v < 0 ? 0 : v > 255 ? 255 : v);
+          };
+          const int step = 8;
+          switch (e.key.keysym.sym) {
+            case SDLK_UP:    input.axis_0 = clamp8(int(input.axis_0) - step); break;
+            case SDLK_DOWN:  input.axis_0 = clamp8(int(input.axis_0) + step); break;
+            case SDLK_LEFT:  input.axis_1 = clamp8(int(input.axis_1) - step); break;
+            case SDLK_RIGHT: input.axis_1 = clamp8(int(input.axis_1) + step); break;
+            case SDLK_a:     input.axis_1 = clamp8(int(input.axis_1) - step); break;
+            case SDLK_d:     input.axis_1 = clamp8(int(input.axis_1) + step); break;
+            default: break;
+          }
+        }
         // Mode 2 ≈ $64c title/proceed path
         input.input_mode = 2;
       }
@@ -129,17 +146,16 @@ int main(int argc, char* argv[]) {
                       fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
 
       // Object loop ($72dc) → transform ($77d8) → view translate → project → line
-      static float yaw = 0.f;
-      static int angle_q = 0;  // 7200-circle units
-      yaw += 0.6f;
-      if (yaw > 360.f) yaw -= 360.f;
-      angle_q = (angle_q + 12) % 7200;  // ≈ 0.6° per frame
+      // Euler angles from $4b0/$4b2-style axes (0–255 → ±90° in 7200-circle)
+      int pitch = fa18::InputState::axis_to_euler(input.axis_0);
+      int yaw_e = fa18::InputState::axis_to_euler(input.axis_1);
+      int roll  = 0;
 
       // Horizon
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY,
                       fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 0x40, 0x60, 0x80);
 
-      // Ground grid (static, illustrates perspective)
+      // Ground grid (static depth cue)
       for (int gz = 2; gz <= 12; gz += 2) {
         float z = float(gz);
         int sx0, sy0, sx1, sy1;
@@ -154,22 +170,24 @@ int main(int argc, char* argv[]) {
         fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
       }
 
-      // Multiple objects (mirrors object-list iteration)
-      fa18::Object cube = fa18::make_cube(0.8f);
-      cube.orient = fa18::mat_yaw(yaw);
-      cube.orient_fp = fa18::mat_from_angles_q14(angle_q, 0, 0);
-      cube.pos = {0.f, 0.f, 6.f};
-      fa18::draw_object_fp(ren, gfx, cube);  // Q2.14 path
+      // Object pool ($642 / $b8f) – player craft + two companions
+      fa18::ObjectList list;
+      auto* player = list.add();
+      *player = fa18::make_cube(0.8f);
+      player->orient_fp = fa18::mat_from_angles_q14(yaw_e, pitch, roll);
+      player->pos = {0.f, 0.f, 6.f};
 
-      fa18::Object cube2 = fa18::make_cube(0.5f);
-      cube2.orient = fa18::mat_yaw(-yaw * 1.5f);
-      cube2.pos = {3.f, 0.5f, 9.f};
-      fa18::draw_object(ren, gfx, cube2);
+      auto* c2 = list.add();
+      *c2 = fa18::make_cube(0.5f);
+      c2->orient_fp = fa18::mat_from_angles_q14(-yaw_e * 3 / 2, 0, 0);
+      c2->pos = {3.f, 0.5f, 9.f};
 
-      fa18::Object cube3 = fa18::make_cube(0.4f);
-      cube3.orient = fa18::mat_yaw(yaw * 0.7f);
-      cube3.pos = {-2.5f, -0.3f, 8.f};
-      fa18::draw_object(ren, gfx, cube3);
+      auto* c3 = list.add();
+      *c3 = fa18::make_cube(0.4f);
+      c3->orient_fp = fa18::mat_from_angles_q14(yaw_e * 2 / 3, pitch / 2, 0);
+      c3->pos = {-2.5f, -0.3f, 8.f};
+
+      list.draw_all_fp(ren, gfx);  // Q2.14 path for entire pool
 
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;
