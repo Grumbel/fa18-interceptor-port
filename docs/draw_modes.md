@@ -103,3 +103,62 @@ move.l d6, $c6            ; computed target
 ```
 
 Not a fixed function pointer — depends on runtime state at `$220`.
+
+## Vector install family at file 0x125d4 / 0x12644 (refined)
+
+Two parallel installs share the same table and index:
+
+```
+; --- install $be ---
+lea     $151a, a1
+move.b  $220, d7          ; index
+ext.w   d7
+add.w   d7, d7
+add.w   d7, d7            ; ×4
+move.w  (a1, d7.w), d7    ; table word (extension 7000)
+… scale / combine with base regs D2/D4 …
+move.l  d6, $be           ; file 0x125f6
+
+; --- install $c6 ---
+lea     $151a, a1
+move.b  $220, d7
+… same ×4 index …
+move.w  2(a1, d7.w), d7   ; table word +2 (extension 7002)
+… scale / combine with base regs D3/D5 …
+move.l  d6, $c6           ; file 0x12664
+```
+
+`$be` and `$c6` are **sibling vectors** computed from adjacent words of
+the same table entry.  Bases come from registers loaded earlier in the
+function (overlay/hunk load addresses).
+
+Immediately after the `$be` install the same region issues:
+
+```
+move.w  #$26, $36e        ; mode $26
+jsr     $12               ; draw dispatch
+```
+
+So `$12` is expected to already be valid when this path runs.  No
+`MOVE.L …, $12` or `MOVE.L …, $5ee` exists anywhere in the static
+binary (full scan of abs.l stores to dest < $200).  Those two vectors
+are installed only from overlay / relocated code not present as fixed
+absolute stores in the primary image.
+
+### Low vectors with static install sites
+
+| Addr | Installed at (file) | Notes |
+|------|---------------------|-------|
+| `$be` | 0x125f6 | sibling of `$c6`, table `$151a` |
+| `$c6` | 0x12664 | post-transform draw bridge |
+| `$c`  | 0x762a | current object pointer |
+| `$b2` | 0xba2 | bitplane base (from earlier RE) |
+| `$12` | **none static** | overlay-only |
+| `$5ee`| **none static** | overlay-only |
+
+### Port implication
+
+For the C++ port, `$c6` can be modelled as a function pointer set when
+the “geometry hunk” is logically active.  Candidate targets are the
+perspective/walker entry points in the geometry CODE hunk (file
+0x2864a / 0x2844e).  `$12` remains the mode dispatcher front-end.
