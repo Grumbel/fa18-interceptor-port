@@ -30,27 +30,28 @@
 - [x] Line endpoints $350/$352 (Y0/Y1); BLTSIZE = (dy+1)<<6 | width; $b2 bitplane base
 - [x] X path: lsr#4 word offset, modulo = 39−2·Δx; param block $34c–$352; vertex buf $3000
 - [x] Action create call sites for slots 35/36 (file 0x9960, called from early init 0x756)
+- [x] Param block confirmed X0/X1/Y0/Y1; clipper before movem; clear wrappers; perspective in overlays
 
 ## Next Steps
-1. [ ] Confirm $34c/$34e as X0/X1 vs other X-related values
-2. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
-3. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c (need dynamic trace or overlay load map)
-4. [ ] Find overlay sites that issue mode $1b for projected geometry
-5. [ ] Perspective divide / reciprocal location
-6. [ ] Bodies of other draw modes
-7. [ ] Populate real object list from mission data once format known
-8. [ ] Action clear function body; full structure layout beyond +8/+c/+10/+20
+1. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
+2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c (need dynamic trace or overlay load map)
+3. [ ] Find overlay sites that issue mode $1b for projected geometry
+4. [ ] Identify exact perspective overlay routine (divs clusters at ~0xaa00, ~0xc000)
+5. [ ] Bodies of other draw modes
+6. [ ] Populate real object list from mission data once format known
+7. [ ] Action clear body at $4c302 (may live in a different overlay)
+8. [ ] Fuller action-structure layout beyond +8/+c/+10/+20
 
 ## Analysis Notes
-- Slots $8c/$90 = indices 35/36 (index×4); created at init via $1a6/$22c vectors
-- Create: file 0x9960, sole caller file 0x756 (early init)
-- Create body in overlay 0x4bf14: index×4 into table base 0, writes +8/$01660000, +c/$003f0000, +10/1
-- $34c–$352 param block; $350=Y0, $352=Y1; X via lsr#4
+- $34c=X0, $34e=X1, $350=Y0, $352=Y1 (after clipper sorts endpoints)
+- Perspective: no divs in primary transform; divs abundant in overlays
+- Clear wrappers at 0x4c0ba (create) and 0x4c15a (clear/destroy)
+- Slots $8c/$90 = indices 35/36; created at init via $1a6/$22c
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-042.1-x-coord-bltmod-paramblock-dc0339a.bundle (superseded)
-- (next: 043.x)
+- fa18-port-043.1-action-create-slots-35-36-dc0339a.bundle (superseded)
+- (next: 044.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

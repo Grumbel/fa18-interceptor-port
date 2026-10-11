@@ -148,3 +148,18 @@ transform returns.  That routine:
 
 Screen projection and the eventual blitter call are behind `$c6` /
 `$68a` or further in this function — still being traced.
+
+## Perspective divide
+
+The primary-segment transform uses **asr #6** for fixed-point scaling
+only — no `divs`/`divu` appears in the matrix multiply or its immediate
+post-processing.
+
+Division ops are abundant in overlay hunks (especially around file
+offsets 0xaa00–0xad00 and 0xc000–0xc700).  Perspective projection is
+therefore likely performed in an overlay, after world-space coordinates
+are written to the object structure (+0/+4/+8), and before screen-space
+vertices land in the `$3000` buffer.
+
+The C++ port’s `focal / z` stand-in remains a reasonable approximation
+until the exact overlay routine is identified.

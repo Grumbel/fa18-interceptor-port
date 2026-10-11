@@ -136,3 +136,38 @@ on both slots.
 | `$22c` | create paired slots (two indices on stack) |
 
 Both installed from the overlay at runtime.
+
+## Clear / destroy path
+
+### Wrapper at file 0x4c15a
+
+```
+link a6, #-4
+move.l 12(a6), d0          ; index
+asl.l  #2, d0
+adda.l #0, a0              ; table base 0
+tst.l  (a0)
+beq    empty
+move.l 12(a6), -(sp)
+bsr    $4c302              ; clear body (may be past this overlay)
+…
+move.l 8(a6), d0           ; second index?
+asl.l  #2, d0
+tst.l  (a0)
+…
+```
+
+### Create wrapper at file 0x4c0ba
+
+```
+link a6, #-8
+move.l 8(a6), -(sp)
+bsr    $4bf14              ; create body
+…
+move.l 12(a6), -(sp)
+move.l -8(a6), -(sp)
+bsr    $4bf98              ; secondary init
+```
+
+The overlay exports thin wrappers that take indices on the stack and
+call the real create/clear bodies.

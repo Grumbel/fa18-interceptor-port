@@ -402,3 +402,17 @@ Many `lea $3000, aN` sites in the overlay.  The line setup reads
 word pairs from this buffer via `(a2)+`, suggesting `$3000` holds
 projected screen-space vertices (X,Y word pairs) that feed the
 parameter block and ultimately the blitter.
+
+## Parameter block – confirmed layout
+
+| Addr | Role | Evidence |
+|------|------|----------|
+| `$34c` | **X0** | spilled d0; lsr#4 path for word offset |
+| `$34e` | **X1** | spilled d1; lsr#4 → Δx_words |
+| `$350` | **Y0** | sub.w from Y1 for height |
+| `$352` | **Y1** | ×40 row offset; height = Y1−Y0+1 |
+
+Pre-movem code (0x29900–0x299b0) is a **clipper / endpoint sorter**
+that may swap coordinates so that dx ≥ 0 and endpoints sit inside the
+viewport (comparisons against a4).  After sorting, `movem.w d0-d3, $34c`
+freezes the ordered pair for the blitter setup.
