@@ -63,3 +63,58 @@ uint16_t menu_index;    // $2ac
 
 SDL2 key events should update `key_code` and drive the same state
 transitions once the handler logic is fully reverse-engineered.
+
+## Mode handlers called from 0x1590
+
+### `$5b6` (file 0x8b6) – frame / service tick
+
+```
+moveq  #32, d0
+move.l $4a, a0          ; structure pointer
+… push args …
+jsr    $0               ; runtime vector
+cmpi.w #$c560, $1c      ; timer / frame threshold?
+jsr    $f0 / $c8 / $84 / $14 / $84 / $100   ; service vector chain
+```
+
+Looks like a **periodic service / frame-advance** handler rather than
+pure key decode.  Reuses the same `$84` timing vector seen elsewhere.
+
+### `$64c` (file 0x94c) – conditional path into picture-wait area
+
+```
+… same $4a / jsr $0 setup …
+btst   #7, $52b         ; flag test
+beq    alt
+moveq  #50, d0
+jsr    $9d7a            ; near picture-wait caller (0x9d84)
+…
+jsr    $dc
+tst.l  $c2
+```
+
+Can divert into the **picture-wait / title path** region.  Likely the
+handler for “key pressed while on title / attract → proceed”.
+
+### `$878` (file 0xb78) – resource / pointer setup
+
+```
+… pointer copy into $ae …
+jsr    $4e
+jsr    $30              ; library-base style call
+move.l d0, $b2
+… another jsr $30 …
+move.l d0, $16a4
+rts
+```
+
+Allocates or initialises resources; stores results at `$b2` and `$16a4`.
+
+## Dispatch summary
+
+```
+key available ($155 ≠ 0) and input enabled ($206 ≠ 0)
+  ├─ mode check #1 → jsr $5b6   (frame/service)
+  ├─ mode check #2 → jsr $64c   (title/proceed → picture-wait area)
+  └─             → jsr $878   (resource setup)
+```
