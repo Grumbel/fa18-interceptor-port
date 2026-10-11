@@ -45,18 +45,22 @@ inline Vec3 apply_view(const Vec3& v, int32_t vx, int32_t vy, int32_t vz) {
   return { v.x + float(vx), v.y + float(vy), v.z + float(vz) };
 }
 
-// Simple perspective projection onto the 320×180 playfield.
-// Original perspective method still open (likely reciprocal multiply
-// or overlay); this is a faithful stand-in for the demo.
-inline void project(const Vec3& v, int& sx, int& sy, float focal = 200.f) {
+// Exact perspective recovered from file 0x2864a:
+//   screen_x = (x * 160) / z + 160
+//   screen_y = (y *  90) / z +  90
+// Focal = half of 320×180 viewport.  Clamped to playfield.
+inline void project(const Vec3& v, int& sx, int& sy) {
   if (v.z <= 0.1f) {
     sx = PLAYFIELD_CX;
     sy = PLAYFIELD_CY;
     return;
   }
-  float invz = focal / v.z;
-  sx = static_cast<int>(PLAYFIELD_CX + v.x * invz);
-  sy = static_cast<int>(PLAYFIELD_CY - v.y * invz);  // Y up → screen down
+  sx = static_cast<int>((v.x * 160.f) / v.z + 160.f);
+  sy = static_cast<int>((v.y *  90.f) / v.z +  90.f);
+  if (sx < 0) sx = 0;
+  if (sx >= PLAYFIELD_W) sx = PLAYFIELD_W - 1;
+  if (sy < 0) sy = 0;
+  if (sy >= PLAYFIELD_H) sy = PLAYFIELD_H - 1;
 }
 
 inline Mat3 mat_yaw(float degrees) {

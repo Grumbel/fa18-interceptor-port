@@ -127,3 +127,16 @@ callers).  Instead:
 
 Exact connection from step 2 → 4 still needs the overlay load map or a
 dynamic trace.
+
+## Vertex walker and projection (same CODE hunk)
+
+| Address | Role |
+|---------|------|
+| 0x2844e | Vertex walker: `lea $3000`, clip tests, bsr edge helpers |
+| 0x2864a | **Perspective**: `(x*160)/z+160`, `(y*90)/z+90`, clamp 320×180 |
+| 0x28684 | `movem.w $3000, d0-d3` / `jsr $5ee` – hand off to line draw |
+| 0x28698 | Mode `$16` alternate entry into walker |
+| 0x286ca/f8/2c/5a | Octant/clip edge helpers |
+
+`$5ee` is the runtime vector that receives projected screen-space
+vertices and continues into the blitter line path.

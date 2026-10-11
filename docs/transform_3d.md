@@ -220,3 +220,66 @@ edge** primitive rather than a projective transform.
 
 True perspective (world Z → screen) remains unlocated; it may use a
 reciprocal multiply (no divs) or live entirely in an unresolved overlay.
+
+## True perspective projection (file 0x2864a)
+
+Located in the same CODE hunk as mode `$1b` (HUNK_CODE 0x2826c):
+
+```
+; d3 = world/camera X,  d4 = Y,  d5 = Z
+muls.w  #160, d3         ; x * focal_x
+divs.w  d5, d3           ; / z
+addi.w  #160, d3         ; + screen_center_x
+cmpi.w  #320, d3         ; clamp to [0, 320)
+
+muls.w  #90, d4          ; y * focal_y
+divs.w  d5, d4           ; / z
+addi.w  #90, d4          ; + screen_center_y
+cmpi.w  #180, d4         ; clamp to [0, 180)
+
+move.w  d3, (a0)+        ; store screen X into vertex buffer
+move.w  d4, (a0)+        ; store screen Y
+```
+
+### Projection formula
+
+```
+screen_x = (x * 160) / z + 160
+screen_y = (y *  90) / z +  90
+```
+
+Focal lengths equal half the 320×180 viewport — standard symmetric
+perspective for this resolution.
+
+### After projection
+
+```
+movem.w $3000, d0-d3     ; reload projected vertices
+jsr     $5ee             ; runtime vector → line/edge draw
+```
+
+`$5ee` receives the screen-space vertex pair and is the bridge into
+the blitter line path (or mode `$1b` via `$12`).
+
+### Vertex walker (file 0x2844e)
+
+```
+link a6, #-4
+lea  $4202, a1           ; edge/object descriptor
+lea  $3000, a0           ; vertex buffer
+… clip tests against a1+6/+8/+a …
+bsr  $286ca / $286f8 / $2872c / $2875a   ; octant/clip helpers
+```
+
+Mode `$16` (file 0x28698) is an alternate entry into the same walker.
+
+### C++ equivalent
+
+```cpp
+constexpr int kFocalX = 160, kFocalY = 90;
+constexpr int kCenterX = 160, kCenterY = 90;
+
+int screen_x = (x * kFocalX) / z + kCenterX;
+int screen_y = (y * kFocalY) / z + kCenterY;
+// clamp to [0, 320) × [0, 180)
+```

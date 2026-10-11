@@ -34,28 +34,27 @@
 - [x] 0x1c1f4 is edge interpolation (DDA), not perspective; mode $01 = span/poly edge
 - [x] C++ ActionTable mirroring create/dispatch for slots 35/36
 - [x] Sole mode $1b issuer at 0x28274 (own CODE hunk); mode $16 companion; geometry path gap documented
+- [x] True perspective at 0x2864a: (x*160)/z+160, (y*90)/z+90; vertex walker; $5ee handoff
 
 ## Next Steps
 1. [ ] Find An-relative writers that fill matrix coeffs at $be6–$bf6
-2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c (need dynamic trace or overlay load map)
-3. [ ] Bridge post-transform ($c6/$68a) → $3000 vertex buffer → mode $1b / blitter
-4. [ ] Locate true perspective (reciprocal multiply or unresolved overlay)
-5. [ ] Bodies of other draw modes in the 0x2826c CODE hunk
-6. [ ] Populate real object list from mission data once format known
-7. [ ] Action clear body; fuller structure layout
-8. [ ] Role of $bb4 (object-loop counter)
+2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c / $5ee (need dynamic trace or overlay load map)
+3. [ ] Bridge post-transform ($c6/$68a) → vertex walker 0x2844e
+4. [ ] Bodies of remaining draw modes in the 0x2826c CODE hunk
+5. [ ] Populate real object list from mission data once format known
+6. [ ] Action clear body; fuller structure layout
+7. [ ] Role of $bb4 (object-loop counter); $4202 edge descriptor layout
 
 ## Analysis Notes
-- Mode $1b: sole issuer file 0x28274 in HUNK_CODE size 0x205; thin wrapper → jsr $12
-- Mode $16 also in same hunk (0x28698)
-- Post-transform 0x784c → $c6/$68a; vertex buffer $3000 filled in overlay (no abs writers in primary)
-- 0x1c1f4: DDA edge slope → mode $01 (span/poly)
-- Matrix $be6–$bf6: no absolute stores; An-relative or overlay only
+- Perspective: screen_x=(x*160)/z+160, screen_y=(y*90)/z+90; clamp 320×180
+- Vertex walker 0x2844e walks $3000; edge helpers; mode $16 alternate entry
+- After project: movem $3000 → jsr $5ee (line draw vector)
+- Mode $1b: sole issuer 0x28274; thin wrapper → jsr $12
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-046.1-edge-dda-action-table-dc0339a.bundle (superseded)
-- (next: 047.x)
+- fa18-port-047.1-mode-1b-issuer-hunk-dc0339a.bundle (superseded)
+- (next: 048.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
