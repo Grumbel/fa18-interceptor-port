@@ -63,6 +63,7 @@
 - [x] Transform world store: $422+$b68→obj+0, Y/Z similar; $4202 clip fields +6/+8/+$a
 - [x] Attitude 0x404c is control decoder (not matrix); $4b0 stays 8-bit input
 - [x] Full hunk inventory: 68 CODE; confirmed no static $12/$5ee stores in any hunk
+- [x] Port: apply_view_masked ($3fffff), ObjectList, state=2 after draw_object_fp
 
 
 ## Next Steps

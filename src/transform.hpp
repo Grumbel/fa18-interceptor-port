@@ -49,6 +49,7 @@ inline Vec3 transform_point_fp(const Mat3Fixed& M, int16_t x, int16_t y, int16_t
 }
 
 inline Vec3 apply_view(const Vec3& v, int32_t vx, int32_t vy, int32_t vz) {
+  // Original masks X/Z with $3fffff; see apply_view_masked in flight.hpp
   return { v.x + float(vx), v.y + float(vy), v.z + float(vz) };
 }
 

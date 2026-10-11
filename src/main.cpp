@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
 
   Game game;
   fa18::GfxState gfx;
+  gfx.view_z = 0;  // camera; object pos.z supplies depth
   fa18::InputState input;
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
