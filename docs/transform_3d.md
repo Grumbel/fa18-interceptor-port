@@ -660,3 +660,69 @@ void builder_B(int16_t d0, int16_t d1, int16_t d2,
 
 Register-to-angle mapping (which of D0–D5 is sin/cos of yaw vs
 pitch vs roll) depends on helper `00C2D14E` and is the next target.
+
+## Helper 00C2D14E — dual sincos (angle → register map)
+
+```
+; inputs:  D0 = angle_0, D2 = angle_1   (after asr #3)
+; outputs: D0 = sin0, D1 = cos0
+;          D2 = sin1, D3 = cos1
+```
+
+Same quadrant folding as `00C2D232`, applied twice.  First-quadrant
+path loads `table[θ]` → sin and `table[90°−θ]` → cos.
+
+### Complete Euler pipeline
+
+```
+; three angles arrive in orchestrator as D4, D5, D6
+move.w  d4, d0
+move.w  d5, d2
+move.w  d6, d4
+
+asr.w   #3, d0 / d2 / d4        ; scale
+bsr     00C2D14E                ; (sin0,cos0) in D0,D1
+                                ; (sin1,cos1) in D2,D3
+bsr     00C2D232                ; (sin2,cos2) in D4,D5
+; then builder A or B muls
+```
+
+| Caller reg | After shuffle | After sincos | Meaning |
+|------------|---------------|--------------|---------|
+| D4 | D0 | D0=sin0, D1=cos0 | Euler angle 0 |
+| D5 | D2 | D2=sin1, D3=cos1 | Euler angle 1 |
+| D6 | D4 | D4=sin2, D5=cos2 | Euler angle 2 |
+
+### Builder B with named sin/cos
+
+```
+s0,c0 = sin/cos(angle0)   // D0, D1
+s1,c1 = sin/cos(angle1)   // D2, D3
+s2,c2 = sin/cos(angle2)   // D4, D5
+
+M[0] = ( c2·c1 − ((s2·s0)>>14)·s1 ) >> 14
+M[1] = −( ((c2·s0)>>14)·s1 + s2·c1 ) >> 14
+M[2] = (c0·s1) >> 14
+M[3] = (s2·c0) >> 14
+M[4] = (c2·c0) >> 14
+M[5] = s0
+M[6] = −( ((s2·s0)>>14)·c1 + c2·s1 ) >> 14
+M[7] = ( s2·s1 − ((c2·s0)>>14)·c1 ) >> 14
+M[8] = (c0·c1) >> 14
+```
+
+This is a composed Euler rotation (order determined by which physical
+axis each angle drives — still to label as yaw/pitch/roll from
+gameplay behaviour).
+
+### asr #3 scaling note
+
+Angles are shifted right by 3 before table lookup, so the **native
+angle unit at the orchestrator input** is 8× finer than the table’s
+7200-circle unit:
+
+- Table circle = 7200
+- Orchestrator circle = 7200 × 8 = **57600** units/360°
+
+Alternatively the stored attitude angles already incorporate this
+scale.  Live probing of known attitude values will settle it.

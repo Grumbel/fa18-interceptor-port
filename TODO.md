@@ -51,13 +51,15 @@
 - [x] Builder A+B sequential via orchestrator 00C2C4B2 (A1 += $92 between)
 - [x] Frame path calls matrix orchestrator via 00C2C4F4
 - [x] Exact 3×3 element formulas for builders A and B
+- [x] Helper 00C2D14E dual sincos; Euler angle→register map
 
 
 ## Next Steps
 1. [x] Builder A + B are sequential (orchestrator 00C2C4B2); A1 advances +$92 between them
 2. [x] Exact element formulas for builder A and B (9-element 3×3 each)
-3. [ ] Helper 00C2D14E: map D0–D5 to sin/cos of which Euler angles
-4. [ ] Confirm geometric role of the two matrices (view vs inverse / object vs camera)
+3. [x] Helper 00C2D14E = dual sincos; full Euler angle → D0..D5 map
+4. [ ] Label angle0/1/2 as yaw/pitch/roll from gameplay
+5. [ ] Confirm geometric role of the two matrices (view vs inverse / object vs camera)
 5. [ ] Resolve $12/$5ee targets once object count > 0
 6. [ ] Bridge post-transform → vertex walker 0x2844e
 7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
