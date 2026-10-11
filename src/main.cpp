@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <iostream>
 #include <string>
+#include <sstream>
 #include "amiga_hunk.hpp"
 #include "game_state.hpp"
 
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
   }
 
   SDL_Window* win = SDL_CreateWindow(
-      "FA-18 Interceptor (port)",
+      "FA-18 Interceptor (port) - Startup",
       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
       640, 400, SDL_WINDOW_SHOWN);
   if (!win) {
@@ -42,7 +43,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // Simple colour per state so the window gives visual feedback
   auto colour_for = [](GameState s) -> SDL_Color {
     switch (s) {
       case GameState::Startup:       return {0x00, 0x20, 0x40, 255};
@@ -57,6 +57,13 @@ int main(int argc, char* argv[]) {
     return {0, 0, 0, 255};
   };
 
+  auto update_title = [&]() {
+    std::ostringstream oss;
+    oss << "FA-18 Interceptor (port) - " << game.state_name();
+    SDL_SetWindowTitle(win, oss.str().c_str());
+  };
+  update_title();
+
   bool running = true;
   while (running) {
     SDL_Event e;
@@ -68,10 +75,12 @@ int main(int argc, char* argv[]) {
           case SDLK_SPACE:
           case SDLK_RETURN:
             game.request_next();
+            update_title();
             if (game.state() == GameState::Exit) running = false;
             break;
           case SDLK_BACKSPACE:
             game.request_prev();
+            update_title();
             break;
           default: break;
         }

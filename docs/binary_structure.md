@@ -118,3 +118,19 @@ Most inter-routine calls are absolute rather than PC-relative or via a relocatab
 Consequence for RE / porting:
 - When analysing, treat the binary as loaded at a known base (or ignore the absolute values and focus on control flow + data).
 - A full overlay/reloc parser is less critical for understanding logic than for producing a byte-exact reassembly.
+
+## String cross-references
+
+File offsets of key strings (e.g. `"YOU ARE NOW OFFICIALLY ENLISTED"` @ 0x3a68b)
+are **not** the runtime addresses. Because the binary uses absolute addressing
+with a fixed (or privately relocated) load base, a simple search for the
+file-offset value as an immediate finds nothing.
+
+To locate code that uses a particular string we will need either:
+
+1. Knowledge of the runtime load address, or
+2. Pattern matching on the string content itself after it has been copied /
+   the surrounding code that builds a pointer to it, or
+3. Dynamic tracing under an emulator (WinUAE / FS-UAE with a debugger).
+
+This is a normal limitation of fixed-address Amiga executables.
