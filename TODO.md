@@ -36,27 +36,27 @@
 - [x] Sole mode $1b issuer at 0x28274 (own CODE hunk); mode $16 companion; geometry path gap documented
 - [x] True perspective at 0x2864a: (x*160)/z+160, (y*90)/z+90; vertex walker; $5ee handoff
 - [x] Object structure +16/+28/+30/+32; $bb4 phase timer; $4b0/$4b2 attitude angles; $496 edge scratch
+- [x] Matrix writer confirmed absent from static image; attitude func 0x404c; C++ mat_from_angles_fp
 
 ## Next Steps
-1. [ ] Find An-relative writers that fill matrix coeffs at $be6–$bf6 (attitude $4b0/$4b2 likely inputs)
-2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c / $5ee (need dynamic trace or overlay load map)
-3. [ ] Bridge post-transform ($c6/$68a) → vertex walker 0x2844e
+1. [ ] Dynamic trace: breakpoint on write to $be6 to catch matrix writer
+2. [ ] Resolve runtime targets of $12 / $c6 / $68a / $1a6 / $22c / $5ee / $a0dc / $a2f0
+3. [ ] Bridge post-transform → vertex walker 0x2844e
 4. [ ] Bodies of remaining draw modes in the 0x2826c CODE hunk
 5. [ ] Populate real object list from mission data once format known
 6. [ ] Action clear body; fuller structure layout
 7. [ ] $4202 edge descriptor full layout
 
 ## Analysis Notes
-- Perspective: screen_x=(x*160)/z+160, screen_y=(y*90)/z+90; clamp 320×180
-- Object: +0/4/8 world, +16 flags, +40 state, +48/+50 counters
-- $bb4: countdown timer (−3/pass, clamp 0)
-- $4b0/$4b2: attitude angles 0–255 (andi #$ff); related $29c/$29e
-- Post-transform 0x784c is object state/animation, not the draw bridge
-- Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
+- Matrix $be6–$bf6: zero absolute writers in entire binary; needs dynamic trace
+- Attitude angles $4b0/$4b2 processed at 0x404c (no muls, no matrix stores)
+- Object loop: jsr $a0dc/$a2f0 → bsr transform $7ad8 → post-transform $784c
+- Perspective: (x*160)/z+160, (y*90)/z+90
+- C++ mat_from_angles_fp() builds fixed-point matrix from 0–255 angles
 
 ## Bundle History
-- fa18-port-048.1-perspective-formula-vertex-walker-dc0339a.bundle (superseded)
-- (next: 049.x)
+- fa18-port-049.1-object-struct-bb4-angles-dc0339a.bundle (superseded)
+- (next: 050.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

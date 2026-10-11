@@ -283,3 +283,43 @@ int screen_x = (x * kFocalX) / z + kCenterX;
 int screen_y = (y * kFocalY) / z + kCenterY;
 // clamp to [0, 320) × [0, 180)
 ```
+
+## Matrix coefficient writers – status
+
+**No absolute stores** to `$be6`–`$bf6` exist in the entire binary.
+**No large muls clusters** that look like rotation-matrix construction
+were found in primary or overlay regions.
+
+### Attitude inputs (likely)
+
+| Addr | Role |
+|------|------|
+| `$4b0` | angle A (0–255) |
+| `$4b2` | angle B (0–255) |
+| `$29c` / `$29e` | related attitude state |
+| `$2a2` / `$2a6` | additional attitude words |
+
+Processed heavily in the function at file **0x404c–0x44e4**, which
+does angle normalisation (`andi #$ff`) and state updates but contains
+**zero muls** and no stores to the matrix region.
+
+### Implications
+
+The matrix is filled either by:
+1. An-relative stores (`move.w Dn, d16(An)` with An pointing at `$be6`)
+2. A bulk copy from a precomputed table
+3. An overlay whose absolute addresses are relocatable and not visible
+   as `$be6` in the static image
+
+Dynamic tracing (breakpoint on write to `$be6`) is the practical next
+step.  Until then the C++ port builds the matrix from yaw/pitch/roll
+using the same fixed-point scale (×64, matching `asr #6`).
+
+### Transform call site
+
+```
+object loop:
+  jsr $a0dc / $a2f0     ; object prep
+  bsr $7ad8             ; transform (reads $be6–$bf6 → $422/$426/$42a)
+  … post-transform 0x784c …
+```

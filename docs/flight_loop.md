@@ -147,3 +147,23 @@ wall.  The recovered data flow is:
 index → draw(0x784c) → $c6/$68a (status) → object field updates
                       → (vectors eventually reach mode $1b / blitter)
 ```
+
+## Object-loop call sequence (refined)
+
+```
+$72dc object loop:
+  …
+  jsr $a0dc          ; object prep / flag test ($52a bit)
+  jsr $a2f0          ; further object setup
+  jsr $a0dc
+  bsr $7ad8          ; transform: read $be6–$bf6 → $422/$426/$42a
+  … unlk/rts into post-transform …
+$784c post-transform:
+  jsr $c6            ; status check
+  jsr $68a           ; status check
+  update object+40/+48/+50 counters
+  jsr $f4 / $88      ; further vectors
+```
+
+`$a0dc` tests bit 0 of `$52a` and pointer at `$18`.
+`$a2f0` tests pointer at `$28` and writes object fields.

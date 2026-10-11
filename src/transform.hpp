@@ -83,4 +83,22 @@ inline Mat3Fixed to_fixed(const Mat3& M, float scale = 64.f) {
   return F;
 }
 
+
+// Build a fixed-point yaw/pitch/roll matrix matching the $be6–$bf6 layout.
+// Angles are 0–255 (full circle), matching $4b0/$4b2 attitude encoding.
+// Output scale is 64 so that the transform's asr #6 restores unit range.
+inline Mat3Fixed mat_from_angles_fp(uint8_t yaw, uint8_t pitch, uint8_t roll) {
+  auto rad = [](uint8_t a) { return a * (2.f * 3.14159265f / 256.f); };
+  float cy = std::cos(rad(yaw)),   sy = std::sin(rad(yaw));
+  float cp = std::cos(rad(pitch)), sp = std::sin(rad(pitch));
+  float cr = std::cos(rad(roll)),  sr = std::sin(rad(roll));
+  // R = Rz(yaw) * Ry(pitch) * Rx(roll)  (aircraft convention)
+  Mat3 M = {{
+    { cy*cp,  cy*sp*sr - sy*cr,  cy*sp*cr + sy*sr },
+    { sy*cp,  sy*sp*sr + cy*cr,  sy*sp*cr - cy*sr },
+    {   -sp,           cp*sr,            cp*cr    },
+  }};
+  return to_fixed(M, 64.f);
+}
+
 } // namespace fa18
