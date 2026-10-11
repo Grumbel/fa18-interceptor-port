@@ -52,6 +52,7 @@
 - [x] Frame path calls matrix orchestrator via 00C2C4F4
 - [x] Exact 3×3 element formulas for builders A and B
 - [x] Helper 00C2D14E dual sincos; Euler angle→register map
+- [x] C++ builder_A/B + mat_from_angles_q14 in transform.hpp
 
 
 ## Next Steps
@@ -66,7 +67,7 @@
 8. [ ] Remaining object fields within the 64-byte stride
 9. [ ] Action clear body (overlay past file end)
 10. [ ] $4202 edge descriptor full layout
-11. [ ] Wire C++ mat_from_angles to the exact dual-builder sequence
+11. [x] Wire C++ mat_from_angles_q14 + builder_A/B (Q2.14, 7200-circle)
 
 ## Analysis Notes
 - Object pool: base $642, stride $40 (64), max 20, count $b8f
