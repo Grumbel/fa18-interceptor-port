@@ -179,3 +179,8 @@ Written by vertex-walker octant helpers; not persistent.
 Masked with `andi.w #$ff`.  Related to `$29c` / `$29e` attitude
 state.  Candidates for the inputs that eventually feed the rotation
 matrix at `$be6`–`$bf6`.
+
+## $c6 – dynamically installed vector
+
+Installed at file 0x12664 via table lookup from base `$151a` indexed
+by `$220`.  Target is not a fixed address.

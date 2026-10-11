@@ -1,142 +1,105 @@
-# Draw Mode Dispatcher
+# Draw Modes
 
-## Pattern
-
-Almost every graphics primitive in the binary follows:
+## Dispatcher
 
 ```
-move.w #MODE, $36e.L
-jsr    $12.L              ; runtime draw dispatcher
+move.w #MODE, $36e
+jsr    $12          ; runtime vector → draw engine
 ```
 
-`$12` is a **runtime-installed vector** (static image at file 0x312 is
-early-init code, overwritten after startup).  The dispatcher reads
-`$36e` and jumps to the matching primitive.
+`$12` reads `$36e` and dispatches to the mode body.
 
-## Known modes
+## Complete mode catalogue
 
-| Mode | Hex | Sites | Notes |
-|------|-----|-------|-------|
-| 1–10 | `$01`–`$0a` | 1 each | sequential small primitives |
-| 12–18 | `$0c`–`$12` | 1 each | |
-| 20–23 | `$14`–`$17` | 1 each | |
-| **27** | **`$1b`** | **1** | **line draw – hunk 35 entry** |
-| 28 | `$1c` | 1 | |
-| 30–32 | `$1e`–`$20` | 1 each | |
-| 34 | `$22` | 1 | |
-| 38–41 | `$26`–`$29` | 1 each | |
-| 48 | `$30` | 1 | |
-| 51–56 | `$33`–`$38` | 1 each | |
-| 58–66 | `$3a`–`$42` | 1 each | |
-| 70 | `$46` | 1 | |
+Every `move.w #MODE, $36e` site in the binary (45 distinct modes):
 
-45 distinct modes total.  Mode `$1b` is the only one whose body has
-been fully identified (hunk 35: clamp + blitter line setup).
+| Mode | Dec | File site | Notes |
+|------|-----|-----------|-------|
+| `$01` | 1 | 0x1c302 | DDA span/poly edge (with muls/divs) |
+| `$03` | 3 | 0x1c3f2 | same CODE region as $01 |
+| `$04` | 4 | 0x1c4d6 | |
+| `$05` | 5 | 0x1c5d4 | |
+| `$06` | 6 | 0x1c600 | |
+| `$07` | 7 | 0x1c69a | |
+| `$08` | 8 | 0x1c736 | |
+| `$09` | 9 | 0x1c7d0 | |
+| `$0a` | 10 | 0x1c8e6 | |
+| `$0c` | 12 | 0x115ee | |
+| `$0d` | 13 | 0x115fe | |
+| `$0e` | 14 | 0x117ee | |
+| `$0f` | 15 | 0x1274c | |
+| `$10` | 16 | 0x129ba | |
+| `$11` | 17 | 0x12414 | |
+| `$12` | 18 | 0x12424 | |
+| `$14` | 20 | 0x12d58 | |
+| `$15` | 21 | 0x1d3dc | |
+| `$16` | 22 | 0x28698 | vertex walker alternate entry |
+| `$17` | 23 | 0x13dbc | |
+| `$1b` | 27 | 0x28274 | **line** (thin wrapper → jsr $12) |
+| `$1c` | 28 | 0x11736 | |
+| `$1e` | 30 | 0x2147e | |
+| `$1f` | 31 | 0x1c1e0 | |
+| `$20` | 32 | 0x238f0 | |
+| `$22` | 34 | 0x12fd8 | |
+| `$26` | 38 | 0x1261c | |
+| `$27` | 39 | 0x10aca | |
+| `$28` | 40 | 0xe010 | |
+| `$29` | 41 | 0x10fc8 | |
+| `$30` | 48 | 0x2b518 | |
+| `$33` | 51 | 0xe4bc | |
+| `$34` | 52 | 0x1b0f6 | |
+| `$35` | 53 | 0x1aaca | |
+| `$36` | 54 | 0x1193a | |
+| `$37` | 55 | 0x12bd8 | |
+| `$38` | 56 | 0x116ee | |
+| `$3a` | 58 | 0x1e3b4 | |
+| `$3c` | 60 | 0x24f3c | |
+| `$3e` | 62 | 0x21a30 | |
+| `$3f` | 63 | 0x1b0c | |
+| `$40` | 64 | 0x2376a | |
+| `$41` | 65 | 0x239c6 | |
+| `$42` | 66 | 0x11534 | |
+| `$46` | 70 | 0x2c6e2 | |
 
-## Connection to the flight path
-
-```
-frame $1124
-  → object loop $72dc
-      → transform $77d8  (matrix + view translation → object+0/+4/+8)
-      → draw path 0x784c
-          → jsr $c6 / $68a / $f4 / $88 / $0   (low vectors)
-  → post-draw helpers
-
-Elsewhere (overlays / mode-specific code):
-  move.w #$1b, $36e
-  jsr $12                → hunk-35 line primitive
-```
-
-The exact site that issues `move.w #$1b, $36e` / `jsr $12` for
-projected geometry is inside an overlay (file 0x28274 is the *body*
-of mode `$1b`, not a caller).  Callers live in other overlay hunks
-that set the mode and invoke the dispatcher.
-
-## Port mapping
-
-```cpp
-enum DrawMode : uint16_t {
-  // … many …
-  Line = 0x1b,
-};
-
-void dispatch_draw(GfxState& gfx, DrawMode mode) {
-  gfx.draw_mode = mode;
-  switch (mode) {
-    case DrawMode::Line: /* clamp + SDL_RenderDrawLine */ break;
-    // …
-  }
-}
-```
-
-## Open
-
-- Body of `$12` after runtime install (likely a jump table on `$36e`)
-- Which overlay site draws projected object edges with mode `$1b`
-- Bodies of the other 44 modes
-
-## Mode $01 – geometry primitive with perspective/interpolation
-
-Issued by function at file **0x1c1f4**:
+## Mode $1b – line
 
 ```
-muls.w / divs.w          ; fixed-point (a*b)/c
-move.w #$1, $36e
+; file 0x28274 – HUNK_CODE entry
+move.w #$1b, $36e
 jsr    $12
-```
-
-Uses buffers at `$3c00`, `$3600` and low addresses `$1a2`/`$198`/`$fc`
-(via lea in the function prologue).  No absolute callers found —
-function lives in an overlay and is called relatively from within
-that overlay.  Likely edge-setup or span-fill rather than pure line
-draw (mode `$1b`).
-
-## Mode $1b sole issuer
-
-**Only one site** in the entire binary issues mode `$1b`:
-
-```
-; file 0x28274 – start of HUNK_CODE (size 0x205 longwords)
-move.w #$1b, $36e.L
-jsr    $12.L
-moveq  #0, d0
 rts
 ```
 
-This is a thin wrapper: force line mode, call the draw engine at `$12`.
-It lives in its own CODE hunk (header at 0x2826c).
+Sole issuer. Lives in HUNK_CODE size 0x205 longwords.
 
-### Companion mode in same hunk
+## Mode $16 – vertex walker entry
 
-| Mode | File | Notes |
-|------|------|-------|
-| `$1b` (27) | 0x28274 | line |
-| `$16` (22) | 0x28698 | same hunk |
+Alternate entry into the projected-geometry walker at 0x2844e
+(perspective + edge helpers + jsr $5ee).
 
-### How projected geometry reaches the line drawer
+## Mode $01 – DDA span/poly
 
-The flight-frame path does **not** call 0x28274 directly (no absolute
-callers).  Instead:
+File 0x1c1f4 region: muls+divs edge slope, then mode $01.
 
-1. Transform writes world coords to object+0/+4/+8
-2. Post-transform (0x784c) calls `$c6` / `$68a` with the object pointer
-3. Somewhere in the overlay chain, screen-space vertices land in `$3000`
-4. Line setup reads `$3000`, fills `$34c`–`$352`, programs the blitter
-5. Mode `$1b` wrapper (or the blitter path directly) is reached via `$12`
-
-Exact connection from step 2 → 4 still needs the overlay load map or a
-dynamic trace.
-
-## Vertex walker and projection (same CODE hunk)
+## Vertex walker and projection (CODE hunk 0x2826c)
 
 | Address | Role |
 |---------|------|
 | 0x2844e | Vertex walker: `lea $3000`, clip tests, bsr edge helpers |
-| 0x2864a | **Perspective**: `(x*160)/z+160`, `(y*90)/z+90`, clamp 320×180 |
-| 0x28684 | `movem.w $3000, d0-d3` / `jsr $5ee` – hand off to line draw |
-| 0x28698 | Mode `$16` alternate entry into walker |
+| 0x2864a | Perspective: `(x*160)/z+160`, `(y*90)/z+90` |
+| 0x28684 | `movem.w $3000` / `jsr $5ee` |
+| 0x28698 | Mode $16 alternate entry |
 | 0x286ca/f8/2c/5a | Octant/clip edge helpers |
 
-`$5ee` is the runtime vector that receives projected screen-space
-vertices and continues into the blitter line path.
+## $c6 vector installation (file 0x12664)
+
+`$c6` is installed **dynamically** via a table lookup:
+
+```
+lea    $151a, a1          ; offset table
+move.b $220, d7           ; index
+… scale and table lookup …
+move.l d6, $c6            ; computed target
+```
+
+Not a fixed function pointer — depends on runtime state at `$220`.
