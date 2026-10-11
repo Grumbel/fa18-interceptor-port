@@ -9,26 +9,28 @@
 - [x] Load model for primary CODE (hunk 0) + vector-table distinction
 - [x] JOTD WHDLoad offsets; flake.nix; ILBM loader
 - [x] Picture-wait path documented
-- [x] HUNK_HEADER parsed: 185-slot table, 137 non-zero hunks, ~299 KB
-- [x] No standard HUNK_OVERLAY – custom overlay loader
+- [x] HUNK_HEADER: 185-slot table, 137 hunks
+- [x] Hunks 71/72 are zero-filled (runtime buffers); blitter in hunks 35–39
+- [x] Address table at 0xc39c (primary-segment offsets)
+- [x] ILBM assets drawn 2× nearest-neighbour
 
 ## Next Steps
-1. [ ] Locate custom overlay loader / runtime address table in hunk 0
-2. [ ] Analyse large hunks 71/72 (possible embedded graphics)
-3. [ ] Analyse blitter overlay hunks relative to own bases
+1. [ ] Determine whether all hunks are resident (LoadSeg) or true overlays
+2. [ ] Analyse blitter hunks 35–36 relative to payload start
+3. [ ] Trace address table at 0xc39c (dispatcher / entry points)
 4. [ ] Trace keyboard test into menu logic
 5. [ ] Identify main flight loop / 3D entry
-6. [ ] Expand C++ rendering
+6. [ ] Expand C++ rendering and real state transitions
 
 ## Analysis Notes
-- Hunk 0: 41804 bytes @ file 0x300, runtime 0
-- 137 resident/overlay hunks; hunk 62 is chip mem
-- Largest: hunk 72 (25564 B), hunk 71 (11604 B)
-- Custom overlay scheme (no 0x3F5 marker)
+- Hunks 71/72: all-zero file regions → runtime bitmaps / buffers
+- Blitter code: hunks 35–39 (file ~0x28274+)
+- Possible function-offset table at DATA 0xc39c
+- Minimal dos I/O in primary segment (Open/Close only at startup)
 
 ## Bundle History
-- fa18-port-021.1-… (superseded)
-- (next: 022.x)
+- fa18-port-022.1-… (superseded)
+- (next: 023.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

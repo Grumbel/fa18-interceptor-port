@@ -73,3 +73,41 @@ hunks, rather than the official linker overlay scheme.
   reconstructing the full overlay graph.
 - Asset hunks (71, 72, …) are candidates for extracting title/cockpit
   graphics once their format is identified.
+
+## Hunk map (selected)
+
+| Hunk | Type | File payload | Size | Notes |
+|------|------|--------------|------|-------|
+| 0 | CODE | 0x300 | 41804 | Primary – runtime 0 |
+| 35 | CODE | 0x28274 | 2068 | Blitter primitives |
+| 36 | CODE | 0x28b4c | 4644 | Blitter / drawing |
+| 37 | CODE | 0x2a130 | 2656 | |
+| 38 | CODE | 0x2adf8 | 2000 | |
+| 39 | CODE | 0x2b7ec | 6480 | |
+| 71 | ? | ~0x40f58 | 11604 | **All zeros in file** – BSS-like buffer |
+| 72 | ? | ~0x43cb8 | 25564 | **All zeros in file** – BSS-like buffer |
+
+Hunks 71 and 72 are declared in the size table but the corresponding file
+regions are entirely zero.  They are almost certainly **runtime-allocated
+buffers** (frame buffers, planar bitmaps, or decompression targets) whose
+space is reserved in the hunk table but not stored on disk.
+
+## Address table in DATA near 0xc39c
+
+A sequence of longs in the `0x100–0xA000` range starts at file `0xc39c`
+(`0x3f2, 0x6a8, 0x6b0, 0x42e, …`).  These look like **offsets into the
+primary segment** – possibly a function/entry-point table used by the
+overlay or state dispatcher.
+
+## Overlay loader
+
+No standard dos.Read/Seek loop found in the primary segment beyond the
+initial Open/Close.  Overlay loading is likely done via:
+
+- A custom track/file loader already in the low-memory vector table, or
+- Pre-loaded resident hunks (all 137 non-zero hunks loaded at startup
+  by LoadSeg, with “overlays” being just far calls between them).
+
+If LoadSeg loads the entire executable resident, then absolute addresses
+in overlay hunks would be assigned by the OS loader and recorded in a
+segment list – recoverable dynamically or from the reloc tables.

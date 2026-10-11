@@ -43,8 +43,8 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     return 1;
   }
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest-neighbour
 
-  // Load on-disk ILBM assets
   IlbmImage frnt5, inst5;
   SDL_Texture* tex_frnt = nullptr;
   SDL_Texture* tex_inst = nullptr;
@@ -52,15 +52,11 @@ int main(int argc, char* argv[]) {
     tex_frnt = frnt5.to_texture(ren);
     std::cout << "Loaded frnt5: " << frnt5.width << "x" << frnt5.height
               << " " << frnt5.planes << " planes\n";
-  } else {
-    std::cerr << "Warning: could not load assets/pix/frnt5\n";
   }
   if (inst5.load("assets/pix/inst5")) {
     tex_inst = inst5.to_texture(ren);
     std::cout << "Loaded inst5: " << inst5.width << "x" << inst5.height
               << " " << inst5.planes << " planes\n";
-  } else {
-    std::cerr << "Warning: could not load assets/pix/inst5\n";
   }
 
   auto colour_for = [](GameState s) -> SDL_Color {
@@ -111,17 +107,15 @@ int main(int argc, char* argv[]) {
     SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
     SDL_RenderClear(ren);
 
-    // Show ILBM assets as placeholders depending on state
+    // Scale ILBM assets 2x with nearest-neighbour for a more visible placeholder
     if (game.state() == GameState::Title && tex_frnt) {
-      int w, h;
-      SDL_QueryTexture(tex_frnt, nullptr, nullptr, &w, &h);
+      int w = frnt5.width * 2, h = frnt5.height * 2;
       SDL_Rect dst = { (640-w)/2, (400-h)/2, w, h };
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
     } else if ((game.state() == GameState::Flight ||
                 game.state() == GameState::Qualification) && tex_inst) {
-      int w, h;
-      SDL_QueryTexture(tex_inst, nullptr, nullptr, &w, &h);
-      SDL_Rect dst = { (640-w)/2, 400-h-10, w, h };
+      int w = inst5.width * 2, h = inst5.height * 2;
+      SDL_Rect dst = { (640-w)/2, 400-h-8, w, h };
       SDL_RenderCopy(ren, tex_inst, nullptr, &dst);
     }
 
