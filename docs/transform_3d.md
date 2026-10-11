@@ -163,3 +163,39 @@ vertices land in the `$3000` buffer.
 
 The C++ port’s `focal / z` stand-in remains a reasonable approximation
 until the exact overlay routine is identified.
+
+## Perspective / interpolation divides (file 0x1c1f4)
+
+Function at file **0x1c1f4** (`link a6, #-6`) contains the pattern:
+
+```
+muls.w
+… abs / shift …
+divs.w              ; (a * b) / c
+…
+move.w #$1, $36e
+jsr    $12          ; draw mode 1
+```
+
+This is a **geometry primitive** (edge setup or span) that:
+1. Computes a fixed-point quotient via muls+divs
+2. Draws with mode `$01` (not the line mode `$1b`)
+
+The same muls/divs pair appears twice in the function (two edges or
+two axes).  Whether the divisor is a Z (perspective) or an edge
+delta (interpolation) is not yet certain; both are common.  Callers
+of this function will resolve which.
+
+### Matrix coefficient writers
+
+Still **no absolute stores** to `$be6`–`$bf6` anywhere in the binary.
+The matrix is filled exclusively via register-indirect writes
+(An-relative), or by an overlay whose load address is unknown.
+Candidates for the writer:
+- Orientation/physics code that has a pointer to the matrix block
+- An init routine that copies a template via `(An)+`
+
+## Draw mode $01
+
+Issued by the function above.  Body not yet identified (lives behind
+`$12` dispatcher switch).

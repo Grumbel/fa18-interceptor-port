@@ -75,3 +75,19 @@ void dispatch_draw(GfxState& gfx, DrawMode mode) {
 - Body of `$12` after runtime install (likely a jump table on `$36e`)
 - Which overlay site draws projected object edges with mode `$1b`
 - Bodies of the other 44 modes
+
+## Mode $01 – geometry primitive with perspective/interpolation
+
+Issued by function at file **0x1c1f4**:
+
+```
+muls.w / divs.w          ; fixed-point (a*b)/c
+move.w #$1, $36e
+jsr    $12
+```
+
+Uses buffers at `$3c00`, `$3600` and low addresses `$1a2`/`$198`/`$fc`
+(via lea in the function prologue).  No absolute callers found —
+function lives in an overlay and is called relatively from within
+that overlay.  Likely edge-setup or span-fill rather than pure line
+draw (mode `$1b`).

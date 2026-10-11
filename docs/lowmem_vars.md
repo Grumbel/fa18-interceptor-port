@@ -152,3 +152,15 @@ Filled by `movem.w d0-d3, $34c` just before the blitter setup.
 
 Runtime buffer of projected screen-space vertices (X,Y word pairs).
 The line setup walks this buffer with `(a2)+`.
+
+## $bb4 – object-loop counter / phase
+
+Read and written inside the object loop (`$72dc`):
+
+```
+move.w $bb4, d0     ; file 0x76a4, 0x77c6
+…
+move.w d0, $bb4     ; file 0x77ce
+```
+
+Likely a per-frame or per-object phase counter.
