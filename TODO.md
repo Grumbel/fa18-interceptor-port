@@ -39,26 +39,27 @@
 - [x] Matrix writer confirmed absent from static image; attitude func 0x404c; C++ mat_from_angles_fp
 - [x] Complete 45-mode catalogue; $c6 dynamic install via table $151a / index $220
 - [x] Overlay/HUNK map; action clear body past binary end (separate overlay); DrawMode enum expanded
+- [x] Object pool: base $642, stride 64 bytes, max 20; active count $b8f
 
 ## Next Steps
 1. [ ] Dynamic trace: breakpoint on write to $be6; resolve $12/$5ee targets after overlay load
-2. [ ] Bridge post-transform → vertex walker 0x2844e
+2. [ ] Bridge post-transform → vertex walker 0x2844e (no mode issue in object loop; via runtime vector)
 3. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-4. [ ] Populate real object list from mission data once format known
+4. [ ] Remaining object fields within the 64-byte stride
 5. [ ] Action clear body (lives in overlay past file end; needs load map)
 6. [ ] $4202 edge descriptor full layout (fields +6/+8/+a = clip bounds)
 
 ## Analysis Notes
+- Object pool: base $642, stride $40 (64), max 20, current $c, count $b8f
+- Object loop called from frame at 0x1528/0x1542/0x156e
+- No draw-mode issue inside object loop — draw via runtime vectors
 - ~60 CODE hunks; primary at 0x2f8; geometry at 0x2826c; action at 0x4bf0c
-- Action clear body ($4c302) is past binary end — separate loaded overlay
-- 45 draw modes; each issued from exactly one site
-- $c6 installed dynamically; $5ee no static installer
 - Matrix $be6–$bf6: zero absolute writers; needs dynamic trace
 - Perspective: (x*160)/z+160, (y*90)/z+90
 
 ## Bundle History
-- fa18-port-051.1-mode-catalogue-c6-install-dc0339a.bundle (superseded)
-- (next: 052.x)
+- fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
+- (next: 053.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

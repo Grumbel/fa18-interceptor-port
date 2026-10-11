@@ -100,3 +100,47 @@ persistent state.
 `lea $4202, a1` in the vertex walker.  Fields read at +6, +8, +$a
 for clip bounds.  Layout still partially open; may be a static
 viewport or active-object geometry header.
+
+## Object pool layout (recovered)
+
+```
+; object loop prologue (file 0x75dc):
+move.l #$bd1, -8(a6)     ; table A
+move.l #$b8f, -12(a6)    ; active-count byte
+subq.b #1, ($b8f)        ; decrement active count
+clr.w  -16(a6)           ; loop index = 0
+
+; per-iteration:
+ext.l  d0                ; index
+lsl.l  #6, d0            ; * 64
+adda.l #$642, a0         ; pool base
+move.l a0, $c            ; current object pointer
+cmpi.w #$14, index       ; max 20 objects
+```
+
+| Property | Value |
+|----------|-------|
+| Pool base | `$642` |
+| Stride | **64 bytes** (`$40`) |
+| Max objects | **20** (`$14`) |
+| Current ptr | absolute `$c` |
+| Active count | `$b8f` (byte, decremented each frame) |
+| Table A | `$bd1` |
+
+`$642` is a runtime address (BSS or relocated); the static image
+at that file offset holds unrelated code.
+
+### Per-object layout (64 bytes)
+
+| Offset | Size | Role |
+|--------|------|------|
+| +0 | long | world X |
+| +4 | long | world Y |
+| +8 | long | world Z |
+| +16 ($10) | long | flags / type |
+| +38 ($26) | word? | (used in flag tests) |
+| +40 ($28) | word | state |
+| +46 ($2e) | word | (cleared in loop) |
+| +48 ($30) | word | counter A (0..$7f) |
+| +50 ($32) | word | counter B |
+| … | | remaining fields still open |

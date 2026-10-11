@@ -5,6 +5,11 @@
 #include "gfx_state.hpp"
 
 namespace fa18 {
+// Object pool mirrors recovered layout:
+//   base $642, stride 64 bytes, max 20 objects, current ptr at $c
+constexpr int kObjectStride = 64;
+constexpr int kMaxObjects   = 20;
+
 
 // Mirrors the recovered flight-frame structure:
 //   frame $1124 → object_loop $72dc → transform $77d8 → world store → draw
