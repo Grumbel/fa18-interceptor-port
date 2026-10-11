@@ -164,3 +164,17 @@ code segment is known, and they mark important control points
 
 The slave also forces a protection-passed flag and installs a small
 empty-loop emulator and keyboard/VBL hooks.
+
+## Protection offset confirmation
+
+JOTD comment: `offset 1ce70 : 13fc00ff -> 13fc0001`
+
+File bytes at **0x1ce70**:
+
+```
+13 fc 00 ff 00 00 02 7c 4e 75 4e 75 …
+```
+
+Exactly matches the original `move.b #$ff, …` that the slave patches to `#$01`.  
+This shows that (at least for this region) the PL_ offsets in the WHDLoad slave correspond directly to **file offsets** in our extracted executable (or the first code segment is loaded at a base that makes the numbers coincide).  
+Further PL_ sites can therefore be examined at the same numeric offsets in the binary.

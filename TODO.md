@@ -12,12 +12,11 @@
 - [x] Minimal interactive C++ Game state machine
 - [x] Noted fixed-load-base limitation for string xrefs
 - [x] Imported JOTD WHDLoad slave source and extracted key patch offsets
-      (protection flags, empty-loop, keyboard, VBL/speed, picture wait)
+- [x] Added flake.nix (Nix build + devShell with SDL2/cmake)
 
 ## Next Steps
 1. [ ] Map the PL_ offsets from the WHDLoad slave onto the file offsets
-      of our binary (or determine the LoadSeg base) so we have concrete
-      runtime addresses for protection, keyboard and main loop hooks
+      of our binary (or determine the LoadSeg base)
 2. [ ] Resolve the library opened at file 0x4b8 and later device/file opens
 3. [ ] Trace control flow from early init to enlistment
 4. [ ] Locate planar bitmaps / copper lists for title & cockpit
@@ -26,16 +25,14 @@
 7. [ ] Begin RE of 3D math
 
 ## Analysis Notes
-- JOTD slave marks “section 20” as protection and sets flags at
-  runtime offsets $19737 and $3a964
+- JOTD slave marks protection flags at runtime $19737 / $3a964
 - Speed regulation / VBL hooks at $08286 / $092e6
-- Keyboard test at $01590
+- Protection patch comment: offset 1ce70 (13fc00ff → 13fc0001)
 - Fixed / low absolute addressing for almost all inter-routine calls
-- String xrefs require knowing the load base
 
 ## Bundle History
-- fa18-port-008.1-… (superseded)
-- (next: 009.x)
+- fa18-port-009.1-… (superseded)
+- (next: 010.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -29,3 +29,15 @@ GPLv3+ for new code. Original game is abandonware but respect IP; this is a clea
 
 ## Continuity
 See TODO.md for current status. Deliver as git bundles only.
+
+## Build
+
+Nix flake provided (`flake.nix`):
+
+```
+nix develop
+cmake -B build && cmake --build build
+./build/fa18
+```
+
+Or plain CMake with system SDL2.
