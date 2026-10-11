@@ -55,6 +55,7 @@
 - [x] C++ builder_A/B + mat_from_angles_q14 in transform.hpp
 - [x] Transform confirmed to read global $be6 (not the +$92 secondary)
 - [x] Flight demo primary cube uses draw_object_fp / mat_from_angles_q14
+- [x] Object struct: +$22/+$24 Q14 sin/cos, +$26 type flags
 
 
 ## Next Steps
@@ -66,7 +67,7 @@
 5. [ ] Resolve $12/$5ee targets once object count > 0
 6. [ ] Bridge post-transform → vertex walker 0x2844e
 7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-8. [ ] Remaining object fields within the 64-byte stride
+8. [x] Object +$22/+$24 sin/cos, +$26 type; dual angle scales documented
 9. [ ] Action clear body (overlay past file end)
 10. [ ] $4202 edge descriptor full layout
 11. [x] Wire C++ mat_from_angles_q14 + builder_A/B (Q2.14, 7200-circle)

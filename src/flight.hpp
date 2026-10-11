@@ -27,8 +27,11 @@ struct Object {
   std::vector<Vec3> local_verts;
   std::vector<std::pair<int,int>> edges;
 
-  uint32_t flags = 0;    // +16 ($10)
-  uint16_t state = 0;    // +40 ($28)
+  uint32_t flags = 0;     // +16 ($10)
+  int16_t  sin_q14 = 0;   // +34 ($22)
+  int16_t  cos_q14 = 0x4000; // +36 ($24), 1.0
+  uint16_t type_flags = 0; // +38 ($26)
+  uint16_t state = 0;     // +40 ($28)
   int16_t  counter_a = 0; // +48 ($30), clamp 0..$7f
   int16_t  counter_b = 0; // +50 ($32)
 };

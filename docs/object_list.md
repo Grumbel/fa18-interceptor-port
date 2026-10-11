@@ -67,9 +67,25 @@ void object_loop(SDL_Renderer* ren, GfxState& gfx, ObjectList& list) {
 | +4 | long | world Y |
 | +8 | long | world Z |
 | +16 ($10) | long | flags / type (bit tests; lsr → $4a0) |
+| +34 ($22) | word | sin(angle) Q2.14 (written by 00C2C8A6) |
+| +36 ($24) | word | cos(angle) Q2.14 |
+| +38 ($26) | word | flags / type (tested in transform) |
 | +40 ($28) | word | state (set to 2 in post-transform) |
 | +48 ($30) | word | counter A (inc/dec, clamp 0..$7f) |
 | +50 ($32) | word | counter B (inc/dec) |
+| +64 | — | stride end (next object) |
+
+### Attitude angle systems (two scales)
+
+| System | Range | Where | Notes |
+|--------|-------|-------|-------|
+| Byte angles | 0–255 | `$4b0`, `$4b2` | Masked `andi #$ff` in func 0x404c |
+| Table angles | 0–7199 | matrix builders | 7200 = 360°, after optional `asr #3` |
+
+Func **0x404c** normalises `$4b0` to 8-bit and tests `$29c`/`$298`/`$2a6`
+flags but does **not** write the Q2.14 matrix — that is the separate
+builder path.  Conversion between the two scales (×(7200/256) ≈ ×28.125)
+may occur before the orchestrator; not yet located.
 
 Object pointer held in absolute `$c` during the frame loop.
 
