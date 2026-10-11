@@ -93,3 +93,24 @@ binary structure (error code -6), loops over a count of 17, then calls
 Function at runtime `$01c8` (file 0x4c8–0x6cc), called from 0x9d84.
 Helpers: `$ef4` (bounds-checked consume), `$996` (structure walker),
 `$cce` (chunk advance).  See `docs/picwait_helpers.md`.
+
+## Refinement: low-memory vector table vs. code segment
+
+Addresses **above ~$200** resolve cleanly to functions inside the first
+CODE segment (`file = 0x300 + runtime`).
+
+Addresses **below ~$100** (including `$00`, `$14`, `$1c`, `$30`, `$84`,
+`$c8`, `$f0`, `$100`, …) are a **runtime vector table**:
+
+- Early init writes data / library bases into some of these slots.
+- Later startup code (e.g. around file 0x825a) installs constants and
+  addresses (`move.l #0x22, $10`, `lea $62, a0` → `$5a`, etc.).
+- Many `jsr $xx` targets in this range do **not** have valid function
+  prologues at the corresponding file offsets – the bytes there are
+  only the initial image; at runtime the slots hold trampolines or
+  pointers installed during init.
+
+Consequence: static resolution works for `$ef4`, `$996`, `$cce`,
+`$01c8`, … but **not** for `$84`, `$30`, `$1c`, etc. without dynamic
+tracing or finding the installation code that writes JMP/BRA opcodes
+into those slots.

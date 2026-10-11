@@ -6,32 +6,32 @@
 ## Completed
 - [x] ADF extraction, scaffolding, SDL2 skeleton, Hunk scanner
 - [x] String extraction, early init, high-level flow, state machine
-- [x] Absolute calling convention + load model (file = 0x300 + runtime)
-- [x] JOTD WHDLoad offsets mapped
-- [x] flake.nix
+- [x] Load model: file = 0x300 + runtime (for addresses ≳ $200)
+- [x] Low-memory vector table distinction documented (< ~$100)
+- [x] JOTD WHDLoad offsets mapped; flake.nix
 - [x] Blitter region located
-- [x] Picture-wait function ($01c8 / 0x4c8–0x6cc) fully bounded
-- [x] $996 structure walker documented
-- [x] $ef4 bounds-checked consume helper documented
-- [x] $cce chunk-list advance documented
-- [x] Caller at 0x9d84 identified (args from struct at $10)
+- [x] Picture-wait path: $01c8, $ef4, $996, $cce documented
+- [x] $84 identified as runtime vector (16+ call sites); $10 setup partial
 
 ## Next Steps
-1. [ ] Identify $84 (setup/alloc before picture-wait) and who fills $10
-2. [ ] Resolve jsr $30 target after startup
+1. [ ] Find the code that installs trampolines into the low-memory
+      vector table (search for moves of JMP opcodes / code addresses
+      into $00–$100)
+2. [ ] Find who writes the structure pointer into $10
 3. [ ] Disassemble blitter region for bitplane pointers / polygon fill
 4. [ ] Trace keyboard test (0x1590) into menu logic
 5. [ ] Expand C++ state machine with ILBM / placeholder rendering
 6. [ ] Identify main flight loop and 3D transform entry points
 
 ## Analysis Notes
-- Custom chunked resource descriptor (not raw ILBM tags at $996/$ef4/$cce)
-- Error codes -3,-6,-7,-8,-9 used across the helpers
-- On-disk ILBMs are standard 5-plane ByteRun1
+- Static resolution reliable for runtime ≳ $200
+- Low addresses ($00–$100) are runtime-patched vectors
+- Custom chunked resource descriptor on picture-wait path
+- On-disk ILBMs: 5-plane ByteRun1
 
 ## Bundle History
-- fa18-port-017.1-… (superseded)
-- (next: 018.x)
+- fa18-port-018.1-… (superseded)
+- (next: 019.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

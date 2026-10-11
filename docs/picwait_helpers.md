@@ -98,3 +98,33 @@ Needs dynamic confirmation.
 3. Resolve the `$30` trampoline.
 4. Map the structure fields more precisely once a real instance is seen
    (emulator memory dump or by tracing the asset-load path).
+
+## $84 and $10 (caller setup)
+
+### $84
+
+Called from 16+ sites (empty-loop timing, picture-wait caller, blitter
+region).  File offset 0x384 has no function prologue – `$84` is a
+**runtime vector**, not a static function in the CODE image.
+
+Likely a low-level service (AllocMem wrapper, WaitTOF, resource lock,
+or similar) installed during startup.
+
+### Structure pointer at $10
+
+Caller at 0x9d78 does `move.l $10, a0` then pushes `(a0)` and `4(a0)`.
+
+Known write:
+```
+0x825a  move.l #0x22, $10     ; constant, not a pointer
+```
+
+Other low-memory setup at the same site:
+```
+lea $62, a0 → $5a
+move.l #0x8a, $5e
+```
+
+The pointer value used by picture-wait must be written elsewhere
+(register-indirect store, or a later overwrite of `$10`).  Not yet
+found as a direct `move.l ea, $10` of a code/data address.
