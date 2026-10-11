@@ -7,6 +7,8 @@
 #include "ilbm.hpp"
 #include "display.hpp"
 #include "draw.hpp"
+#include "gfx_state.hpp"
+#include "input_state.hpp"
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
@@ -24,6 +26,8 @@ int main(int argc, char* argv[]) {
   std::cout << "\n";
 
   Game game;
+  fa18::GfxState gfx;
+  fa18::InputState input;
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
@@ -78,20 +82,26 @@ int main(int argc, char* argv[]) {
 
   bool running = true;
   while (running) {
+    input.key_code = 0;
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT) running = false;
       if (e.type == SDL_KEYDOWN) {
+        // Map to $155-style key code (ASCII where applicable)
+        if (e.key.keysym.sym < 128)
+          input.key_code = static_cast<uint8_t>(e.key.keysym.sym);
         switch (e.key.keysym.sym) {
           case SDLK_ESCAPE: running = false; break;
           case SDLK_SPACE:
           case SDLK_RETURN:
             game.request_next();
+            gfx.phase = static_cast<uint16_t>(game.state());
             update_title();
             if (game.state() == GameState::Exit) running = false;
             break;
           case SDLK_BACKSPACE:
             game.request_prev();
+            gfx.phase = static_cast<uint16_t>(game.state());
             update_title();
             break;
           default: break;
@@ -109,7 +119,6 @@ int main(int argc, char* argv[]) {
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
     } else if (game.state() == GameState::Flight ||
                game.state() == GameState::Qualification) {
-      // Demo: horizon line + crosshair using the recovered 320×180 space
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY, fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY,
                       0x80, 0xa0, 0xc0);
       fa18::draw_line(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,

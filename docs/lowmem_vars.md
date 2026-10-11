@@ -70,3 +70,12 @@ uint32_t g_plane_mask;   // $b6
 int32_t  g_sentinel;     // $328
 uint16_t g_phase;        // $112
 ```
+
+## Input variables
+
+| Addr | Role |
+|------|------|
+| `$155` | current key code (see `docs/keyboard.md`) |
+| `$206` | input-enable flag |
+| `$207` | input mode / sub-state |
+| `$2ac` | menu index |
