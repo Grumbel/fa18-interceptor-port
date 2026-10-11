@@ -1,21 +1,37 @@
 # TODO - FA-18 Interceptor Port
 
 ## Current Tip
-Initial project setup. Base commit pending.
+dc0339a - Initial project setup
 
-## Next Steps
-1. [ ] Fully catalog all files from original ADF and a clean crack (Unit A preferred for HD install notes)
-2. [ ] Parse Hunk headers of main executable; identify code/data/bss segments
-3. [ ] Extract IFF pictures (splsh, frnt5, inst5) and convert to modern formats
-4. [ ] Dump and analyze text/ strings for localization / UI
-5. [ ] Research existing disassemblies (JOTD WHDLoad source if available, EAB threads)
-6. [ ] Set up build system (CMake + SDL2) and skeleton that loads assets
-7. [ ] Begin static analysis of binary (entry point, library calls to AmigaOS)
+## Completed
+- [x] Extracted original ADF (FA-18 Interceptor (1988)(Electronic Arts).adf)
+- [x] Catalogued main files: executable `F-18 Interceptor` (311832 bytes, Amiga Hunk), pix/ (splsh/frnt5/inst5 IFF?), text/ (9 files), config
+- [x] Project scaffolding (AGENTS.md, README, .gitignore, assets/)
+
+## Next Steps (priority order)
+1. [ ] Properly parse Amiga Hunk / detect if packed (header parse incomplete; table_size=185 suspicious, first=last=0)
+2. [ ] Identify packer (Imploder? PowerPacker? custom) and unpack the executable
+3. [ ] Convert IFF images in assets/pix to PNG for inspection (use ifflib or custom)
+4. [ ] Dump strings from binary and text/ files
+5. [ ] Locate WHDLoad slave source by JOTD (has disassembly notes) and any public RE notes from EAB
+6. [ ] Set up CMake + SDL2 skeleton that can display the splash image
+7. [ ] Static analysis: entry point, OS calls (OpenLibrary etc.), custom chip registers
+
+## Analysis Notes
+- Binary starts with standard HUNK_HEADER 0x000003F3
+- Appears to have only 1 hunk declared but size field looks wrong; may be overlay or compressed
+- From EAB: mostly assembly, high-level (init, music) in C; uses Bresenham for circles (sun, pilot head)
+- Codewheel protection present on original
+- Preferred crack for study: Unit A (has HD install, x2 binary)
 
 ## Open Questions
-- Is there a public disassembly or partial source anywhere?
-- Exact memory map / custom chip usage for 3D rendering
-- How is the terrain / Golden Gate etc. stored? Procedural or data?
+- Public disassembly available?
+- Terrain data format (procedural SF Bay?)
+- Sound format (ProTracker / custom?)
 
 ## Bundle History
-None yet.
+- fa18-port-001.1-initial-setup-dc0339a.bundle (this)
+
+## Author
+Ingo Ruhnke <grumbel@gmail.com>
+Co-authored-by: Grok <grok@x.ai>
