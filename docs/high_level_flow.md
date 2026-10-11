@@ -74,3 +74,15 @@ A minimal `Game` state machine now exists (`src/game_state.*`).
 Next implementation steps will replace the colour-only screen with real
 asset rendering (ILBMs, later title/cockpit bitmaps) and will drive the
 state transitions from the actual RE’d logic instead of manual keys.
+
+## Title-transition path (from keyboard)
+
+```
+key pressed ($155) + input enabled ($206)
+  → mode handler $64c
+    → $9d7a (if flag $52b bit 7)
+      → action table[35] and table[36] via 0x9f7c
+```
+
+Picture-wait (`$01c8`) is a sibling path in the same phase, entered
+from file 0x9d84 after `$84` setup – not directly from `$64c`.

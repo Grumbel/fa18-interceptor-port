@@ -118,3 +118,66 @@ key available ($155 ≠ 0) and input enabled ($206 ≠ 0)
   ├─ mode check #2 → jsr $64c   (title/proceed → picture-wait area)
   └─             → jsr $878   (resource setup)
 ```
+
+## Corrected $64c → title-transition chain
+
+Earlier note that `$64c` calls into the picture-wait **caller** was based
+on a file/runtime mix-up.  Correct chain under the load model
+(`file = 0x300 + runtime`):
+
+```
+$64c (file 0x94c)
+  btst #7, $52b
+  moveq #50, d0
+  jsr  $9d7a              ; runtime $9d7a = file 0xa07a
+        │
+        ├─ btst #2, $52a
+        ├─ moveq #35, d0  ; action index
+        │  bsr  file 0x9f7c
+        └─ moveq #36, d0  ; action index
+           bsr  file 0x9f7c
+```
+
+### `$9d7a` (file 0xa07a) – dual action trigger
+
+```
+link a6,#0
+btst #2, $52a
+beq  done
+push arg
+moveq #35, d0
+bsr  0x9f7c
+push arg
+moveq #1, d0
+moveq #36, d0
+bsr  0x9f7c
+done: unlk / rts
+```
+
+### `0x9f7c` – table-driven action dispatcher
+
+```
+link a6,#0
+d0 = action index (35 or 36)
+shift / index into table at absolute 0
+if entry null: return
+… pointer setup from table entry …
+```
+
+Action indices **35** and **36** select entries in a global table
+(base address 0 – likely filled during init).  These are distinct from
+the picture-wait function (`$01c8` / file 0x4c8) but sit in the same
+overall title / attract-mode flow.
+
+### Shared flags
+
+| Addr | Role |
+|------|------|
+| `$52a` | bit 2 tested by `$9d7a` |
+| `$52b` | bit 7 tested by `$64c` |
+
+### Picture-wait caller (unchanged)
+
+Still at **file 0x9d84** (`jsr $01c8`).  Not directly called from `$64c`;
+reached via a different path (possibly the `$84` setup sequence at
+file 0x9d6c, or another caller of `$01c8`).
