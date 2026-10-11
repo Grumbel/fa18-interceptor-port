@@ -12,16 +12,18 @@
 - [x] HUNK_HEADER; blitter 320×180; low-mem vars
 - [x] Keyboard path; $64c → $9d7a → table[35/36] via 0x9f7c
 - [x] Shared flag byte $52b between keyboard and picture-wait paths
+- [x] Action-table layout + dispatcher; create/clear live in overlay hunk @ file 0x4bf0c
 
 ## Next Steps
-1. [ ] Identify what populates action table slots $8c/$90
+1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
 2. [ ] Blitter line-draw / polygon-fill entry in hunk 35/36
 3. [ ] Main flight loop / 3D projection
 4. [ ] Expand C++ 3D stub; real state transitions from RE
 
 ## Analysis Notes
 - Picture-wait $01c8: sole caller file 0x9d84 in func 0x9cca
-- Action table base 0, 4-byte entries, runtime-filled
+- Action table base 0, 4-byte entries, runtime-filled by overlay create/clear
+- Structure fields written by create: +8=$166, +c=$3f, +10=1
 - $52b shared: bit1 set by picwait path, bit7 tested by $64c
 - Playfield 320×180; $155 key; $36e draw mode
 

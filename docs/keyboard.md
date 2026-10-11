@@ -205,3 +205,60 @@ jsr   $78             ; runtime vector
 Table slots live in the low-memory vector/data area and are **filled at
 runtime** (no static initialisers found for `$8c`/`$90`).  Entry 0 is
 written at file `0xac0` (`move.l d0, $0`).
+
+## Action table population (overlay)
+
+No static initialisers write `$8c`/`$90`.  Population is performed by
+functions living in a small overlay CODE hunk:
+
+| File offset | Size | Notes |
+|-------------|------|-------|
+| `0x4bf0c`   | 1180 B | HUNK_CODE containing slot create / clear |
+
+### Slot-create / init (runtime entry ≈ `$4bffa` relative to overlay load)
+
+```
+d0 = action index (from stack)
+asl.l #2, d0
+lea   0.l, a0
+adda.l d0, a0          ; a0 = &table[index]
+move.l (a0), a1        ; existing?
+… jsr $30 (AllocMem-style) …
+move.l d0, (a0)        ; store new structure pointer
+; then initialise structure fields:
+;   +4  ← arg
+;   +8  ← #$0166
+;   +c  ← #$003f
+;  +10  ← #1
+;  +20  ← 0
+…
+```
+
+### Slot-clear (file ≈ `0x4c0a2`)
+
+```
+asl.l #2, d0
+… a0 = &table[index]
+suba.l a1, a1
+move.l a1, (a0)        ; null the slot
+```
+
+### Structure layout (from init stores)
+
+| Offset | Value written | Likely meaning          |
+|--------|---------------|-------------------------|
+| +0     | (pointer)     | self / next?            |
+| +4     | caller arg    |                          |
+| +8     | `$0166`       | size / type / flags?    |
+| +c     | `$003f`       |                          |
+| +10    | 1             | active / refcount       |
+| +20    | 0             |                          |
+
+The dispatcher at `0x9f7c` later reads the pointer, scales an argument
+by 16, and stores into the structure before calling vector `$78`.
+
+**Open:** which call site(s) invoke the create function with indices 35
+and 36 (title-transition actions).  Likely from overlay load / mode
+entry code that is not yet mapped.  The primary-segment callers of the
+dispatcher (`$9d7a`, `0xa046`, `0xa08e`) only *trigger* already-filled
+slots.
