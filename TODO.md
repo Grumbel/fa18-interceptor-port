@@ -12,27 +12,28 @@
 - [x] JOTD WHDLoad slave imported; PL_ sites mapped
 - [x] flake.nix added
 - [x] Blitter region located (0x288c8–0x2aa30)
-- [x] Picture-wait function body outlined; private helpers $996 / $cce identified
+- [x] Picture-wait function outlined
+- [x] $996 partially reversed – structure parser / validator (error -6)
 
 ## Next Steps
-1. [ ] Fully reverse $996 (large stack frame – possible image/header parser)
-      and $cce; identify any file or memory reads for title graphics
-2. [ ] Disassemble blitter region for bitplane pointers / polygon fill
-3. [ ] Trace keyboard test (0x1590) into menu logic
-4. [ ] Resolve what jsr $30 actually targets after init
+1. [ ] Finish $996 disassembly past 0xe2a; identify the structure layout
+      (compare with ILBM BMHD / custom header)
+2. [ ] Reverse $cce fully
+3. [ ] Disassemble blitter region for bitplane pointers / polygon fill
+4. [ ] Trace keyboard test (0x1590) into menu logic
 5. [ ] Expand C++ state machine with ILBM / placeholder rendering
 6. [ ] Identify main flight loop and 3D transform entry points
 7. [ ] Begin RE of 3D math
 
 ## Analysis Notes
-- file_offset = 0x300 + runtime_addr for main CODE segment
-- Picture-wait function ends at 0x6cc; next function sets $112 = 3
-- $996 and $cce are private to the picture-wait path
-- $ef4 is a shared helper
+- file_offset = 0x300 + runtime_addr
+- $996: packed bitfields, count 17, returns -6 on error, calls $ef4
+- $996 / $cce are private to picture-wait path
+- Blitter-wait loops at 0x28800+
 
 ## Bundle History
-- fa18-port-014.1-… (superseded)
-- (next: 015.x)
+- fa18-port-015.1-… (superseded)
+- (next: 016.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

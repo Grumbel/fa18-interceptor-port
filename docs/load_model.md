@@ -81,3 +81,9 @@ title/splash asset preparation.
 `$30` is called as `jsr $30` from this function; under the load model
 that is file 0x330 (inside early init) unless the slot was later
 overwritten with a different function pointer.
+
+## $996 summary
+
+Private picture-wait helper (file 0x0c96).  Parses/validates a packed
+binary structure (error code -6), loops over a count of 17, then calls
+`$ef4`.  See `docs/func_996.md`.
