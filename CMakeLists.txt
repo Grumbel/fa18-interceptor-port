@@ -22,3 +22,8 @@ target_link_libraries(fa18 PRIVATE ${SDL2_LIBRARIES})
 add_custom_command(TARGET fa18 POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:fa18>/assets)
+
+# Install rules for Nix / packaging
+include(GNUInstallDirs)
+install(TARGETS fa18 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(DIRECTORY assets/ DESTINATION ${CMAKE_INSTALL_DATADIR}/fa18-interceptor/assets)

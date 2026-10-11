@@ -57,6 +57,7 @@
 - [x] Flight demo primary cube uses draw_object_fp / mat_from_angles_q14
 - [x] Object struct: +$22/+$24 Q14 sin/cos, +$26 type flags
 - [x] Post-transform 0x784c: state gate, jsr $c6, set state=2
+- [x] CMake install() rules for Nix packaging
 
 
 ## Next Steps
