@@ -435,3 +435,111 @@ Vec3 transform_point_fp(const int16_t M[9], int16_t x, int16_t y, int16_t z) {
 3. Full quadrant logic of the trig helper (table is only 0..90°).
 4. Installation of runtime vectors `$12` / `$5ee` (still zero while
    object count `$b8f` == 0).
+
+## Angle system and trig helper (2026-10-12)
+
+### Angle units
+
+Full circle = **7200 units** (20 units per degree).
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `$0708` | 1800 | 90° |
+| `$0E10` | 3600 | 180° |
+| `$1518` | 5400 | 270° |
+| `$1C20` | 7200 | 360° |
+
+### Sin/cos table indexing
+
+- Table base: live `00C3D320`
+- **Byte** indexed (`MOVE.W (A0, Dn.W), …`)
+- 1800 bytes ≡ 900 words cover 0°–90°
+- Word value `0x4000` = 1.0 (Q2.14)
+
+### Trig helper (`00C2D232`)
+
+```
+add.w   d4, d4              ; index *= 2 (byte offset)
+lea     $00C3D320, a0       ; table
+cmp.w   #$0708, d4          ; quadrant tests against 1800/3600/5400/7200
+… fold index into 0..1800 …
+move.w  (a0, d4.w), d4      ; sin or cos
+move.w  (a0, d6.w), d5      ; the other
+… conditional negations …
+rts
+```
+
+Four quadrant paths; each loads a complementary pair and applies the
+appropriate sign.
+
+### Builder A vs B
+
+Both start with the same setup:
+
+```
+asr.w   #3, d0 / d2 / d4    ; (e648 e64a e64c)
+bsr     <angle-prep>
+bsr     $00C2D232           ; trig helper → D4/D5 = sin/cos
+; then muls / asr #14 / (An)+ fill
+```
+
+| Builder | Setup entry | Fill entry | Write ptr | Notes |
+|---------|-------------|------------|-----------|-------|
+| A | `00C2CFD2` | `00C2CFE0` | A0 / A1 | one element-order / sign pattern |
+| B | `00C2D06C` | `00C2D07A` | A1 | the one observed writing the live player matrix |
+
+They differ in which sin/cos terms are multiplied into which matrix
+slots (standard vs alternate rotation-matrix layout, or view vs object
+space). Exact selection criterion still open.
+
+### Angle-prep caller (`00C2C8A6`)
+
+```
+movem.l …, -(sp)
+btst    #7, (a1)            ; flag on object?
+… range-check angle in d4 against $0384 / $0708 / $0a8c …
+bsr     $00C2D232           ; get sin/cos
+move.w  d4, $22(a1)         ; store sin into object+0x22
+move.w  d5, $24(a1)         ; store cos into object+0x24
+```
+
+Object structure gains two more known fields:
+
+| Offset | Content |
+|--------|---------|
+| +$22 | sin(angle) Q2.14 |
+| +$24 | cos(angle) Q2.14 |
+
+### Higher-level matrix call (`00C2C4B2`)
+
+```
+movem.l d3-d6/a1/a6, -(sp)  ; mask $4e40
+move.w  d4, d0
+move.w  d5, d2
+move.w  d6, d4
+lea     $80(a1), a1         ; point at matrix destination?
+bsr     $00C2CFD2           ; → builder A path
+movem.l (sp)+, …
+… optional second bsr $00C2D06C (builder B) …
+rts
+```
+
+### Port mapping (angle → matrix)
+
+```cpp
+constexpr int kCircle = 7200;       // 360°
+constexpr int kQuadrant = 1800;     // 90°
+constexpr int kOne = 0x4000;        // Q2.14 1.0
+
+int16_t sin_table[900];             // byte-indexed 0..1798
+
+void sincos_q14(int angle, int16_t& s, int16_t& c) {
+  // fold angle into 0..7199, then quadrant logic from 00C2D232
+  // index = folded * 2 (byte offset into table)
+}
+
+void build_matrix_from_angles(/* yaw, pitch, roll in 7200-circle units */,
+                              int16_t out[9]) {
+  // call sincos for each axis, then builder A or B muls/asr#14 sequence
+}
+```

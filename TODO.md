@@ -44,28 +44,33 @@
 - [x] Sin/cos table @ 00C3D320 (897 entries, 0°–90°, Q2.14, 0x4000=1.0)
 - [x] Builder uses asr #14; transform multiply still asr #6
 - [x] ADF load deltas: CODE +$00C0CA08, data +$00C44368 (session-specific)
+- [x] Angle units: 7200 = 360° (20 units/degree); quadrant constants 1800/3600/5400/7200
+- [x] Trig helper 00C2D232: byte-indexed table, quadrant fold + sign
+- [x] Builder A (00C2CFD2) vs B (00C2D06C) entry points and call sites
+- [x] Object fields +$22/+24 = sin/cos Q2.14 (written by 00C2C8A6)
 
 ## Next Steps
-1. [ ] Angle sources that feed the trig helper / builders (D0–D5 inputs)
-2. [ ] Builder A vs B selection criterion
-3. [ ] Resolve $12/$5ee targets once object count > 0 (overlays install them)
-4. [ ] Bridge post-transform → vertex walker 0x2844e
-5. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-6. [ ] Remaining object fields within the 64-byte stride
-7. [ ] Action clear body (overlay past file end)
-8. [ ] $4202 edge descriptor full layout
+1. [ ] Builder A vs B selection criterion (which angles / which matrix layout)
+2. [ ] Resolve $12/$5ee targets once object count > 0
+3. [ ] Bridge post-transform → vertex walker 0x2844e
+4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+5. [ ] Remaining object fields within the 64-byte stride
+6. [ ] Action clear body (overlay past file end)
+7. [ ] $4202 edge descriptor full layout
+8. [ ] Wire C++ mat_from_angles to the exact 7200-circle + Q2.14 builder
 
 ## Analysis Notes
 - Object pool: base $642, stride $40 (64), max 20, count $b8f
-- Object loop called from frame at 0x1528/0x1542/0x156e
-- Matrix writer lives in runtime CODE (not static primary); two near-identical builders
-- Sin table only covers 0–90°; quadrant logic in helper @ live 00C2D232
+- Matrix writer in runtime CODE; two builders share table + asr#14
+- Angle circle = 7200; table 900 words / 1800 bytes for 0–90°
+- Object+0x22/0x24 hold per-object sin/cos
 - Perspective: (x*160)/z+160, (y*90)/z+90
 - Runtime vectors $12/$5ee still zero while no objects active
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
-- (next: 053.x – matrix-writer-dynamic-trace)
+- fa18-port-053.1-matrix-writer-dynamic-trace-dc0339a.bundle (superseded)
+- (next: 054.x – angle-system-trig-helper)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
