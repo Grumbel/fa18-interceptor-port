@@ -95,3 +95,21 @@ line/fill entry (file 0x29a50–0x29a84):
 These are the last values computed from the geometric arguments before
 the blitter registers are programmed.  Useful for dynamic tracing and
 for the C++ `GfxState` mirror.
+
+## View / camera translation ($b68 / $b6c / $b70)
+
+Applied after the matrix multiply inside the transform routine:
+
+| Addr  | Role |
+|-------|------|
+| `$b68` | translation X (andi `# $3fffff`) |
+| `$b6c` | translation Y |
+| `$b70` | translation Z (andi `# $3fffff`) |
+
+```
+object.x = transformed_x + ($b68 & $3fffff)
+object.y = transformed_y + $b6c
+object.z = transformed_z + ($b70 & $3fffff)
+```
+
+Results are written to the current object structure at offsets 0 / 4 / 8.

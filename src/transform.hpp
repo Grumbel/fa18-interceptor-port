@@ -40,6 +40,11 @@ inline Vec3 transform_point_fp(const Mat3Fixed& M, int16_t x, int16_t y, int16_t
   return { row(0), row(1), row(2) };
 }
 
+// Apply view/camera translation (mirrors $b68/$b6c/$b70 add after multiply).
+inline Vec3 apply_view(const Vec3& v, int32_t vx, int32_t vy, int32_t vz) {
+  return { v.x + float(vx), v.y + float(vy), v.z + float(vz) };
+}
+
 // Simple perspective projection onto the 320×180 playfield.
 // Original perspective method still open (likely reciprocal multiply
 // or overlay); this is a faithful stand-in for the demo.

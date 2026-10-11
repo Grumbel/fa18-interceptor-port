@@ -99,3 +99,52 @@ Vec3 transform_point_fp(const int16_t M[3][3], int16_t x, int16_t y, int16_t z) 
   return { float(row(0)), float(row(1)), float(row(2)) };
 }
 ```
+
+## Post-multiply: world translation
+
+After the matrix multiply, the transform adds a camera/world offset and
+writes the result **into the current object** (`$c`):
+
+```
+(object+0) = $422 + ($b68 & $3fffff)   ; world X
+(object+4) = $426 + $b6c               ; world Y
+(object+8) = $42a + ($b70 & $3fffff)   ; world Z
+```
+
+| Addr  | Role |
+|-------|------|
+| `$b68` | translation X (masked to 22 bits) |
+| `$b6c` | translation Y |
+| `$b70` | translation Z (masked to 22 bits) |
+
+So `$b68/$b6c/$b70` are the **view/camera translation** applied after
+rotation.  The object structure now holds world-space coordinates at
+offsets 0 / 4 / 8.
+
+A second partial multiply (subset of the same matrix) then re-writes
+`$422/$426/$42a`, and `bsr $7dfe` runs before the transform returns.
+
+## Object structure (partial)
+
+| Offset | Content |
+|--------|---------|
+| +0     | world X (long, after transform) |
+| +4     | world Y |
+| +8     | world Z |
+| +$10   | (read in post-transform draw path) |
+| +$26   | flags / type word (read by transform setup) |
+| +$28   | word written by draw path |
+| +$30   | word (decremented / clamped in draw path) |
+
+## Post-transform draw path
+
+Object loop calls `bsr` to file **0x784c** (`link a6,#-18`) after the
+transform returns.  That routine:
+
+1. Loads object at `$c`
+2. Reads flags at +$26 / +$28
+3. Calls low vectors `$c6` and `$68a`
+4. Manipulates object fields at +$10, +$28, +$30
+
+Screen projection and the eventual blitter call are behind `$c6` /
+`$68a` or further in this function — still being traced.

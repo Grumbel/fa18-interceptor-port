@@ -7,13 +7,15 @@
 namespace fa18 {
 
 // Mirrors the recovered flight-frame structure:
-//   frame $1124 → object_loop $72dc → transform $77d8 → clamp/line
+//   frame $1124 → object_loop $72dc → transform $77d8 → world store → draw
 
 struct Object {
-  Vec3 pos;          // world position
-  Mat3 orient;       // local orientation (from matrix at $0be6)
+  Vec3 pos;          // local origin before transform
+  Mat3 orient;       // local orientation (matrix at $be6)
+  Vec3 world;        // after transform + view translation (object+0/+4/+8)
   std::vector<Vec3> local_verts;
   std::vector<std::pair<int,int>> edges;
+  uint16_t flags = 0;  // object+$26
 };
 
 inline Object make_cube(float scale = 1.f) {
@@ -34,8 +36,9 @@ inline Object make_cube(float scale = 1.f) {
   return o;
 }
 
-// One iteration of the object loop ($72dc): transform → project → draw
-inline void draw_object(SDL_Renderer* ren, GfxState& gfx, const Object& obj) {
+// One iteration of the object loop ($72dc):
+//   transform → apply view translation → project → draw
+inline void draw_object(SDL_Renderer* ren, GfxState& gfx, Object& obj) {
   std::vector<int> sx(obj.local_verts.size());
   std::vector<int> sy(obj.local_verts.size());
   for (size_t i = 0; i < obj.local_verts.size(); ++i) {
@@ -43,6 +46,9 @@ inline void draw_object(SDL_Renderer* ren, GfxState& gfx, const Object& obj) {
     w.x += obj.pos.x;
     w.y += obj.pos.y;
     w.z += obj.pos.z;
+    w = apply_view(w, gfx.view_x, gfx.view_y, gfx.view_z);
+    // Store first vertex world pos as object origin (mirrors object+0/+4/+8)
+    if (i == 0) obj.world = w;
     project(w, sx[i], sy[i]);
   }
   for (auto [a, b] : obj.edges) {

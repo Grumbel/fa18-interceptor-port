@@ -22,33 +22,28 @@
 - [x] Exact 3×3 fixed-point matrix layout ($be6–$bf6) and asr #6 format
 - [x] Object-list iteration structure (-16(a6) counter, $c object ptr, $b8f/$bd1 tables)
 - [x] C++ state transitions driven by recovered keyboard path ($155/$206/$207)
+- [x] World translation ($b68/$b6c/$b70) + object structure offsets 0/4/8
+- [x] Post-transform draw path entry at file 0x784c
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
 2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
-4. [ ] Trace glue from transform results to blitter overlay entry
+4. [ ] Resolve low vectors $c6 / $68a used by post-transform draw
 5. [ ] Perspective divide / reciprocal location
-6. [ ] Object structure layout beyond +$26
+6. [ ] Fuller object structure layout
 7. [ ] Populate real object list from mission data once format known
 
 ## Analysis Notes
-- Picture-wait $01c8: sole caller file 0x9d84 in func 0x9cca
-- Action table base 0, 4-byte entries, runtime-filled by overlay create/clear
-- Structure fields: +8=$01660000, +c=$003f0000, +10=1
-- $52b shared: bit1 set by picwait path, bit7 tested by $64c
-- Playfield 320×180; $155 key; $36e draw mode
-- Blitter: BLTCON0 $09f0 (primary), also $0dfc/$0d0c/$0d3c/$0fec/$0f4c
-- Blitter scratch: $330/$334/$338/$33e written just before BLTSIZE
-- Transform: file 0x7ad8; M[3][3] words at $be6–$bf6; (Σ m*v) >> 6 → $422/$426/$42a
-- Input vector: X=-2(a6), Y=-4(a6), Z=-6(a6)
-- Transform caller: bsr at file 0x77f6 inside object iteration loop
-- Frame: file 0x1424–0x1812 ($1124); object loop 0x75dc–0x784a ($72dc)
-- Object loop: counter -16(a6) += 2; object ptr $c; tables $b8f/$bd1
+- Transform results + view translation → object+0/+4/+8 (world X/Y/Z)
+- Post-transform draw at file 0x784c calls vectors $c6 and $68a
+- View translation: $b68 (X), $b6c (Y), $b70 (Z)
+- Object+$26 = flags; +$28 / +$30 manipulated by draw path
+- Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-035.1-matrix-fixedpoint-dc0339a.bundle (superseded)
-- (next: 036.x)
+- fa18-port-036.1-object-list-input-state-dc0339a.bundle (superseded)
+- (next: 037.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
