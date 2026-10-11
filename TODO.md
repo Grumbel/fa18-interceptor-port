@@ -26,10 +26,11 @@
 - [x] Post-transform draw path entry at file 0x784c
 - [x] Draw-mode dispatcher: move.w #MODE,$36e / jsr $12 (45 modes; $1b = line)
 - [x] $c6/$68a calling convention (index arg, status return); multi-object Flight demo
+- [x] Blitter Dn geometry: $352=Y, ×40 row-bytes, BLTCPT/SIZE/MOD mapping
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
-2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
+2. [ ] Exact BLTCON1 octant encoding and role of $350
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
 4. [ ] Resolve runtime targets of $12 / $c6 / $68a / $f4 / $88 (need dynamic trace or overlay load map)
 5. [ ] Find overlay sites that issue mode $1b for projected geometry
@@ -41,14 +42,13 @@
 - Draw dispatcher: set $36e = mode, jsr $12 (runtime vector)
 - Mode $1b = line (hunk 35); 44 other modes exist
 - $c6/$68a take object-loop index, return status in d0
+- $352 = screen Y → ×40 = bitplane row offset; d0=BLTCPT, d7=BLTSIZE, d3=modulo
 - Transform + view translation → object+0/+4/+8
-- Post-transform draw 0x784c → jsr $c6/$68a/$f4/$88/$0
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
-- Low vectors $12/$c6/$68a/$f4/$88 are runtime-installed; static image ≠ target
 
 ## Bundle History
-- fa18-port-038.1-draw-mode-dispatcher-dc0339a.bundle (superseded)
-- (next: 039.x)
+- fa18-port-039.1-vector-conv-multiobj-dc0339a.bundle (superseded)
+- (next: 040.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

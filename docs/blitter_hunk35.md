@@ -204,3 +204,64 @@ the best static anchors for a later dynamic trace.
 `blitter_line_stub` that mirror the clamp + mode write.  A simple
 perspective runway is rendered in the Flight state as a stand-in for
 true 3D projector output.
+
+## Line-parameter geometry (file 0x29a14 → blitter)
+
+### Inputs from low-memory
+
+| Addr | Role (inferred) |
+|------|-----------------|
+| `$350` | (paired with $352; exact role open) |
+| `$352` | **Y coordinate** (row index) |
+
+### Row-bytes conversion
+
+```
+move.w $352, d5
+move.w d5, d1
+asl.w  #3, d1          ; ×8
+move.w d1, d0
+add.w  d0, d0
+add.w  d0, d0          ; ×32
+add.w  d0, d1          ; d1 = Y × 40
+add.w  d2, d2
+ext.l  d2
+add.l  d2, d1          ; d1 += X-related byte offset
+```
+
+**Y × 40** is the classic Amiga conversion for a 320-pixel-wide
+bitplane (40 bytes/row).  Confirms playfield width = 320.
+
+### Blitter register mapping (line mode)
+
+| Register | Source | Notes |
+|----------|--------|-------|
+| BLTCON0 | `#$09f0` | A/C/D enable, minterm `$F0` |
+| BLTCON1 | `#$000a` | line-mode control bits |
+| BLTAPT  | d2 | pattern / texture pointer |
+| BLTBPT  | d2 | same |
+| BLTCPT  | d0 | destination start address |
+| BLTAMOD | d3 | modulo (often `$28` = 40) |
+| BLTBMOD | d3 | |
+| BLTDMOD | d3 | |
+| BLTSIZE | d7 | encoded start + height |
+
+### Scratch mirrors
+
+| Addr | Content |
+|------|---------|
+| `$330` | computed address (d1 after arithmetic) |
+| `$334` | copy of same |
+| `$338` | copy of same |
+| `$33e` | BLTSIZE value (d7) |
+
+### Geometric summary
+
+- **d5 / `$352`**: screen Y
+- **d1 after ×40**: byte offset of row in bitplane
+- **d2**: contributes X byte offset; also used as BLTAPT pattern pointer
+- **d0**: final destination address → BLTCPT
+- **d3**: bitplane modulo (40)
+- **d7**: BLTSIZE (line length / octant encoding)
+
+Exact octant/BLTCON1 bit encoding and the role of `$350` remain open.

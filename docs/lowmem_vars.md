@@ -113,3 +113,12 @@ object.z = transformed_z + ($b70 & $3fffff)
 ```
 
 Results are written to the current object structure at offsets 0 / 4 / 8.
+
+## Line geometry params ($350 / $352)
+
+| Addr | Role |
+|------|------|
+| `$350` | paired with $352 (exact role open) |
+| `$352` | screen Y (row index); multiplied by 40 for bitplane byte offset |
+
+Filled at runtime before the hunk-35 line path runs.
