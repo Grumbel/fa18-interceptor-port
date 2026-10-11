@@ -178,3 +178,14 @@ File bytes at **0x1ce70**:
 Exactly matches the original `move.b #$ff, …` that the slave patches to `#$01`.  
 This shows that (at least for this region) the PL_ offsets in the WHDLoad slave correspond directly to **file offsets** in our extracted executable (or the first code segment is loaded at a base that makes the numbers coincide).  
 Further PL_ sites can therefore be examined at the same numeric offsets in the binary.
+
+## Mapped WHDLoad sites (see also docs/whdload_sites.md)
+
+Confirmed that PL_ offsets == file offsets for the main executable body.
+Key anchors now available for static analysis:
+
+- Protection `move.b #$ff,$27c` @ 0x1ce70
+- Empty-loop timing sequence @ 0x08e2
+- Keyboard test @ 0x1590
+- Speed/VBL hooks @ 0x8286 / 0x92e6
+- Picture-wait @ 0x06b4
