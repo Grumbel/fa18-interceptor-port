@@ -24,26 +24,28 @@
 - [x] C++ state transitions driven by recovered keyboard path ($155/$206/$207)
 - [x] World translation ($b68/$b6c/$b70) + object structure offsets 0/4/8
 - [x] Post-transform draw path entry at file 0x784c
+- [x] Draw-mode dispatcher: move.w #MODE,$36e / jsr $12 (45 modes; $1b = line)
 
 ## Next Steps
 1. [ ] Identify call sites that invoke slot-create with indices 35 / 36
 2. [ ] Refine geometric meaning of d0–d3/d7 for line endpoints
 3. [ ] Find runtime writers that fill matrix coeffs at $be6–$bf6
-4. [ ] Resolve low vectors $c6 / $68a used by post-transform draw
-5. [ ] Perspective divide / reciprocal location
-6. [ ] Fuller object structure layout
-7. [ ] Populate real object list from mission data once format known
+4. [ ] Resolve low vectors $c6 / $68a / $f4 / $88 (and $12 body after install)
+5. [ ] Find overlay sites that issue mode $1b for projected geometry
+6. [ ] Perspective divide / reciprocal location
+7. [ ] Bodies of other draw modes
+8. [ ] Populate real object list from mission data once format known
 
 ## Analysis Notes
-- Transform results + view translation → object+0/+4/+8 (world X/Y/Z)
-- Post-transform draw at file 0x784c calls vectors $c6 and $68a
-- View translation: $b68 (X), $b6c (Y), $b70 (Z)
-- Object+$26 = flags; +$28 / +$30 manipulated by draw path
+- Draw dispatcher: set $36e = mode, jsr $12 (runtime vector)
+- Mode $1b = line (hunk 35); 44 other modes exist
+- Transform + view translation → object+0/+4/+8
+- Post-transform draw 0x784c → jsr $c6/$68a/$f4/$88/$0
 - Frame $1124 → object loop $72dc → transform $77d8 → draw 0x784c
 
 ## Bundle History
-- fa18-port-036.1-object-list-input-state-dc0339a.bundle (superseded)
-- (next: 037.x)
+- fa18-port-037.1-world-translate-drawpath-dc0339a.bundle (superseded)
+- (next: 038.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -1,18 +1,24 @@
 #pragma once
 #include <SDL.h>
 #include <algorithm>
+#include <cstdint>
 #include "display.hpp"
 #include "gfx_state.hpp"
 
 namespace fa18 {
+
+// Draw modes recovered from move.w #MODE, $36e / jsr $12 pattern.
+// See docs/draw_modes.md.
+enum class DrawMode : uint16_t {
+  Line = 0x1b,   // hunk 35 – clamp + blitter line
+  // many others exist ($01–$46); add as identified
+};
 
 inline void clamp_to_playfield(int& x, int& y) {
   x = std::max(0, std::min(PLAYFIELD_W - 1, x));
   y = std::max(0, std::min(PLAYFIELD_H - 1, y));
 }
 
-// Recovered from hunk-35 clamp using constants 160/320/90/180
-// (file ~0x28294+).  Coordinates are playfield-space; rendered at SCALE.
 inline void draw_line(SDL_Renderer* ren, int x0, int y0, int x1, int y1,
                       Uint8 r = 255, Uint8 g = 255, Uint8 b = 255) {
   clamp_to_playfield(x0, y0);
@@ -21,8 +27,6 @@ inline void draw_line(SDL_Renderer* ren, int x0, int y0, int x1, int y1,
   SDL_RenderDrawLine(ren, x0 * SCALE, y0 * SCALE, x1 * SCALE, y1 * SCALE);
 }
 
-// Placeholder for the area-fill path that uses BLTCON0 family
-// $0dfc / $0fec / $0f4c (file ~0x29b66+).
 inline void draw_fill(SDL_Renderer* ren, int x, int y, int w, int h,
                       Uint8 r = 80, Uint8 g = 80, Uint8 b = 120) {
   int x1 = x + w - 1, y1 = y + h - 1;
@@ -34,27 +38,16 @@ inline void draw_fill(SDL_Renderer* ren, int x, int y, int w, int h,
   SDL_RenderFillRect(ren, &rc);
 }
 
-/*
- * Register mapping recovered for the primary line/fill entry
- * (file 0x29a88, BLTCON0=$09f0):
- *
- *   After coordinate prep the routine stores:
- *     d1 → $330, $334, $338   (intermediate pointers / values)
- *     d7 → $33e               (size word)
- *   Then programs the blitter:
- *     d2 → BLTAPT / BLTBPT ($50/$54)
- *     d0 → BLTCPT           ($44)
- *     d3 → BLTAMOD/BLTCMOD/BLTDMOD ($64/$62/$66)
- *     d7 → BLTSIZE          ($58)
- *
- * Exact geometric meaning of each Dn (start/end vs delta) still TBD;
- * the clamp + these stubs are sufficient for the port to render
- * wireframe geometry once the 3D projector is identified.
- */
+// Mirrors: move.w #MODE, $36e / jsr $12
+inline void dispatch_draw(GfxState& gfx, DrawMode mode) {
+  gfx.draw_mode = static_cast<uint16_t>(mode);
+  // Runtime $12 dispatcher would switch on mode here.
+}
+
+// Mode $1b line path (hunk 35 entry + BLTCON0 $09f0 setup).
 inline void blitter_line_stub(SDL_Renderer* ren, GfxState& gfx,
                               int x0, int y0, int x1, int y1) {
-  // Mirror the mode write seen at hunk-35 entry
-  gfx.draw_mode = 0x1b;
+  dispatch_draw(gfx, DrawMode::Line);
   draw_line(ren, x0, y0, x1, y1);
 }
 
