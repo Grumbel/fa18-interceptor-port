@@ -181,3 +181,27 @@ overall title / attract-mode flow.
 Still at **file 0x9d84** (`jsr $01c8`).  Not directly called from `$64c`;
 reached via a different path (possibly the `$84` setup sequence at
 file 0x9d6c, or another caller of `$01c8`).
+
+## Action table (absolute base 0)
+
+Dispatcher at file `0x9f7c`:
+
+```
+d0 = action index
+asl.l #2, d0          ; ×4
+lea   0.l, a0
+adda.l d0, a0         ; a0 → table[index]
+tst.l (a0)
+beq   skip
+… setup …
+jsr   $78             ; runtime vector
+```
+
+| Index | Offset | Notes |
+|-------|--------|-------|
+| 35 | `$8c` | triggered by `$9d7a` |
+| 36 | `$90` | triggered by `$9d7a` |
+
+Table slots live in the low-memory vector/data area and are **filled at
+runtime** (no static initialisers found for `$8c`/`$90`).  Entry 0 is
+written at file `0xac0` (`move.l d0, $0`).

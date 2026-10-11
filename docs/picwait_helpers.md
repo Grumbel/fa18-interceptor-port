@@ -128,3 +128,43 @@ move.l #0x8a, $5e
 The pointer value used by picture-wait must be written elsewhere
 (register-indirect store, or a later overwrite of `$10`).  Not yet
 found as a direct `move.l ea, $10` of a code/data address.
+
+## Sole caller of picture-wait `$01c8`
+
+**Only one call site**: file `0x9d84`, inside the function starting at
+file `0x9cca` (`link a6, #-2`, runtime `$99ca`).
+
+### Sequence inside that function
+
+```
+… setup …
+jsr $022c                 ; pre-check
+move.l #-1, $10($8)       ; clear slots
+… arithmetic on structure …
+bset #1, $52b             ; set flag (same $52b tested by $64c!)
+
+moveq #4, d0 / moveq #32
+jsr $84                   ; resource/service
+tst.l d0
+beq  skip_picwait
+  move.l $10, a0
+  push 4(a0), (a0)
+  jsr $01c8               ; PICTURE-WAIT
+  move.l $10, a0
+  clr.l  $30(a0)
+  move.l #-1, $10(a0)
+
+moveq #6, d0 / push $800
+jsr $84
+… jsr $02a6 …
+```
+
+### Connection to keyboard path
+
+Both the picture-wait caller and `$64c` touch **`$52b`**:
+
+- Picture-wait path: `bset #1, $52b` (sets bit 1)
+- `$64c`: `btst #7, $52b` (tests bit 7)
+
+Same flag byte, different bits — shared phase/state register for the
+title / attract loop.
