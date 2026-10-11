@@ -101,3 +101,14 @@ move.w #$d, $324       ; mode word
 
 Likely plane-mask and draw-mode selectors invoked before the heavier
 blitter sequences.
+
+## Low-memory state used by blitter path
+
+See `docs/lowmem_vars.md`:
+
+| Addr | Role |
+|------|------|
+| `$36e` | draw mode ID |
+| `$324` | pen / plane select |
+| `$b6`  | bitplane enable mask |
+| `$328` | sentinel |

@@ -11,25 +11,25 @@
 - [x] Picture-wait path documented
 - [x] HUNK_HEADER parsed; runtime zero-buffers identified
 - [x] Blitter hunk 35: viewport 320×180, clamp, mode stubs
-- [x] Blitter register setup documented (BLTCON1, BLTADAT, modulo 40)
-- [x] C++ display constants + line-draw stub; Flight state demo horizon
+- [x] Blitter register setup (BLTCON1, BLTADAT, modulo 40)
+- [x] C++ display constants + line-draw stub; Flight demo horizon
+- [x] Low-mem vars $36e/$324/$b6/$328/$112 mapped
 
 ## Next Steps
 1. [ ] Identify blitter line-draw / polygon-fill entry in hunk 35/36
-2. [ ] Map low-memory vars $328, $36e, $b6, $324
-3. [ ] Trace keyboard test into menu logic
-4. [ ] Identify main flight loop / 3D projection
-5. [ ] Expand C++ 3D stub (points, simple wireframe)
-6. [ ] Real state transitions from RE’d logic
+2. [ ] Trace keyboard test into menu logic
+3. [ ] Identify main flight loop / 3D projection
+4. [ ] Expand C++ 3D stub (points, simple wireframe)
+5. [ ] Real state transitions from RE’d logic
 
 ## Analysis Notes
+- $36e = draw mode, $324 = pen, $b6 = plane mask, $112 = phase
 - Playfield 320×180, blitter modulo 40 bytes
-- Hunk 35: geometry prep; hunk 36: blitter registers
-- Horizon/crosshair demo in Flight state uses recovered coordinates
+- Hunk 35 geometry prep; hunk 36 blitter registers
 
 ## Bundle History
-- fa18-port-024.1-… (superseded)
-- (next: 025.x)
+- fa18-port-025.1-… (superseded)
+- (next: 026.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

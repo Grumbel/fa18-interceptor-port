@@ -1,0 +1,72 @@
+# Low-Memory Graphics / State Variables
+
+Tracked absolute addresses used heavily by the blitter and draw path.
+
+## $36e – Draw / graphics mode
+
+**Type:** word  
+**Writers:** dozens of sites across primary and overlay hunks  
+
+Sample values written:
+
+| Value | Example site | Context |
+|-------|--------------|---------|
+| `$001b` | 0x28274 (hunk 35 entry) | blitter mode stub |
+| `$0001`–`$000a` | 0x1c302–0x1c8e6 | sequential mode IDs |
+| `$003f` | 0x1b0c | |
+| `$0028` | 0xe010 | |
+| `$0046` | 0x2c6e2 | |
+
+Acts as a **current graphics operation / draw-mode ID**.  Different
+callers set it before entering shared blitter primitives so the engine
+knows which style of draw (line, fill, clear, HUD, …) to perform.
+
+## $324 – Plane / pen selector
+
+**Type:** word  
+**Range:** typically `0x00`–`0x0f`  
+
+Common values: 0, 1, 2, 3, 4, 6, 7, 8, 9, 0xa, 0xc, 0xd, 0xf.
+
+Likely a **bitplane mask or colour/pen index** selected for the next
+blitter operation.  Paired with `$b6` plane enables.
+
+## $b6 – Bitplane enable mask
+
+**Type:** long (sometimes written as word)  
+
+| Value | Meaning (inferred) |
+|-------|--------------------|
+| `$000fffff` | enable low 20 bits – standard full mask |
+| `$ffffffff` | all bits |
+| `$0007ffff` | slightly narrower mask |
+| `$0000000f` / `$00000001` | single/few planes |
+
+Controls **which bitplanes the blitter will touch**.  `$fffff` matches
+a 5-plane playfield (bits 0–19 cover five 4-bit-per-pixel style masks
+or simply a wide enable).
+
+## $328 – Sentinel / last-result
+
+**Type:** long (written), word (read once at 0x23fba)  
+
+Written as `$ffffffff` by the hunk-35 stub.  Sparse usage – possibly
+a “no coordinate / invalid” sentinel or last-error flag.
+
+## $112 – High-level state
+
+**Type:** word  
+Set to `3` immediately after the picture-wait function returns
+(file 0x6d6).  Candidate for the game’s **screen / phase index**
+(title → menu → flight, etc.).
+
+## Port mapping
+
+```cpp
+// Approximate modern equivalents
+uint16_t g_draw_mode;    // $36e
+uint16_t g_pen;          // $324
+uint32_t g_plane_mask;   // $b6
+int32_t  g_sentinel;     // $328
+uint16_t g_phase;        // $112
+```
