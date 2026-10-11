@@ -194,3 +194,9 @@ Key anchors now available for static analysis:
 
 Dense cluster of `lea $dff000, …` and blitter-wait loops at
 **0x288c8 – 0x2aa30**.  See `docs/graphics_blitter.md`.
+
+## Jump-table architecture
+
+~197 unique `jsr abs.l` targets below $1000.  The game installs a
+low-memory vector table during startup; most inter-routine calls go
+through it.  See `docs/jump_table.md`.
