@@ -2,9 +2,6 @@
 #include <string>
 #include <vector>
 
-// High-level game states recovered from strings and early analysis.
-// This is a skeleton for the eventual reimplementation.
-
 enum class GameState {
   Startup,
   Title,
@@ -27,9 +24,10 @@ public:
   Game();
   void update();
   GameState state() const { return state_; }
-
-  // Placeholder – will be driven by real input / RE’d logic later
+  const char* state_name() const;
   void request_next();
+  void request_prev();
+  const std::vector<MissionInfo>& missions() const { return missions_; }
 
 private:
   GameState state_ = GameState::Startup;

@@ -61,3 +61,16 @@ SELECTABLE MISSIONS
 - Where the full title/splash bitmap lives
 - How overlays are loaded for different mission / view modes
 - Location of the main flight loop and 3D renderer entry
+
+## Implementation status (C++ skeleton)
+
+A minimal `Game` state machine now exists (`src/game_state.*`).
+
+- States mirror the flow above.
+- SPACE / ENTER advances, BACKSPACE goes back, ESC quits.
+- Window background colour changes with the current state (visual feedback).
+- Mission list is populated from the recovered F-key strings.
+
+Next implementation steps will replace the colour-only screen with real
+asset rendering (ILBMs, later title/cockpit bitmaps) and will drive the
+state transitions from the actual RE’d logic instead of manual keys.

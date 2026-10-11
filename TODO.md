@@ -8,26 +8,28 @@
 - [x] String extraction, library/path/credits documentation
 - [x] Early init disassembly (Forbid → OpenLibrary → $30)
 - [x] High-level flow sketch from strings
-- [x] Documented absolute-address calling convention (~981 jsr abs.l to low memory)
-- [x] Minimal C++ Game state machine (Startup → Title → Enlistment → Qualification → MissionSelect → Flight → Log)
+- [x] Documented absolute-address calling convention (~981 jsr abs.l)
+- [x] Minimal C++ Game state machine
+- [x] Interactive state machine (SPACE/ENTER/BACKSPACE) + colour feedback per state
 
 ## Next Steps
-1. [ ] Resolve the library opened at 0x4b8 and subsequent device/file opens
-2. [ ] Trace control flow from early init to enlistment screen (using string addresses as anchors)
+1. [ ] Resolve library opened at 0x4b8 and subsequent device/file opens
+2. [ ] Trace control flow from early init to enlistment (string addresses as anchors)
 3. [ ] Locate planar bitmaps / copper lists for title & cockpit
-4. [ ] Identify main flight loop and 3D transform entry points
-5. [ ] Expand the C++ state machine with real input handling and placeholder rendering
-6. [ ] Asset pipeline for the existing ILBMs (correct palette, scaling)
-7. [ ] Begin RE of the 3D math (look for matrix / projection constants)
+4. [ ] Expand state machine with on-screen text / ILBM rendering
+5. [ ] Identify main flight loop and 3D transform entry points
+6. [ ] Begin RE of 3D math (matrix / projection / possible sin tables)
+7. [ ] Asset pipeline for the existing ILBMs (correct 5-plane palette)
 
 ## Analysis Notes
-- Game uses fixed / low absolute addresses for almost all inter-routine calls
-- Large zero regions near end of file (possible BSS or padding for unpacked data)
-- Very few classic jsr d16(a6) LVO calls – most OS interaction is after bases are cached
+- Fixed / low absolute addressing for almost all inter-routine calls
+- Large zero regions near end of file
+- Few classic LVO calls; OS interaction after bases are cached
+- Several multi-KB DATA hunks may contain tables or compressed graphics
 
 ## Bundle History
-- fa18-port-005.1-… (superseded)
-- (next: 006.x)
+- fa18-port-006.1-… (superseded)
+- (next: 007.x)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
