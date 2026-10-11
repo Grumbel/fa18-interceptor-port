@@ -112,3 +112,62 @@ See `docs/lowmem_vars.md`:
 | `$324` | pen / plane select |
 | `$b6`  | bitplane enable mask |
 | `$328` | sentinel |
+
+## Line / fill blitter entry points (hunk 36 region)
+
+Several complete blitter setup + wait sequences live near file **0x29a80–0x29b80**.
+
+### Candidate line/fill setup A (file 0x29a88)
+
+```
+lea   $dff000, a0
+btst  #6, 2(a0)          ; wait BBUSY
+… nop loop …
+move.w #$09f0, $40(a0)   ; BLTCON0
+move.w #$000a, $42(a0)   ; BLTCON1
+move.l d2, $50(a0)       ; BLTAPTL?
+move.l d2, $54(a0)
+move.l d0, $44(a0)       ; BLTCPTL?
+move.w d3, $64(a0)       ; BLTAMOD
+move.w d3, $62(a0)
+move.w d3, $66(a0)       ; BLTDMOD
+move.w d7, $58(a0)       ; BLTSIZE → start
+rts
+```
+
+BLTCON0 = `$09f0` is a typical value used for single-plane line or
+area-fill operations (ASHIFT + USEA/USEC/USED bits).
+
+### Candidate B (file 0x29aea)
+
+```
+lea   $dff000, a0
+… wait …
+move.w d4, $40(a0)       ; BLTCON0 from register
+move.w #$0002, $42(a0)
+… pointer / modulo setup …
+rts
+```
+
+### Candidate C (file 0x29b66)
+
+```
+move.w #$0dfc, $40(a0)   ; BLTCON0
+```
+
+Other observed BLTCON0 immediates in the region: `$0d0c`, `$0d3c`,
+`$0fec`, `$0f4c`.  These cover the family of line and fill modes used
+by the engine.
+
+### Port mapping
+
+```cpp
+// Approximate equivalents
+void blitter_line(int x0, int y0, int x1, int y1, uint8_t pen);
+void blitter_fill(int x, int y, int w, int h, uint8_t pen);
+// or SDL_RenderDrawLine / filled rect after the 320×180 clamp
+```
+
+The exact register-to-argument mapping (which Dn holds start/end
+coordinates) still needs a few more traces, but the entry points and
+BLTCON0 values are now identified.

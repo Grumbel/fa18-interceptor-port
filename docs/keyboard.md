@@ -227,8 +227,8 @@ move.l (a0), a1        ; existing?
 move.l d0, (a0)        ; store new structure pointer
 ; then initialise structure fields:
 ;   +4  ← arg
-;   +8  ← #$0166
-;   +c  ← #$003f
+;   +8  ← #$01660000
+;   +c  ← #$003f0000
 ;  +10  ← #1
 ;  +20  ← 0
 …
@@ -249,8 +249,8 @@ move.l a1, (a0)        ; null the slot
 |--------|---------------|-------------------------|
 | +0     | (pointer)     | self / next?            |
 | +4     | caller arg    |                          |
-| +8     | `$0166`       | size / type / flags?    |
-| +c     | `$003f`       |                          |
+| +8     | `$01660000`  | packed / fixed-point?   |
+| +c     | `$003f0000`  |                          |
 | +10    | 1             | active / refcount       |
 | +20    | 0             |                          |
 
