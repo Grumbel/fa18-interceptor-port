@@ -54,6 +54,7 @@
 - [x] Helper 00C2D14E dual sincos; Euler angle→register map
 - [x] C++ builder_A/B + mat_from_angles_q14 in transform.hpp
 - [x] Transform confirmed to read global $be6 (not the +$92 secondary)
+- [x] Flight demo primary cube uses draw_object_fp / mat_from_angles_q14
 
 
 ## Next Steps

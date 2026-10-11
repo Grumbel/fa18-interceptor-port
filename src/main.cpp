@@ -129,8 +129,10 @@ int main(int argc, char* argv[]) {
 
       // Object loop ($72dc) → transform ($77d8) → view translate → project → line
       static float yaw = 0.f;
+      static int angle_q = 0;  // 7200-circle units
       yaw += 0.6f;
       if (yaw > 360.f) yaw -= 360.f;
+      angle_q = (angle_q + 12) % 7200;  // ≈ 0.6° per frame
 
       // Horizon
       fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY,
@@ -154,8 +156,9 @@ int main(int argc, char* argv[]) {
       // Multiple objects (mirrors object-list iteration)
       fa18::Object cube = fa18::make_cube(0.8f);
       cube.orient = fa18::mat_yaw(yaw);
+      cube.orient_fp = fa18::mat_from_angles_q14(angle_q, 0, 0);
       cube.pos = {0.f, 0.f, 6.f};
-      fa18::draw_object(ren, gfx, cube);
+      fa18::draw_object_fp(ren, gfx, cube);  // Q2.14 path
 
       fa18::Object cube2 = fa18::make_cube(0.5f);
       cube2.orient = fa18::mat_yaw(-yaw * 1.5f);
