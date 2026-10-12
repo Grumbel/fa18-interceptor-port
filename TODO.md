@@ -182,6 +182,7 @@
 82. [x] Walker bit14-skip worked example; structure_3A4A8 in Flight demo
 83. [x] DL expansion step: walker a2 points at expanded 800C stream, not raw PP DL
 84. [x] Cmd jump table $00C1E840; 4070→nop; 800C→edge builder; PP not a dispatch key
+85. [x] Two dispatch paths (walker vs jump-table); edge-list builders $84BA family
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -271,6 +272,7 @@
 - [x] Walker bit14-skip worked example (4070 skips 4022); structure_3A4A8 demo
 - [x] DL expansion: a2=$00C37DD8 is flat 800C stream; PP consumed before walker
 - [x] Cmd jump table $00C1E840 (byte-index); 4070=nop, 800C=edge builder
+- [x] Two dispatch paths; edge-list builders $84BA/$8512/$855E → $4ACC8
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -381,7 +383,8 @@
 - fa18-port-158.1-pp-obs-mesh-from-words-hull-demo-dc0339a.bundle (superseded)
 - fa18-port-159.1-walker-skip-worked-example-3a4a8-dc0339a.bundle (superseded)
 - fa18-port-160.1-dl-expansion-step-a2-stream-dc0339a.bundle (superseded)
-- fa18-port-161.1-cmd-jump-table-e840-dc0339a.bundle (current tip)
+- fa18-port-161.1-cmd-jump-table-e840-dc0339a.bundle (superseded)
+- fa18-port-162.1-two-dispatch-paths-edge-builders-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

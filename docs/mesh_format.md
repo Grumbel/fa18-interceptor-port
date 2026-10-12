@@ -103,6 +103,20 @@ parameter words skipped by the primary walker, never as dispatch keys.
 This reinforces that PP is meaningful only to the expansion/setup stage,
 not to either of the two runtime walk/dispatch paths.
 
+**Two dispatch paths summarised:**
+
+| Path | Entry | Classification | Handles |
+|------|-------|----------------|---------|
+| Primary walker | `$00C1D96C` / `$00C08232` | bit15 / bit14-skip / thresh÷8 | Expanded edge streams (`800C`/`804E`/…), raw DLs (skips PP) |
+| Jump-table | `$00C0838E`, `$00C1E468`, … | `(cmd&$3FFF)` byte → `$00C1E840` | Aligned opcodes only (`$00/$0C/$18/$20/$70`/…) |
+
+The jump-table `$0C` handler (`$00C1EBB4`) and siblings at `$00C084BA` /
+`$00C08512` / `$00C0855E` **build the edge list** at `$00C4ACC8`
+(header, count, XYZ triplets from vertex pool `$00C470C8`) — the same
+structure consumed by the DDA body (`$00C231F8`).  Expanded-stream
+opcodes with unaligned low bytes (`$4E`, `$12`, `$2A`) are processed by
+the primary walker, not the jump table.
+
 ## Pointer table / LOD slots
 
 | Abs (load model) | Live | Role |
