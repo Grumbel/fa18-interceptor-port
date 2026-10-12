@@ -6,7 +6,7 @@
 Object type
     │
     ▼
-$00C21000 dispatch table ──► 3D cluster DL  ($00C39700+)
+$00C21000 dispatch table ──► 3D cluster DL  ($00C39700+)   ← raw form with PP
     │                        LOD table       (count+ptrs+hull+mesh)
     │                        Instance pool   ($00C43700+, stride $6A)
     │                        Walker trampoline ($00C1D8A0 → $00C1D96C)
@@ -16,17 +16,25 @@ LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
     │
     ├─► Hull → companion ($00C1CD38 transform, stride 256)
     │
-    └─► Display list walk ($00C1D96C / $00C08232)
+    └─► DL expansion / setup  ◄── PP consumed here (unlocated)
+            │
+            ▼
+        Expanded edge stream ($00C37Dxx in snapshot)
+            mostly 800C/8012/804E groups, few residual 4xxx
+            dual ptrs: $00C4476E (edge a2) + $00C44772 (secondary)
+            │
+            ▼
+        Display list walk ($00C1D96C / $00C08232)
             bit15 → edge cmds ($800C verts, $8018+attrs, $80LL end)
-            bit14 → $4xxx skip-next (PP low byte not consumed here)
+            bit14 → $4xxx skip-next (param word)
             else  → threshold filter / in-list offset
             │
             ▼
-        Pen from separate a2 stream → $5ee line draw
+        Pen from a2 stream → $5ee line draw
 ```
 
-**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` low-byte consumer;
-edge-attr semantics beyond residual style/flags hypothesis.
+**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` consumer in the expansion
+step; edge-attr semantics beyond residual style/flags hypothesis.
 
 ### PP / $70 observations (still open)
 
@@ -44,8 +52,22 @@ edge-attr semantics beyond residual style/flags hypothesis.
 - The geometry walker only tests **bit 14** of `$4xxx` (skip-next); the low
   byte of `$4070` / `$40PP` is **not** consumed on that path.
 - No `cmpi.w #$4070` (or `$40xx`) appears in the live CODE image; classification
-  is bit-driven.  Consumer of the PP value itself remains unlocated (likely a
-  setup/state path that runs before the walker or while building pens).
+  is bit-driven.
+
+**Runtime evidence for an expansion step:**
+
+- Dispatch table points at the **raw** cluster DLs (`4070 40PP …` at
+  `$00C3977A` etc.).
+- At the in-flight snapshot, the walker’s a2 (`$00C4476E`) points at
+  `$00C37DD8` — an **expanded** edge stream (flat `800C` groups with
+  vertex indices and `804E`/`FD02` end markers), *not* the raw DL.
+- A secondary pointer `$00C44772` = `$00C37DC8` (16 bytes earlier) still
+  contains residual `4xxx` words, suggesting a partially-expanded or
+  dual-stream layout.
+- Multiple call sites (`$00C1B7C8`, `$00C1B978`, `$00C1BAF2`) load the
+  dual pointers from a table then `jsr (a0)` into the walker.
+- Therefore PP is consumed during the (still unlocated) expansion /
+  setup that produces the `$00C37Dxx` stream from the raw cluster DL.
 
 ## Pointer table / LOD slots
 
