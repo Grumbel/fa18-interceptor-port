@@ -474,3 +474,65 @@ pattern; the walker selects based on vertex order and clip signs.
 - [x] `jsr $5ee` for span output
 - [ ] Exact fixed-point format of pre-perspective coords
 - [ ] Port walker+perspective into C++ draw path
+
+## `$4202` structure (refined)
+
+### Layout (12-byte records)
+
+From the loop bound at file `0x25B76` (`cmpa.l #$420E, a1` →
+`$420E − $4202 = 12`):
+
+| Offset | Alternate drawer (`0x28374`) | Walker (`0x2844E`) |
+|--------|------------------------------|-------------------|
+| +0 | X  `(a1)+ → d0` | `movem (a1)+ → d3` |
+| +2 | Y  `(a1)+ → d1` | `→ d4` |
+| +4 | Z  `(a1)+ → d2` | `→ d5` |
+| +6 | (next / clip) | after inc: base of remaining; `6(a1)` reads **+12** (next record X) |
+| +8 | | |
+| +$a | | `10(a1)` reads **+16** |
+
+So `$4202` is a **stream of 3D vertices** (X, Y, Z words), not a
+fixed viewport structure.  The “clip bounds” observed earlier are
+either neighbouring vertex components or path-specific compares
+against other vertices in the list.
+
+### Alternate drawer perspective (exact)
+
+```asm
+lea     $4202, a1
+move.w  (a1)+, d0            ; X
+move.w  (a1)+, d1            ; Y
+move.w  (a1)+, d2            ; Z
+; clip tests …
+muls.w  #160, d0             ; $A0
+divs.w  d2, d0
+addi.w  #160, d0             ; sx = X*160/Z + 160
+; clamp to [0, $13F]
+muls.w  #90, d1              ; $5A
+divs.w  d2, d1
+addi.w  #90, d1              ; sy = Y*90/Z + 90
+; clamp to [0, $B4)
+; … store / jsr $5ee …
+```
+
+This is the classic centred projection already mirrored by
+`project()` in `transform.hpp` (160/90).  Confirms playfield
+centre = (160, 90) and focal lengths 160 / 90.
+
+### In-flight snapshot values
+
+| Off | Value | As |
+|-----|------:|----|
+| +0 | 3822 | X |
+| +2 | −860 | Y |
+| +4 | −2326 | Z (behind or large depth) |
+| +6.. | 2422, −305, −145 | next vertex / residual |
+| +$c… | 0 | end of active list |
+
+### Status
+
+- [x] 12-byte record size (`$4202`..`$420E`)
+- [x] +0/+2/+4 = X/Y/Z vertex
+- [x] Alternate path exact perspective (×160/÷Z+160, ×90/÷Z+90)
+- [x] Matches existing C++ `project()`
+- [ ] Walker’s use of `6(a1)`/`10(a1)` after post-inc (next-record vs bounds)

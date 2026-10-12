@@ -91,12 +91,12 @@
 10. [x] Resolve $5ee → edge/span helper at $00C2E5D6
 11. [x] Full $5ee path_hi/lo/tail; span_setup in draw.hpp
 12. [x] Live $4202 mapped to $00C4B2CA
-13. [ ] $4202 full field semantics
+13. [x] $4202 = 12-byte XYZ vertex records; alternate perspective ×160/90 exact
 14. [x] Overlay residency map: ~72/77 CODE hunks resident mid-flight
 15. [x] Mode $01 DDA body + $16 walker decoded; $1b is stub-only
-16. [x] Walker → perspective → $5ee chain complete (bias 90/180/~319)
-17. [x] Port walker+perspective into C++ (EdgeDesc, walker_draw, perspective_edge)
-18. [x] Wire walker_draw demo (diamond + in-flight $4202 bounds) into main loop
+16. [x] Walker → perspective → $5ee chain complete
+17. [x] Port walker+perspective into C++
+18. [x] Wire walker_draw demo into main loop
 19. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
 20. [x] Action create body at $00C4F010 decoded; clear partial
 21. [ ] Full action clear body (+$3EE past on-disk image end)
@@ -142,7 +142,8 @@
 - fa18-port-072.1-mode-01-16-bodies-dc0339a.bundle (superseded)
 - fa18-port-073.1-walker-perspective-5ee-dc0339a.bundle (superseded)
 - fa18-port-074.1-walker-cpp-port-dc0339a.bundle (superseded)
-- fa18-port-075.1-walker-demo-main-dc0339a.bundle (current tip)
+- fa18-port-075.1-walker-demo-main-dc0339a.bundle (superseded)
+- fa18-port-076.1-4202-xyz-perspective-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
