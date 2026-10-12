@@ -63,10 +63,12 @@ struct PlayerAttitude {
   int16_t raw_rate[3] = {};
   // Filtered rates (+$56/+$58/+$5A)
   int16_t rate[3] = {};
-  // Euler angles in 7200-circle units:
-  //   angle[0] = roll  (R_x)  at +$68  ← integrated from rate[0]
-  //   angle[1] = pitch (R_y)  at +$6A  ← integrated from rate[1]
-  //   angle[2] = yaw   (R_z)  at +$6C  (integration path TBD; rate[2] active)
+  // Euler angles (matrix path loads +$66/+$68/+$6A):
+  //   angle[0] at +$66  roll  (R_x)  — matrix angle0
+  //   angle[1] at +$68  pitch (R_y)  — integrated from rate[0]
+  //   angle[2] at +$6A  yaw   (R_z)  — integrated from rate[1]
+  // Native unit is fine 57600-circle (asr#3 → 7200 table).
+  // rate[2] (yaw rate) integration into angle[0] still open.
   int16_t angle[3] = {};
   uint8_t mode = 0x10;   // +$62 curve select
   int16_t scale = 10;    // rate filter divisor 5..15

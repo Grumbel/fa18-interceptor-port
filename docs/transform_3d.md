@@ -1271,3 +1271,29 @@ Mid-flight snapshot: rate2=296 (yaw active), rate0/1≈0; angle0=2240, angle1=88
 - [x] angle0/1 = roll/pitch with integrator linkage
 - [x] rate2 filtered to +`$5A` (yaw rate)
 - [ ] yaw angle (D6) source; rate2→angle2 path
+
+## Three-angle field map (revised)
+
+Full matrix path `$00C2C69E` / `$00C2CF36`:
+
+```asm
+movem.w $66(a0), d0/d2/d4    ; +$66, +$68, +$6A
+asr.w   #3, d0/d2/d4
+bsr     dual_sincos + sincos  ; three Euler angles
+```
+
+| Off | Mid-flight | asr#3 | Role in matrix path |
+|-----|----------:|------:|---------------------|
+| +`$66` | `$6D78` (28024) | 3503 | **angle0** (roll in builder-B isolation) |
+| +`$68` | `$08C0` (2240) | 280 | **angle1** (pitch) |
+| +`$6A` | `$0058` (88) | 11 | **angle2** (yaw) |
+
+Note: the **integrator** `$00C2C418` updates +`$68` and +`$6A` only (from rate0/rate1).  End of that block does `movem.w d4-d6, $66(a1)` (`$00C2C4AE`), writing three registers back across +`$66`/+`$68`/+`$6A`.
+
++$66 is a real attitude angle (fine 57600-unit circle: 28024/57600×360° ≈ 175°), not a gate.  Rate2 (+`$5A`) still lacks a confirmed `+=`/`-=` into +`$66`.
+
+### Status
+
+- [x] +`$66`/+`$68`/+`$6A` = three Euler angles for matrix path
+- [x] +`$66` in 57600-unit circle (valid attitude, not gate)
+- [ ] rate2 → +`$66` integration step

@@ -116,7 +116,7 @@
 29. [x] Integrator $00C2C418: +$68-=d5, +$6A-=d6; clamps in 7200-circle units
 29b. [x] Rates +$50..+$5A; filter $00C2C1F0; stick curve →+$50
 29c. [x] Three rate writers ($50/$52/$54); curves by $62 mode
-29d. [~] roll/pitch labeled (+$68/+$6A); yaw rate at +$5A; yaw angle path open
+29d. [~] +$66/+$68/+$6A = 3 Euler angles; rate2→+$66 still open
 29g. [x] C++ JoyAxes + joy_update from JOY0DAT
 29e. [x] C++ PlayerAttitude + filter_rates + integrate_attitude
 29f. [x] Rate auto-center $00C2C476; input var map $4b0/$4b2/$448A0
@@ -193,7 +193,8 @@
 - fa18-port-101.1-joy0dat-stick-path-dc0339a.bundle (superseded)
 - fa18-port-102.1-rate-matrix-projection-dc0339a.bundle (superseded)
 - fa18-port-103.1-object0-filesize-dc0339a.bundle (superseded)
-- fa18-port-104.1-roll-pitch-labels-dc0339a.bundle (current tip)
+- fa18-port-104.1-roll-pitch-labels-dc0339a.bundle (superseded)
+- fa18-port-105.1-angle66-matrix-path-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
