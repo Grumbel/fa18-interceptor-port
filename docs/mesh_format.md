@@ -280,17 +280,30 @@ Axxx
 
 **`80LL`**: low 12 bits = byte offset from DL start to trailing section.
 
-**`Axxx`**: `DL_start + Axxx` converges to `$00C439BE` for the three
-standard aircraft — relocated absolute pointers or shared runtime table.
-Low-12 as pure DL-relative offsets land in neighbouring records.
+**`Axxx`**: absolute pointers into a **runtime mesh-instance area**
+(`$00C43700`–`$00C43B00`).  For the three standard aircraft,
+`DL_start + Axxx` → `$00C439BE` (inside instance `$00C439B2`).
+
+Instance descriptor layout:
+
+```
+04D0                    ; type / size tag
+00C4 xxxx → ptr A       ; sub-structure
+00C4 yyyy → ptr B
+8078 …                  ; edge/attr commands (same encoding as DL)
+```
+
+Table at `$00C21400` maps slots → static DL starts (`$00C39842`, …) or
+these runtime instances, interleaved with shared handler `$00C08232`.
 
 **`PP` / `$70`**: meaning still open (pen, scale, or render flags).
-Note: `move.w #$70` at `$00C2F4A2` is radar scroll math, not DL setup.
+Tags (`0100 0200` / `0100 0300`) do not correlate with PP.
+`move.w #$70` at `$00C2F4A2` is radar scroll, not DL.
 
 ## Open
 
 - [~] Display-list edge encoding + offset base + `80LL` end-offset known;
-      `PP`/`$70` and `Axxx` exact meaning still open
+      `PP`/`$70` still open; `Axxx` → runtime instance pool
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
