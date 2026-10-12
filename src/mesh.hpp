@@ -297,12 +297,23 @@ inline Mesh mesh_aircraft_39738() {
     V(  40, 400,  -40),  // 8 vertical / canopy
     V(   0, 100,    0),  // 9 center-up
   };
+  // Edges extracted from dump offset-table sub-lists (DL+$02D6..$035C).
+  // Topology: nose/body/wing triangles; pens = attr_hi/4 (unconfirmed).
   m.edges = {
-    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
-    {3, 0}, {3, 2}, {3, 9},
-    {7, 0}, {7, 6}, {7, 9},
-    {0, 2}, {2, 4}, {4, 6}, {6, 0},
-    {8, 0}, {8, 9}, {8, 1},
+    {1, 2}, {2, 4}, {4, 1},
+    {2, 6}, {6, 7}, {7, 2},
+    {2, 3}, {3, 5}, {5, 2},
+    {6, 3}, {5, 6},
+    {3, 1}, {1, 0}, {0, 3},
+    {0, 4}, {4, 7}, {7, 0},
+  };
+  m.edge_pens = {
+    7, 7, 7,
+    6, 6, 6,
+    4, 4, 4,
+    3, 3,
+    2, 2, 2,
+    1, 1, 1,
   };
   // Raw DL start: 4070 4022 C016 4240 0022 C016 4380 0022 …
   m.display_list = {
