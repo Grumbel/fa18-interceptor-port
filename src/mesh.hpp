@@ -77,22 +77,23 @@ struct DispatchSlot {
 };
 
 // Known 7FFF-separated cluster record starts ($00C39710–$00C3A980).
+// Returns the record start if live_addr falls within 0x200 of one,
+// otherwise 0 (caller must not treat pure DL streams as cluster records).
 inline uint32_t cluster_record_start(uint32_t live_addr) {
   static const uint32_t kRecords[] = {
       0x00C39710, 0x00C397D8, 0x00C3989E, 0x00C39958,
       0x00C39B3E, 0x00C39D92, 0x00C39F38, 0x00C3A980,
   };
-  uint32_t best = live_addr;
+  uint32_t best = 0;
   for (uint32_t r : kRecords) {
     if (r <= live_addr)
       best = r;
     else
       break;
   }
-  // Only remap when the stream sits near a known record (within 0x200)
-  if (best != live_addr && live_addr - best < 0x200)
+  if (best && live_addr - best < 0x200)
     return best;
-  return live_addr;
+  return 0;
 }
 
 // Read a dispatch slot from the inflight CODE dump by live address.
@@ -987,12 +988,13 @@ inline Mesh mesh_structure_3A980() {
 inline Mesh mesh_instance_4335E() {
   Mesh m;
   m.name = "instance_$00C4335E";
+  // Raw dump verts are coarse; ÷64 into typical mesh units
   m.verts = {
     V(   0,   0,    0),  // 0
-    V( 640, -896, -448),  // 1
-    V(-512, -512,  448),  // 2
-    V(-256,  512,  384),  // 3
-    V(1280,    0,    0),  // 4  (FFFF terminator absorbed)
+    V(  10, -14,   -7),  // 1
+    V(  -8,  -8,    7),  // 2
+    V(  -4,   8,    6),  // 3
+    V(  20,   0,    0),  // 4
   };
   // Coarse star / cross for distant LOD
   m.edges = {

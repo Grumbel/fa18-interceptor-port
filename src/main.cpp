@@ -285,14 +285,33 @@ int main(int argc, char* argv[]) {
                     << " pos=(" << std::dec << wx << "," << wz << ")\n";
           uint32_t stream = slot.stream[0];
           if (!stream) continue;
-          uint32_t rec = fa18::cluster_record_start(stream);
-          if (std::find(seen.begin(), seen.end(), rec) != seen.end())
-            continue;
-          seen.push_back(rec);
+          fa18::Mesh m;
           char name[64];
-          std::snprintf(name, sizeof(name), "scene_stream_$%06X", rec);
-          auto m = fa18::mesh_from_dump_file(dump, rec, 512, name);
-          if (!m.verts.empty()) {
+          // Cluster 7FFF records only — pure DL streams lack verts and
+          // produce garbage geometry (long lines across the view).
+          uint32_t rec = fa18::cluster_record_start(stream);
+          if (rec) {
+            if (std::find(seen.begin(), seen.end(), rec) != seen.end())
+              continue;
+            seen.push_back(rec);
+            std::snprintf(name, sizeof(name), "scene_cluster_$%06X", rec);
+            m = fa18::mesh_from_dump_file(dump, rec, 512, name);
+          } else if (stream >= 0x00C43000 && stream < 0x00C45000) {
+            if (std::find(seen.begin(), seen.end(), stream) != seen.end())
+              continue;
+            seen.push_back(stream);
+            std::snprintf(name, sizeof(name), "scene_inst_$%06X", stream);
+            m = fa18::mesh_from_instance_dump(dump, stream, name);
+            // Instance verts are coarse (±8k); scale down to mesh units
+            for (auto& v : m.verts) {
+              v.x *= (1.0f / 64.0f);
+              v.y *= (1.0f / 64.0f);
+              v.z *= (1.0f / 64.0f);
+            }
+          } else {
+            continue;  // pure DL ($35/$36/$39690) — no vertex header yet
+          }
+          if (!m.verts.empty() && !m.edges.empty()) {
             logm(m);
             sceneMeshes.push_back({std::move(m), wx, wz});
           }
@@ -312,7 +331,12 @@ int main(int argc, char* argv[]) {
           char name[64];
           std::snprintf(name, sizeof(name), "instance_$%06X", stream);
           auto m = fa18::mesh_from_instance_dump(dump, stream, name);
-          if (!m.verts.empty()) {
+          if (!m.verts.empty() && !m.edges.empty()) {
+            for (auto& v : m.verts) {
+              v.x *= (1.0f / 64.0f);
+              v.y *= (1.0f / 64.0f);
+              v.z *= (1.0f / 64.0f);
+            }
             logm(m);
             float wx = scenesB[i].coord_a / 256.0f;
             float wz = scenesB[i].coord_b / 256.0f;

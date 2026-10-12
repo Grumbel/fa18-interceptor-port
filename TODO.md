@@ -197,6 +197,7 @@
 97. [x] Instance-pool format ($43xxx); mesh_instance_4335E in demo
 98. [x] mesh_from_instance_dump auto-loader; list-B streams in demo
 99. [x] 60xx = PP secondary form for $35/$36xxx family (parallel to 40PP)
+100. [x] Skip pure-DL streams in auto-load; scale instance verts ÷64
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -302,6 +303,7 @@
 - [x] Instance-pool $43xxx format; mesh_instance_4335E
 - [x] mesh_from_instance_dump; list-B instance streams auto-loaded
 - [x] 60xx PP encoding for $35/$36xxx streams; C1xx group sep
+- [x] Auto-load only cluster/instance records; ÷64 instance scale (fix long lines)
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -427,7 +429,8 @@
 - fa18-port-173.1-scene-coords-q88-positioning-dc0339a.bundle (superseded)
 - fa18-port-174.1-instance-pool-mesh-4335e-dc0339a.bundle (superseded)
 - fa18-port-175.1-instance-dump-loader-listb-dc0339a.bundle (superseded)
-- fa18-port-176.1-60xx-pp-secondary-form-dc0339a.bundle (current tip)
+- fa18-port-176.1-60xx-pp-secondary-form-dc0339a.bundle (superseded)
+- fa18-port-177.1-fix-autoload-garbage-dl-scale-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

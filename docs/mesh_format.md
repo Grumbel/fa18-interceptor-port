@@ -703,6 +703,8 @@ draw path).  The actual PP consumer remains open.
 - `DispatchSlot` / `dispatch_slot_from_dump()` — handler + stream×3 from $21000
 - `cluster_record_start()` — map stream addr to enclosing 7FFF record
 - `mesh_from_instance_dump()` — instance-pool ($43xxx) N+XYZ loader
+- Auto-load skips pure DL streams ($35/$36/$39690) — no vertex header; would
+  parse opcodes as coords and draw long garbage lines.  Instance verts ÷64.
 - `mesh_aircraft_39738/39800/…` — hand-authored with dump-derived edges
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
 
