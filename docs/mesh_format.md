@@ -47,8 +47,19 @@ record = $00C4C4F4 + slot×256 + 2
 ```
 
 First two bytes are compared to `object+0x30` and `+0x32` with
-tolerance ±1; mismatch rejects the slot.  Rest of the record holds
-packed attribute / 2-D data (`FFFF` terminators visible).
+tolerance ±1; mismatch rejects the slot.
+
+**Runtime-populated:** `$00C1CD88` writes into companion records
+(copies word streams from `a0` — likely projected hull / attributes).
+Structure of a live record:
+
+```
+[2 match bytes] [word pairs …] FFFF FFFF [more word pairs …]
+```
+
+Pre-FFFF pairs look like 2-D coordinates (large fixed-point); post-FFFF
+holds additional attribute / coordinate data.  Exact coordinate space
+still open.
 
 ### Observed live slots
 
@@ -207,10 +218,14 @@ C00C 0006 0030 0036 8024 …   ; polyline variant
 
 | Cmd | Role |
 |-----|------|
-| `$800C` | begin edge/poly; following words = byte-offsets (÷6 → vert) until next `$8xxx` |
-| `$8000` | end of current edge group |
-| `$8018`/`$8024`/`$802A`/`$801E` | edge group; flags in low byte |
-| `$C00C` | polyline / alternate edge class |
+| `$800C` | **begin** edge/poly; following words = byte-offsets (÷6 → vert) |
+| `$8000` | **end** group (no attributes) |
+| `$8018`/`$801E`/`$8024`/`$802A` | **end** group with attribute word(s) following (e.g. `$1007`, `$0C07`, `$0808`) |
+| `$C00C` | polyline / alternate edge class (same vert encoding) |
+
+`$800C` is typically followed by 2–3 vert indices (line or triangle).
+The end-with-attrs forms (`$18`/`$1E`/`$24`/`$2A`) carry a packed
+attribute word — colour/style candidate; exact field breakdown open.
 
 `mesh_edges_from_dl()` uses DL-start as the offset base.
 
@@ -254,13 +269,15 @@ Low-12 as pure DL-relative offsets land in neighbouring records.
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
-- [ ] Remaining companion-record bytes (attribute / 2-D payload)
+- [x] Companion records runtime-written at `$00C1CD88`; match-bytes + 2-D pairs
 - [x] 2D hull captured in Mesh; runtime consumer of hull pairs still open
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
-- [ ] Full face/poly strip interpretation (cmd low-byte flags `$18`/`$24`/…)
+- [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
+- [ ] Attribute word field breakdown (`$1007`, `$0C07`, …)
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
+- [ ] Companion coordinate space / how hull projects into companion pairs
 
 ## Port
 
