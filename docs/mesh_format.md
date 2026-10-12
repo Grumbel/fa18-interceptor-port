@@ -46,6 +46,10 @@ found); edge-attr semantics beyond residual style/flags hypothesis.
 | (36xxx)| 4070  | —    | second word is **60xx**, not 40PP |
 
 - Aircraft use `4070 40PP C016 … 00PP C016` (PP restated after each group).
+- **$35xxx/$36xxx family** uses `40xx 60PP C1xx` — the secondary word is
+  **`$60PP`** (not `$40PP`).  Same PP role, different high nibble.
+  Examples: `4058 6058 C162`, `4064 6014 A07A`, `4058 602C C152`.
+  Group separator is `$C1xx` (vs aircraft `$C016`).
 - Many non-aircraft DLs use `4070 60xx C1xx` instead — different command class.
 - The geometry walker only tests **bit 14** of `$4xxx` (skip-next); the low
   byte of `$4070` / `$40PP` is **not** consumed on that path.
@@ -73,6 +77,28 @@ Earlier hypothesis of a runtime “expansion step” that consumes PP is
 - Preflight vs inflight differ in this region because different
   overlays / active drawables are resident — not because of a live
   expander.
+
+
+### 60xx secondary form ($35xxx/$36xxx streams)
+
+Parallel to aircraft `40PP`, these streams encode the group parameter as
+`$60PP`:
+
+```
+40xx 60PP C1yy …     ; setup, PP secondary, group sep
+40zz 60PP C1ww …
+```
+
+| Stream | Pattern | PP (lo of 60xx) |
+|--------|---------|-----------------|
+| `$367C8` | `4058 6058 C162` / `4070 6058 C170` | `$58` |
+| `$367F4` | `4058 602C C152` / `4070 602C C160` | `$2C` |
+| `$35EEA` | `4064 6014 A07A` / `40B8 6014` | `$14` |
+| `$36CDE` | `4880 600E A076` | `$0E` |
+
+Walker still only tests bit14 of `$4xxx`; `$60xx` has bit14 clear so it
+is classified as a non-edge, non-skip command and falls through the
+threshold path.  PP consumer remains open for both encodings.
 
 **PP remains open:** neither the primary walker nor the jump-table path
 consumes the low byte of `$40PP`.  It is most likely an offline /

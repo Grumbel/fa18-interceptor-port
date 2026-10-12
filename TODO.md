@@ -196,6 +196,7 @@
 96. [x] Scene coords as Q8.8 XZ; demo positions meshes from scene list
 97. [x] Instance-pool format ($43xxx); mesh_instance_4335E in demo
 98. [x] mesh_from_instance_dump auto-loader; list-B streams in demo
+99. [x] 60xx = PP secondary form for $35/$36xxx family (parallel to 40PP)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -268,8 +269,9 @@
 - [x] `$5400` pointers = **hull starts**; `$00C1CD38` is the hull→companion transform
 - [x] Companion transform: `asl.l d7` scale, add d2/d4 translate, `andi #$3FFF`
 - [~] Attr word: hi/4 = colour candidate (0..7), lo = style; `$100B` most common
-- [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-      (ADF-static; walker tests only bit14 of `$4xxx`; low-byte consumer not located)
+- [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA` / `$58`/`$14` via 60xx)
+      and setup `$70` (ADF-static; walker tests only bit14 of `$4xxx`;
+      `$60PP` is the $35/$36xxx secondary encoding; low-byte consumer not located)
 - [x] `$100B` attrs are 3D-cluster-only (12×); instance pool uses simpler edges (0×)
 - [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
 - [x] Link-graph DL (39B66): `$80xx`/`$C0xx` lo≥`$30` = intra-DL byte-offset link
@@ -299,6 +301,7 @@
 - [x] Scene coord_a/b as Q8.8 XZ (hypothesis); demo places meshes
 - [x] Instance-pool $43xxx format; mesh_instance_4335E
 - [x] mesh_from_instance_dump; list-B instance streams auto-loaded
+- [x] 60xx PP encoding for $35/$36xxx streams; C1xx group sep
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -423,7 +426,8 @@
 - fa18-port-172.1-scene-stream-mesh-autoload-dc0339a.bundle (superseded)
 - fa18-port-173.1-scene-coords-q88-positioning-dc0339a.bundle (superseded)
 - fa18-port-174.1-instance-pool-mesh-4335e-dc0339a.bundle (superseded)
-- fa18-port-175.1-instance-dump-loader-listb-dc0339a.bundle (current tip)
+- fa18-port-175.1-instance-dump-loader-listb-dc0339a.bundle (superseded)
+- fa18-port-176.1-60xx-pp-secondary-form-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
