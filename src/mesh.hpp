@@ -77,22 +77,27 @@ struct DispatchSlot {
 };
 
 // Known 7FFF-separated cluster record starts ($00C39710–$00C3A980).
-// Returns the record start if live_addr falls within 0x200 of one,
+// Returns the record start if live_addr falls within range of one,
 // otherwise 0 (caller must not treat pure DL streams as cluster records).
+//
+// Pure DLs that sit immediately before a record (e.g. $39690 → $39710)
+// are mapped forward to the next record so scene streams that only hold
+// the edge list still resolve to a full mesh with verts.
 inline uint32_t cluster_record_start(uint32_t live_addr) {
   static const uint32_t kRecords[] = {
       0x00C39710, 0x00C397D8, 0x00C3989E, 0x00C39958,
       0x00C39B3E, 0x00C39D92, 0x00C39F38, 0x00C3A980,
   };
-  uint32_t best = 0;
-  for (uint32_t r : kRecords) {
-    if (r <= live_addr)
-      best = r;
-    else
-      break;
+  // Prefer a record that contains or immediately follows the stream
+  for (size_t i = 0; i < sizeof(kRecords) / sizeof(kRecords[0]); ++i) {
+    const uint32_t r = kRecords[i];
+    // stream inside this record's body (cap +0x180 to avoid eating neighbour)
+    if (live_addr >= r && live_addr < r + 0x180)
+      return r;
+    // pure DL just before this record (within 0x80 bytes)
+    if (live_addr < r && r - live_addr <= 0x80)
+      return r;
   }
-  if (best && live_addr - best < 0x200)
-    return best;
   return 0;
 }
 
