@@ -214,10 +214,43 @@ C00C 0006 0030 0036 8024 …   ; polyline variant
 
 `mesh_edges_from_dl()` uses DL-start as the offset base.
 
+## Top-level DL structure (aircraft)
+
+```
+4070              ; setup (lo=$70 common across aircraft)
+40PP              ; set group parameter PP
+C016              ; separator
+42/43/45xx        ; secondary command (lo often $40/$00/$80)
+00PP              ; restate group param
+C016
+43/45xx 00PP
+Axxx              ; pointer (see below)
+80LL              ; end marker: DL_start+(80LL&$FFF) → trailing/7FFF
+Axxx
+[offset table…]   ; byte offsets from DL start → edge sub-lists
+[trailing 2D…]
+7FFF
+```
+
+| Mesh | PP | 80LL end-off | Verified |
+|------|-----|--------------|----------|
+| 39738 | `$22` | `$5C` | `$3977A+$5C` → `0072 7FFF` |
+| 39800 | `$20` | `$5A` | `$39842+$5A` → `0070 7FFF` |
+| 398C6 | `$20` | `$5A` | same pattern |
+| 39E00 | `$BA` | `$F4` | larger model |
+
+**`80LL`**: low 12 bits = byte offset from DL start to trailing section.
+
+**`Axxx`**: `DL_start + Axxx` converges to `$00C439BE` for the three
+standard aircraft — relocated absolute pointers or shared runtime table.
+Low-12 as pure DL-relative offsets land in neighbouring records.
+
+**`PP` / `$70`**: meaning still open (pen, scale, or render flags).
+
 ## Open
 
-- [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
-      offset base = DL start; top-level low-byte params still open
+- [~] Display-list edge encoding + offset base + `80LL` end-offset known;
+      `PP`/`$70` and `Axxx` exact meaning still open
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
@@ -225,9 +258,9 @@ C00C 0006 0030 0036 8024 …   ; polyline variant
 - [x] 2D hull captured in Mesh; runtime consumer of hull pairs still open
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
-- [x] Offset-table base = DL start (byte offsets from first opcode)
-- [ ] Full face/poly strip interpretation (cmd low-byte flags)
-- [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
+- [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
+- [ ] Full face/poly strip interpretation (cmd low-byte flags `$18`/`$24`/…)
+- [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
 
 ## Port
 

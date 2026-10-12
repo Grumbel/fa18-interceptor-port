@@ -156,6 +156,7 @@
 56. [~] $00C2FF10 is radar scope pair-walker but data is fixed overlay ($00C4D454), not mesh hull
 57. [x] DL sub-list edge cmds refined: 800C begin, 8000 end, C00C polyline
 58. [x] Offset-table base = DL start (byte offsets); mesh_edges_from_dl() fixed
+59. [x] Top-level DL: 4070/40PP/C016 pattern; 80LL = end-of-DL offset; Axxx reloc pointers
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -213,7 +214,9 @@
 - [~] `$00C2FF10` radar pair-walker uses fixed overlay `$00C4D454`, not mesh hull
 - [x] DL sub-list cmds: `$800C` begin edges, `$8000` end group, `$C00C` polyline
 - [x] Offset-table base = DL start (byte offsets from first opcode word)
-- [ ] Top-level low-byte params (`$70`, `$22`/`$20`/`$BA`) exact meaning
+- [x] Top-level pattern `4070 40PP C016 …`; `80LL` = end-of-DL byte offset
+- [~] `Axxx`: DL+Axxx → fixed `$00C439BE` (relocated ptr / shared table)
+- [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
 - [ ] Companion record payload beyond the first 2 match-bytes
 - [ ] Runtime consumer of mesh 2-D hull pairs
 
@@ -300,7 +303,8 @@
 - fa18-port-132.1-cluster-record-hull-2d-dc0339a.bundle (superseded)
 - fa18-port-133.1-radar-hull-consumer-dc0339a.bundle (superseded)
 - fa18-port-134.1-dl-sublist-refine-radar-correct-dc0339a.bundle (superseded)
-- fa18-port-135.1-offset-table-dl-base-dc0339a.bundle (current tip)
+- fa18-port-135.1-offset-table-dl-base-dc0339a.bundle (superseded)
+- fa18-port-136.1-toplevel-dl-pattern-80ll-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
