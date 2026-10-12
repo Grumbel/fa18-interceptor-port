@@ -705,6 +705,43 @@ inline Mesh mesh_structure_3A4A8() {
 }
 
 // Draw mesh in world space with orientation + position.
+
+// ---------------------------------------------------------------------------
+// Structure from $00C3A980 (tags 0100/0300, N=7+ continuing verts)
+// Symmetric ring cross-section — building/pad style.
+// ---------------------------------------------------------------------------
+inline Mesh mesh_structure_3A980() {
+  Mesh m;
+  m.name = "structure_$00C3A980";
+  m.tag0 = 0x0100;
+  m.tag1 = 0x0300;
+  m.hull = {
+    {480, 0}, {146, 0}, {219, 368}, {-152, 152},
+    {-170, 170}, {368, -152}, {152, -170}, {170, 0},
+  };
+  m.verts = {
+    V(  12,   0,  -21),  // 0
+    V(   0,   2,  -93),  // 1
+    V( -12,   0,  -21),  // 2
+    V( -80,   2,  -46),  // 3
+    V( -24,   0,    0),  // 4
+    V( -80,   2,   46),  // 5
+    V( -12,   0,   21),  // 6
+    V(   0,   2,   93),  // 7
+    V(  12,   0,   21),  // 8
+    V(  80,   2,   46),  // 9
+    V(  24,   0,    0),  // 10
+    V(  80,   2,  -46),  // 11
+  };
+  // Ring + spokes (dump C00C groups incomplete in short window; hand topology)
+  m.edges = {
+    {0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,8},{8,9},{9,10},{10,11},{11,0},
+    {0,2},{2,6},{6,8},{8,0},
+    {1,7},{3,5},{9,11},
+  };
+  return m;
+}
+
 inline void draw_mesh(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
                       const Mat3Fixed& orient, const Vec3& pos, int pen) {
   gfx.pen = static_cast<uint16_t>(pen);

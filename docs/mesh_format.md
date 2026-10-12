@@ -79,6 +79,40 @@ consumes the low byte of `$40PP`.  It is most likely an offline /
 asset-build parameter, or a state value for a path not active in the
 in-flight snapshot.
 
+### Drawable map (`$00C20B94`)
+
+Table of drawable descriptors used when selecting the stream for the
+walker.  Records are groups of longwords (handler + stream pointers),
+with `$00000000` separators.  Representative entries:
+
+| Handler | Stream(s) | Notes |
+|---------|-----------|-------|
+| `$00C1D8A4` | `$00C37DCA` / `$00C37DC8` | Walker trampoline + alternate DL |
+| `$00C21618` | `$00C37230` / `$00C37228` | Alt handler + stream pair |
+| `$00C21618` | `$00C335B0` / `$00C335A8` | |
+| `$00C21618` | `$00C3AE70` / `$00C3AE68` | |
+| `$00C21672` | `$00C3B518` | |
+| `$00C21712` | `$00C3B7BE` | |
+
+Dual-pointer load (`$00C1B7C4`): `move.l (a1)+,a2` (handler),
+`move.l (a1)+,a0`, `move.l (a1)+,$4476E`, `move.l (a1)+,$44772`, then
+`jsr (a2)`.  Indexing into this map from object type is not yet fully
+traced.
+
+Cluster catalogue (7FFF-separated records `$00C39710`–`$00C3A980`):
+
+| Addr | Tags | Role |
+|------|------|------|
+| `$39710` | 0100/0200 | Aircraft (→ 39738 body) |
+| `$397D8` | 0100/0200 | Aircraft (39800) |
+| `$3989E` | 0100/0200 | Aircraft (398C6) |
+| `$39958` | 0100/0200 | Aircraft (39980) |
+| `$39B3E` | 0100/0200 | Aircraft / link-graph |
+| `$39D92` | 0100/0300 | LOD wrapper → `$39DF6` / 39E00 body |
+| `$39F38` | 0100/0300 | Aircraft variant |
+| `$3A980` | 0100/0300 | Structure (ring cross-section) |
+
+
 ### Command jump table (`$00C1E840`)
 
 A second classification path (sites `$00C0838E`, `$00C1E468`, …) dispatches
