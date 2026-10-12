@@ -96,14 +96,15 @@
 15. [x] Mode $01 DDA body + $16 walker decoded; $1b is stub-only
 16. [x] Walker → perspective → $5ee chain complete (bias 90/180/~319)
 17. [x] Port walker+perspective into C++ (EdgeDesc, walker_draw, perspective_edge)
-18. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
-19. [x] Action create body at $00C4F010 decoded; clear partial
-20. [ ] Full action clear body (+$3EE past on-disk image end)
-21. [x] Runtime vectors $1a6/$22c → action hunk offsets
-22. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
-23. [ ] Capture dump during active draw to see if $12 is repatched
-24. [x] Live transform matrix/out addresses confirmed
-25. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+18. [x] Wire walker_draw demo (diamond + in-flight $4202 bounds) into main loop
+19. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
+20. [x] Action create body at $00C4F010 decoded; clear partial
+21. [ ] Full action clear body (+$3EE past on-disk image end)
+22. [x] Runtime vectors $1a6/$22c → action hunk offsets
+23. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
+24. [ ] Capture dump during active draw to see if $12 is repatched
+25. [x] Live transform matrix/out addresses confirmed
+26. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -140,7 +141,8 @@
 - fa18-port-071.1-vector-12-rts-stub-dc0339a.bundle (superseded)
 - fa18-port-072.1-mode-01-16-bodies-dc0339a.bundle (superseded)
 - fa18-port-073.1-walker-perspective-5ee-dc0339a.bundle (superseded)
-- fa18-port-074.1-walker-cpp-port-dc0339a.bundle (current tip)
+- fa18-port-074.1-walker-cpp-port-dc0339a.bundle (superseded)
+- fa18-port-075.1-walker-demo-main-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

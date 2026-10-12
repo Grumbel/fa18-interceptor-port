@@ -198,6 +198,23 @@ int main(int argc, char* argv[]) {
 
       list.draw_all_fp(ren, gfx);  // $c6 motion → transform → draw
 
+      // Mode $16 walker demo: edge list → clip → perspective → $5ee span
+      // EdgeDesc bounds from in-flight $4202 snapshot (+6=2422, +8=-305, +$a=-145)
+      {
+        fa18::EdgeDesc ed;
+        ed.bound_a = 2422;
+        ed.bound_b = -305;
+        ed.bound_c = -145;
+        // Simple screen-space diamond (pre-bias coords near origin)
+        static const int16_t diamond[] = {
+           0, -40,
+          40,   0,
+           0,  40,
+         -40,   0,
+        };
+        fa18::walker_draw(ren, gfx, diamond, 4, ed);
+      }
+
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;
         SDL_Rect dst = { (fa18::WINDOW_W-w)/2, fa18::WINDOW_H-h-8, w, h };
