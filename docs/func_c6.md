@@ -83,18 +83,81 @@ object loop ($72dc)
   … draw via $12 / geometry …
 ```
 
+## Body structure (first ~0x100 bytes)
+
+```
++00..+0E   gate flags → early rts (d0=0)
++10..+20   index×64 + pool → a3
++22..+2C   movem.w 12(a3),d0-d2; asr.w #8 each
+           → store to $b48/$b4a/$b4c   (high-byte of obj+12..16)
++36        move.w $b50, -18(a6)
++3E..+4A   movem.w $b42, d0-d2 → locals -16(a6)
++4C        clr.w  $388
++54..+6A   lea $b54, a0
+             move.w 12(a0), -26(a6)
+             move.l 16(a0), -22(a6)
+             move.w 14(a0), -20(a6)
++6C..+76   move.b $22e, d0 → ext → -6(a6)
++78        clr.l  -10(a6)
++7C        moveq  #-1, d5
++7E        move.l $396, a5          ; pointer table / list head
++84        move.w (a5), -2(a6)
++88        suba.w #$18, a5          ; step back one 24-byte record
++8C        addq.w #1, -8(a6)
++90        btst   #6, -1(a6) → bne long-path-B (+0x18A)
++9A        btst   #4, -1(a6) → beq path-C (+0xCA)
++A4        cmpi.w #6, -10(a6) → bge ...
+…          further field compares against object+0x2E/+0x30/+0x32
+…          multiple exit points (unlk/rts at +0x3BC, +0x5B6, +0x60A)
+```
+
+Object fields read:
+
+| Offset | Width | Use in `$c6` |
+|--------|-------|--------------|
+| +12,+14,+16 | word×3 | asr#8 → `$b48` cluster (scaled components) |
+| +0x2E | word | compared against local |
+| +0x30 | word | compared |
+| +0x32 | word | compared |
+
+`$b54` (live `$00C44EBC`) sits immediately before the world-position
+block (`$b68` = `$00C44ED0`).  In the in-flight dump it holds non-zero
+state adjacent to the live world X/Y/Z — likely a per-frame view /
+camera descriptor that `$c6` samples.
+
+`$396` (live `$00C446FE`) is a pointer to a 24-byte-stride list
+(`suba.w #$18, a5`); the list is walked under bit tests on the flag
+byte at −1(a6).
+
+## Exit points
+
+| Offset | Sequence | Notes |
+|--------|----------|-------|
+| +$3BC | unlk / rts | |
+| +$5B6 | unlk / rts | |
+| +$60A | unlk / rts | |
+| +$6DA | rts | (no unlk — alternate path) |
+| +$7FC | rts | near end of hunk |
+
+Internal calls: two `bsr.w` (+$440, +$446) to helpers inside the same
+hunk; two `jsr $59e.L` (+$67A, +$6C8) — another relocatable absolute
+(shared helper in a different hunk).
+
 ## On-disk symbols used (before reloc)
 
 | Static | Live (session) | Role |
 |--------|----------------|------|
 | `$018D` | `$00C444F5` | gate flag A |
 | `$017E` | `$00C444E6` | gate flag B |
+| `$022E` | `$00C44596` | mode / type byte → local |
+| `$0388` | `$00C446F0` | cleared counter / mode word |
+| `$0396` | `$00C446FE` | pointer to 24-byte-stride list |
+| `$059E` | (reloc) | helper called via jsr |
 | `$0642` | `$00C449AA` | object pool |
-| `$0B48` | `$00C44EB0` | scratch / out |
-| `$0B50` | `$00C44EB8` | scratch / out |
-| `$0B42` | `$00C44EAA` | scratch / out |
-| `$0B54` | `$00C44EBC` | scratch / out |
-| `$0388` | (cleared) | local counter / mode |
+| `$0B42` | `$00C44EAA` | scratch word trio |
+| `$0B48` | `$00C44EB0` | scaled obj+12..16 output |
+| `$0B50` | `$00C44EB8` | related scratch |
+| `$0B54` | `$00C44EBC` | view/camera descriptor (before world pos) |
 
 ## Status
 
@@ -102,6 +165,10 @@ object loop ($72dc)
 - [x] Live address confirmed in in-flight dump
 - [x] Calling convention and index×64 pool math confirmed
 - [x] Gate flags identified
-- [ ] Full body decompilation (remaining ~2 KB of hunk)
+- [x] Body outline through first decision tree (~0x100)
+- [x] `$b54` / `$396` data structures located
+- [x] Exit points catalogued
+- [ ] Full path decompilation of long-path-B / path-C
 - [ ] Exact meaning of gate flags `$18d`/`$17e`
-- [ ] Distinguish from the *vector-slot* `$c6` written by overlay install
+- [ ] Resolve jsr `$59e` helper
+- [ ] Port skeleton of `$c6` into C++ object loop

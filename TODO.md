@@ -81,15 +81,16 @@
 ## Next Steps
 1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
 2. [x] Resolve static jsr $c6 → object worker at $00C25206 (docs/func_c6.md)
-3. [ ] Finish $c6 function body decompilation (~2 KB hunk)
-4. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
-5. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
-6. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
-7. [ ] Action clear body (overlay past file end)
-8. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
-9. [ ] Disassemble live primary transform ($77d8) from inflight dump (entry confirmed)
-10. [ ] Map remaining resident overlay hunks
-11. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+3. [x] $c6 body outline: decision tree, $b54 view desc, $396 list, exit points
+4. [ ] Full path decompilation of $c6 long-path-B / path-C; resolve jsr $59e
+5. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
+6. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
+7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
+8. [ ] Action clear body (overlay past file end)
+9. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
+10. [ ] Disassemble live primary transform ($77d8) from inflight dump (entry confirmed)
+11. [ ] Map remaining resident overlay hunks
+12. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -106,7 +107,8 @@
 - fa18-port-053.1-matrix-writer-dynamic-trace-dc0339a.bundle (superseded)
 - fa18-port-055.1-ram-dump-map-dc0339a.bundle (superseded)
 - fa18-port-056.1-live-symbols-inflight-dumps-dc0339a.bundle (superseded)
-- fa18-port-057.1-func-c6-object-worker-dc0339a.bundle (current tip)
+- fa18-port-057.1-func-c6-object-worker-dc0339a.bundle (superseded)
+- fa18-port-058.1-func-c6-body-outline-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
