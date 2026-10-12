@@ -122,60 +122,6 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
   return m;
 }
 
-// Parse a word stream, then fill edges/pens from the display list when
-// the auto-decoder finds any.  Hand-authored edges remain preferred when
-// the supplied window is too short for shared sub-lists.
-inline Mesh mesh_from_words(const uint16_t* words, size_t count,
-                            const char* name) {
-  Mesh m = mesh_parse(words, count, name);
-  if (m.verts.empty())
-    return m;
-  std::vector<uint8_t> pens;
-  auto edges = mesh_edges_from_dl(words, count, m.verts.size(), 0, &pens);
-  if (!edges.empty()) {
-    m.edges = std::move(edges);
-    m.edge_pens = std::move(pens);
-  }
-  return m;
-}
-
-// Load a mesh record from an in-flight CODE dump (Slow RAM image at
-// $00C00000).  `live_addr` is the full live address (e.g. 0x00C39710 for
-// a 7FFF-header record).  The dump file is a raw 512 KiB image of
-// $00C00000–$00C7FFFF (dumps/inflight/fa18_inflight_code.bin).
-//
-// Returns an empty mesh on I/O or range errors.  Prefer hand-authored
-// constructors when the auto edge decoder's window is too short for
-// shared sub-lists; use this to bootstrap new models from the dump.
-inline Mesh mesh_from_dump_file(const std::string& dump_path,
-                                uint32_t live_addr, size_t max_words,
-                                const char* name) {
-  Mesh empty;
-  empty.name = name;
-  if (live_addr < 0x00C00000)
-    return empty;
-  const uint32_t offset = live_addr - 0x00C00000;
-  std::ifstream in(dump_path, std::ios::binary);
-  if (!in)
-    return empty;
-  in.seekg(0, std::ios::end);
-  const auto file_size = static_cast<uint32_t>(in.tellg());
-  if (offset >= file_size)
-    return empty;
-  const size_t avail = (file_size - offset) / 2;
-  const size_t nwords = std::min(max_words, avail);
-  std::vector<uint16_t> words(nwords);
-  in.seekg(offset, std::ios::beg);
-  in.read(reinterpret_cast<char*>(words.data()),
-          static_cast<std::streamsize>(nwords * 2));
-  if (!in && !in.eof())
-    return empty;
-  // Dump is big-endian Amiga words; swap on little-endian hosts.
-  for (auto& w : words)
-    w = static_cast<uint16_t>((w >> 8) | (w << 8));
-  return mesh_from_words(words.data(), words.size(), name);
-}
-
 // ---------------------------------------------------------------------------
 // Partial display-list → edge decoder
 //
@@ -389,6 +335,61 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
   }
   if (out_pens) *out_pens = std::move(uniq_pens);
   return uniq;
+}
+
+
+// Parse a word stream, then fill edges/pens from the display list when
+// the auto-decoder finds any.  Hand-authored edges remain preferred when
+// the supplied window is too short for shared sub-lists.
+inline Mesh mesh_from_words(const uint16_t* words, size_t count,
+                            const char* name) {
+  Mesh m = mesh_parse(words, count, name);
+  if (m.verts.empty())
+    return m;
+  std::vector<uint8_t> pens;
+  auto edges = mesh_edges_from_dl(words, count, m.verts.size(), 0, &pens);
+  if (!edges.empty()) {
+    m.edges = std::move(edges);
+    m.edge_pens = std::move(pens);
+  }
+  return m;
+}
+
+// Load a mesh record from an in-flight CODE dump (Slow RAM image at
+// $00C00000).  `live_addr` is the full live address (e.g. 0x00C39710 for
+// a 7FFF-header record).  The dump file is a raw 512 KiB image of
+// $00C00000–$00C7FFFF (dumps/inflight/fa18_inflight_code.bin).
+//
+// Returns an empty mesh on I/O or range errors.  Prefer hand-authored
+// constructors when the auto edge decoder's window is too short for
+// shared sub-lists; use this to bootstrap new models from the dump.
+inline Mesh mesh_from_dump_file(const std::string& dump_path,
+                                uint32_t live_addr, size_t max_words,
+                                const char* name) {
+  Mesh empty;
+  empty.name = name;
+  if (live_addr < 0x00C00000)
+    return empty;
+  const uint32_t offset = live_addr - 0x00C00000;
+  std::ifstream in(dump_path, std::ios::binary);
+  if (!in)
+    return empty;
+  in.seekg(0, std::ios::end);
+  const auto file_size = static_cast<uint32_t>(in.tellg());
+  if (offset >= file_size)
+    return empty;
+  const size_t avail = (file_size - offset) / 2;
+  const size_t nwords = std::min(max_words, avail);
+  std::vector<uint16_t> words(nwords);
+  in.seekg(offset, std::ios::beg);
+  in.read(reinterpret_cast<char*>(words.data()),
+          static_cast<std::streamsize>(nwords * 2));
+  if (!in && !in.eof())
+    return empty;
+  // Dump is big-endian Amiga words; swap on little-endian hosts.
+  for (auto& w : words)
+    w = static_cast<uint16_t>((w >> 8) | (w << 8));
+  return mesh_from_words(words.data(), words.size(), name);
 }
 
 // ---------------------------------------------------------------------------

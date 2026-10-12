@@ -184,6 +184,7 @@
 84. [x] Cmd jump table $00C1E840; 4070→nop; 800C→edge builder; PP not a dispatch key
 85. [x] Two dispatch paths (walker vs jump-table); edge-list builders $84BA family
 86. [x] mesh_from_dump_file() + CMake dumps copy; demo auto-load $00C39710
+87. [x] Fix mesh_from_words declaration order (after mesh_edges_from_dl)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -275,6 +276,7 @@
 - [x] Cmd jump table $00C1E840 (byte-index); 4070=nop, 800C=edge builder
 - [x] Two dispatch paths; edge-list builders $84BA/$8512/$855E → $4ACC8
 - [x] mesh_from_dump_file loads cluster records from inflight CODE dump
+- [x] mesh_from_words moved after mesh_edges_from_dl (fix compile)
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -387,7 +389,8 @@
 - fa18-port-160.1-dl-expansion-step-a2-stream-dc0339a.bundle (superseded)
 - fa18-port-161.1-cmd-jump-table-e840-dc0339a.bundle (superseded)
 - fa18-port-162.1-two-dispatch-paths-edge-builders-dc0339a.bundle (superseded)
-- fa18-port-163.1-mesh-from-dump-file-loader-dc0339a.bundle (current tip)
+- fa18-port-163.1-mesh-from-dump-file-loader-dc0339a.bundle (superseded)
+- fa18-port-164.1-fix-mesh-from-words-order-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
