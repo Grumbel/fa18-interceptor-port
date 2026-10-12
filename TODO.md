@@ -195,6 +195,7 @@
 95. [x] Scene→stream→cluster mesh auto-load; draw up to 4 in Flight demo
 96. [x] Scene coords as Q8.8 XZ; demo positions meshes from scene list
 97. [x] Instance-pool format ($43xxx); mesh_instance_4335E in demo
+98. [x] mesh_from_instance_dump auto-loader; list-B streams in demo
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -297,6 +298,7 @@
 - [x] Scene streams mapped to cluster records; auto-load+draw in demo
 - [x] Scene coord_a/b as Q8.8 XZ (hypothesis); demo places meshes
 - [x] Instance-pool $43xxx format; mesh_instance_4335E
+- [x] mesh_from_instance_dump; list-B instance streams auto-loaded
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -420,7 +422,8 @@
 - fa18-port-171.1-dispatch-slot-from-dump-dc0339a.bundle (superseded)
 - fa18-port-172.1-scene-stream-mesh-autoload-dc0339a.bundle (superseded)
 - fa18-port-173.1-scene-coords-q88-positioning-dc0339a.bundle (superseded)
-- fa18-port-174.1-instance-pool-mesh-4335e-dc0339a.bundle (current tip)
+- fa18-port-174.1-instance-pool-mesh-4335e-dc0339a.bundle (superseded)
+- fa18-port-175.1-instance-dump-loader-listb-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

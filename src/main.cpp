@@ -299,6 +299,27 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "[scene] loaded " << sceneMeshes.size()
                   << " unique cluster meshes (Q8.8 positions)\n";
+        // Instance-pool meshes from list B streams ($43xxx)
+        auto scenesB = fa18::scene_list_from_dump(dump, fa18::kSceneListB, 12);
+        std::vector<uint32_t> seenInst;
+        for (size_t i = 0; i < scenesB.size() && sceneMeshes.size() < 10; ++i) {
+          auto slot = fa18::dispatch_slot_from_dump(dump, scenesB[i].dispatch_ptr);
+          uint32_t stream = slot.stream[0];
+          if (stream < 0x00C43000 || stream >= 0x00C45000) continue;
+          if (std::find(seenInst.begin(), seenInst.end(), stream) != seenInst.end())
+            continue;
+          seenInst.push_back(stream);
+          char name[64];
+          std::snprintf(name, sizeof(name), "instance_$%06X", stream);
+          auto m = fa18::mesh_from_instance_dump(dump, stream, name);
+          if (!m.verts.empty()) {
+            logm(m);
+            float wx = scenesB[i].coord_a / 256.0f;
+            float wz = scenesB[i].coord_b / 256.0f;
+            sceneMeshes.push_back({std::move(m), wx, wz});
+          }
+        }
+        std::cout << "[scene] total sceneMeshes=" << sceneMeshes.size() << "\n";
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =

@@ -475,6 +475,114 @@ inline Mesh mesh_from_dump_file(const std::string& dump_path,
   return mesh_from_words(words.data(), words.size(), name);
 }
 
+
+// Load an instance-pool record ($00C43xxx style):
+//   header, FFFF FFFF, body_ptr, … ; body = N + N×(x,y,z)
+// Builds a ring of edges when no 800C groups are found after verts.
+inline Mesh mesh_from_instance_dump(const std::string& dump_path,
+                                    uint32_t live_addr, const char* name) {
+  Mesh empty;
+  empty.name = name;
+  if (live_addr < 0x00C00000)
+    return empty;
+  const uint32_t offset = live_addr - 0x00C00000;
+  std::ifstream in(dump_path, std::ios::binary);
+  if (!in)
+    return empty;
+  in.seekg(0, std::ios::end);
+  const auto file_size = static_cast<uint32_t>(in.tellg());
+  if (offset + 16 > file_size)
+    return empty;
+
+  auto read_be16 = [&](uint32_t off) -> uint16_t {
+    in.seekg(off, std::ios::beg);
+    uint8_t b[2];
+    in.read(reinterpret_cast<char*>(b), 2);
+    return static_cast<uint16_t>((b[0] << 8) | b[1]);
+  };
+  auto read_be32 = [&](uint32_t off) -> uint32_t {
+    in.seekg(off, std::ios::beg);
+    uint8_t b[4];
+    in.read(reinterpret_cast<char*>(b), 4);
+    return (uint32_t(b[0]) << 24) | (uint32_t(b[1]) << 16) |
+           (uint32_t(b[2]) << 8) | uint32_t(b[3]);
+  };
+
+  // Find FFFF FFFF within first 8 words, then body ptr
+  uint32_t body_live = 0;
+  for (uint32_t i = 0; i < 16; i += 2) {
+    if (offset + i + 8 > file_size) break;
+    uint16_t w0 = read_be16(offset + i);
+    uint16_t w1 = read_be16(offset + i + 2);
+    if (w0 == 0xFFFF && w1 == 0xFFFF) {
+      body_live = read_be32(offset + i + 4);
+      break;
+    }
+  }
+  // If no separator, treat live_addr itself as body (N + verts)
+  if (!body_live)
+    body_live = live_addr;
+  if (body_live < 0x00C00000)
+    return empty;
+  const uint32_t body_off = body_live - 0x00C00000;
+  if (body_off + 2 > file_size)
+    return empty;
+
+  uint16_t N = read_be16(body_off);
+  if (N == 0 || N > 64)
+    return empty;
+  if (body_off + 2 + N * 6 > file_size)
+    return empty;
+
+  Mesh m;
+  m.name = name;
+  m.tag0 = read_be16(offset);  // header word
+  for (uint16_t i = 0; i < N; ++i) {
+    uint32_t vo = body_off + 2 + i * 6;
+    int16_t x = static_cast<int16_t>(read_be16(vo));
+    int16_t y = static_cast<int16_t>(read_be16(vo + 2));
+    int16_t z = static_cast<int16_t>(read_be16(vo + 4));
+    m.verts.push_back(V(x, y, z));
+  }
+  // Try edge groups after verts (raw small indices, not ÷6)
+  uint32_t eo = body_off + 2 + N * 6;
+  bool got_edges = false;
+  for (uint32_t scan = eo; scan + 4 < file_size && scan < eo + 64; scan += 2) {
+    uint16_t w = read_be16(scan);
+    if (w == 0x800C || w == 0xC00C || w == 0xC008) {
+      std::vector<int> idxs;
+      uint32_t k = scan + 2;
+      while (k + 2 <= file_size) {
+        uint16_t v = read_be16(k);
+        if (v < N) {
+          idxs.push_back(static_cast<int>(v));
+          k += 2;
+        } else {
+          break;
+        }
+      }
+      for (size_t a = 0; a + 1 < idxs.size(); ++a)
+        m.edges.emplace_back(idxs[a], idxs[a + 1]);
+      if (idxs.size() >= 2)
+        got_edges = true;
+      scan = k - 2;
+    }
+    if (w == 0xFFFF || w == 0x7FFF)
+      break;
+  }
+  if (!got_edges && N >= 2) {
+    // Fallback: ring
+    for (uint16_t i = 0; i < N; ++i)
+      m.edges.emplace_back(i, (i + 1) % N);
+    // Spokes from vertex 0 for N>=3
+    if (N >= 3) {
+      for (uint16_t i = 2; i < N; ++i)
+        m.edges.emplace_back(0, i);
+    }
+  }
+  return m;
+}
+
 // Load scene/drawable list records from the inflight CODE dump.
 // live_base is kSceneListA ($00C4D6E2) or kSceneListB ($00C4DD72).
 // Stops at flag==0xFFFF or after max_records.

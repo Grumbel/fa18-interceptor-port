@@ -676,6 +676,7 @@ draw path).  The actual PP consumer remains open.
 - `SceneDrawableRecord` / `scene_list_from_dump()` — scene list A/B loader
 - `DispatchSlot` / `dispatch_slot_from_dump()` — handler + stream×3 from $21000
 - `cluster_record_start()` — map stream addr to enclosing 7FFF record
+- `mesh_from_instance_dump()` — instance-pool ($43xxx) N+XYZ loader
 - `mesh_aircraft_39738/39800/…` — hand-authored with dump-derived edges
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
 
