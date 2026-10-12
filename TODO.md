@@ -86,14 +86,15 @@
 5. [x] Path-B/C and accept path fully traced; success returns d0=1
 6. [x] Port $c6 motion step into C++ object loop (flight.hpp)
 7. [x] Gate flags $18d/$17e: suppress object processing when nonzero
-8. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
-9. [ ] Resolve $5ee (still overlay-only)
-10. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-11. [ ] Action clear body (overlay past file end)
-12. [ ] $4202 full layout beyond clip bounds
-13. [ ] Disassemble live primary transform ($77d8) — entry + matrix abs confirmed
-14. [ ] Map remaining resident overlay hunks
-15. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+8. [x] Vector-slot $be/$c6 are data context ptrs (not code); install via table $151a
+9. [ ] Field-level meaning of $be/$c6 context blocks; dump with install overlay
+10. [ ] Resolve $5ee (still overlay-only)
+11. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+12. [ ] Action clear body (overlay past file end)
+13. [ ] $4202 full layout beyond clip bounds
+14. [ ] Disassemble live primary transform ($77d8) — entry + matrix abs confirmed
+15. [ ] Map remaining resident overlay hunks
+16. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -119,7 +120,8 @@
 - fa18-port-060.1-func-c6-path-bc-decompile-dc0339a.bundle (superseded)
 - fa18-port-061.1-func-c6-motion-integrate-dc0339a.bundle (superseded)
 - fa18-port-062.1-port-c6-motion-step-cpp-dc0339a.bundle (superseded)
-- fa18-port-063.1-gate-flags-18d-17e-dc0339a.bundle (current tip)
+- fa18-port-063.1-gate-flags-18d-17e-dc0339a.bundle (superseded)
+- fa18-port-064.1-vector-slots-be-c6-data-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
