@@ -99,18 +99,46 @@ inline void filter_rates(PlayerAttitude& att, const int16_t new_delta[3]) {
   }
 }
 
-// Approximate free integrator for the port.
-// Live $00C2C418 is a servo (target−angle); true rate→angle site still open.
+// Wrap angle into [0, kAngleCircle).
+inline void wrap_angle(int16_t& a) {
+  while (a < 0) a = static_cast<int16_t>(a + kAngleCircle);
+  while (a >= kAngleCircle) a = static_cast<int16_t>(a - kAngleCircle);
+}
+
+// Free integrator (port default).  Live path is a servo; rates may be
+// targets rather than per-frame deltas — see servo_attitude().
 inline void integrate_attitude(PlayerAttitude& att) {
   att.angle[0] = static_cast<int16_t>(att.angle[0] - att.rate[0]);
   att.angle[1] = static_cast<int16_t>(att.angle[1] - att.rate[1]);
-  // Wrap into [0, kAngleCircle)
+  wrap_angle(att.angle[0]);
+  wrap_angle(att.angle[1]);
+}
+
+// Servo approximation of live $00C2C418:
+//   error = target − angle; step angle toward target with clamp.
+// Until the true target source (d5/d6) is recovered, treat filtered
+// rates as the target offset from current angle.
+inline void servo_attitude(PlayerAttitude& att, int16_t max_step = 0x4B0) {
   for (int i = 0; i < 2; ++i) {
-    while (att.angle[i] < 0) att.angle[i] =
-        static_cast<int16_t>(att.angle[i] + kAngleCircle);
-    while (att.angle[i] >= kAngleCircle) att.angle[i] =
-        static_cast<int16_t>(att.angle[i] - kAngleCircle);
+    int16_t target = static_cast<int16_t>(att.angle[i] - att.rate[i]);
+    int16_t error = static_cast<int16_t>(target - att.angle[i]);
+    if (error < 0) error = static_cast<int16_t>(-error);
+    int16_t step = att.rate[i];
+    if (step > max_step) step = max_step;
+    if (step < -max_step) step = static_cast<int16_t>(-max_step);
+    att.angle[i] = static_cast<int16_t>(att.angle[i] - step);
+    wrap_angle(att.angle[i]);
   }
+}
+
+// Discrete yaw step at $00C2BF60: fixed ±2000 in 7200-circle units.
+inline void discrete_yaw_step(PlayerAttitude& att, int direction) {
+  constexpr int16_t kStep = 2000;
+  if (direction > 0)
+    att.angle[2] = static_cast<int16_t>(att.angle[2] + kStep);
+  else if (direction < 0)
+    att.angle[2] = static_cast<int16_t>(att.angle[2] - kStep);
+  wrap_angle(att.angle[2]);
 }
 
 // Rate auto-center ($00C2C476): nudge filtered rates toward zero.

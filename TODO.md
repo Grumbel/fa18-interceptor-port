@@ -140,6 +140,7 @@
 40. [x] Alt register-script $540E8 = 32-colour variant; C++ palette + audio queue API
 41. [x] Wire Amiga palette into SDL Flight clear/lines (draw_line_pal / clear_pal)
 42. [x] Discrete yaw step at $00C2BF60 (fixed ±2000); continuous rate→angle still open
+43. [x] C++ servo_attitude + discrete_yaw_step; live-dump handoff notes in TODO
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -156,7 +157,18 @@
 
 
 ## Needs live dump / dynamic evidence
-- [ ] continuous rate → angle path (servo targets d5/d6; discrete step found at $00C2BF60)
+
+### Priority dumps (FS-UAE console debugger)
+1. **Stick-hold attitude** — enter flight, hold stick full forward 2s, dump:
+   - `$00C44EBC` length `$80` (PlayerAttitude: rates +$50, angles +$66)
+   - registers at `$00C2C418` entry (d5/d6 = servo targets)
+   - `$00C44818` / `$00C4481A` (input axes $4b0/$4b2)
+2. **One-axis polarity** — same but only X then only Y stick, compare angle deltas
+3. **Active draw** — dump `$00C062C2` ($12 vector) while geometry is drawing (not RTS)
+4. **PCM** — dump Chip sample range from a known template LC (e.g. `$0000B3E8` len `$35FA`)
+
+### Open items
+- [ ] continuous rate → angle path (servo targets d5/d6; discrete step at $00C2BF60)
 - [ ] d5/d6 target angle source into servo
 - [ ] JOY accumulators → desired-attitude / matrix weights
 - [ ] Chip-RAM sample PCM capture during audio playback
@@ -239,7 +251,8 @@
 - fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (superseded)
 - fa18-port-117.1-palette-cpp-audio-queue-dc0339a.bundle (superseded)
 - fa18-port-118.1-sdl-palette-flight-dc0339a.bundle (superseded)
-- fa18-port-119.1-discrete-yaw-step-dc0339a.bundle (current tip)
+- fa18-port-119.1-discrete-yaw-step-dc0339a.bundle (superseded)
+- fa18-port-120.1-servo-cpp-dump-handoff-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
