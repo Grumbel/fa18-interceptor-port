@@ -12,6 +12,7 @@
 #include "transform.hpp"
 #include "flight.hpp"
 #include "audio.hpp"
+#include "mesh.hpp"
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
@@ -232,34 +233,22 @@ int main(int argc, char* argv[]) {
       }
       draw_world_line({0.f, 1.5f, 2.f}, {0.f, 1.5f, 32.f}, 13);
 
-      // Object pool ($642 / $b8f)
-      static fa18::ObjectList list;
-      static bool pool_init = false;
-      if (!pool_init) {
-        auto* c2 = list.add();
-        *c2 = fa18::make_cube(0.4f);
-        c2->pos = {3.f, 0.0f, 12.f};
-        c2->vel_near = {0.015f, 0.f, 0.f};
-        c2->type_flags = 0x10;
-
-        auto* c3 = list.add();
-        *c3 = fa18::make_cube(0.3f);
-        c3->pos = {-2.5f, -0.2f, 10.f};
-        c3->vel_near = {0.f, 0.01f, 0.f};
-        c3->type_flags = 0x10;
-        pool_init = true;
+      // Real mesh data extracted from dump ($00C39B52 / $00C3A58C)
+      static fa18::Mesh mesh_b = fa18::mesh_from_dump_B();
+      static fa18::Mesh mesh_a = fa18::mesh_from_dump_A();
+      static bool mesh_logged = false;
+      if (!mesh_logged) {
+        std::cout << "[mesh] " << mesh_b.name << " verts=" << mesh_b.verts.size()
+                  << " edges=" << mesh_b.edges.size() << "\n";
+        std::cout << "[mesh] " << mesh_a.name << " verts=" << mesh_a.verts.size()
+                  << " edges=" << mesh_a.edges.size() << "\n";
+        mesh_logged = true;
       }
-      list.objects[0].orient_fp =
-          fa18::mat_from_angles_q14(0, att.angle[1] / 2, att.angle[2]);
-      list.objects[1].orient_fp =
-          fa18::mat_from_angles_q14(0, 0, -att.angle[2]);
-      list.motion_step_all();
-      // Draw each object with a distinct recovered palette pen ($324)
-      static const uint16_t pens[] = {13, 9};  // COLOR13 gray, COLOR09 amber
-      for (int i = 0; i < list.count; ++i) {
-        gfx.pen = pens[i % 2];
-        fa18::draw_object_fp(ren, gfx, list.objects[i]);
-      }
+      // Place meshes ahead of the camera; orient with attitude
+      fa18::Mat3Fixed orient =
+          fa18::mat_from_angles_q14(0, att.angle[1] / 3, att.angle[2] / 2);
+      fa18::draw_mesh(ren, gfx, mesh_b, orient, {0.f, 0.f, 8.f}, 13);
+      fa18::draw_mesh(ren, gfx, mesh_a, orient, {4.f, -1.f, 14.f}, 9);
 
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
