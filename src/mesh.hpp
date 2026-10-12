@@ -70,6 +70,38 @@ constexpr uint32_t kSceneListA = 0x00C4D6E2;
 constexpr uint32_t kSceneListB = 0x00C4DD72;
 constexpr size_t   kSceneStride = 0x18;
 
+// Dispatch slot at $00C21000+: handler + up to 3 stream pointers (LOD).
+struct DispatchSlot {
+  uint32_t handler = 0;
+  uint32_t stream[3] = {0, 0, 0};
+};
+
+// Read a dispatch slot from the inflight CODE dump by live address.
+inline DispatchSlot dispatch_slot_from_dump(const std::string& dump_path,
+                                            uint32_t live_addr) {
+  DispatchSlot s;
+  if (live_addr < 0x00C00000)
+    return s;
+  const uint32_t offset = live_addr - 0x00C00000;
+  std::ifstream in(dump_path, std::ios::binary);
+  if (!in)
+    return s;
+  in.seekg(offset, std::ios::beg);
+  uint8_t raw[16];
+  in.read(reinterpret_cast<char*>(raw), 16);
+  if (!in)
+    return s;
+  auto be32 = [&](size_t i) -> uint32_t {
+    return (uint32_t(raw[i]) << 24) | (uint32_t(raw[i + 1]) << 16) |
+           (uint32_t(raw[i + 2]) << 8) | uint32_t(raw[i + 3]);
+  };
+  s.handler = be32(0);
+  s.stream[0] = be32(4);
+  s.stream[1] = be32(8);
+  s.stream[2] = be32(12);
+  return s;
+}
+
 inline Vec3 V(int16_t x, int16_t y, int16_t z) {
   return {x / kMeshScale, y / kMeshScale, z / kMeshScale};
 }

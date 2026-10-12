@@ -257,18 +257,19 @@ int main(int argc, char* argv[]) {
         };
         logm(craft); logm(craft2); logm(craft3); logm(craft4);
         logm(craftB); logm(craftE); logm(structA); logm(structB); logm(craftDump);
-        auto scenes = fa18::scene_list_from_dump(
-            "dumps/inflight/fa18_inflight_code.bin", fa18::kSceneListA, 16);
+        const char* dump = "dumps/inflight/fa18_inflight_code.bin";
+        auto scenes = fa18::scene_list_from_dump(dump, fa18::kSceneListA, 16);
         std::cout << "[scene] list A entries=" << scenes.size() << "\n";
         for (size_t i = 0; i < scenes.size() && i < 8; ++i) {
           const auto& s = scenes[i];
+          auto slot = fa18::dispatch_slot_from_dump(dump, s.dispatch_ptr);
           std::cout << "  [" << i << "] flag=" << std::hex << s.flag
                     << " type=" << int(s.type_id())
                     << " lod=" << int(s.lod_tier())
-                    << " disp=" << s.dispatch_ptr
+                    << " h=" << slot.handler
+                    << " s0=" << slot.stream[0]
                     << " ca=" << std::dec << s.coord_a
-                    << " cb=" << s.coord_b
-                    << " tag=" << std::hex << s.type_tag << std::dec << "\n";
+                    << " cb=" << s.coord_b << "\n";
         }
         mesh_logged = true;
       }
