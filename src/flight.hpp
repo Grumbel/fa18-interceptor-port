@@ -59,16 +59,17 @@ struct ViewDesc {
 constexpr int kAngleCircle = 7200;
 
 struct PlayerAttitude {
-  // Raw rates from stick curves (+$50/+$52/+$54)
+  // Raw rates from curves (+$50/+$52/+$54) — roll/pitch/yaw
   int16_t raw_rate[3] = {};
-  // Filtered rates after scale+blend (+$56/+$58/+$5A)
+  // Filtered rates (+$56/+$58/+$5A)
   int16_t rate[3] = {};
-  // Attitude angles (+$68/+$6A/+$6C)
+  // Euler angles in 7200-circle units:
+  //   angle[0] = roll  (R_x)  at +$68  ← integrated from rate[0]
+  //   angle[1] = pitch (R_y)  at +$6A  ← integrated from rate[1]
+  //   angle[2] = yaw   (R_z)  at +$6C  (integration path TBD; rate[2] active)
   int16_t angle[3] = {};
-  // Mode nibble selects curve (+$62)
-  uint8_t mode = 0x10;
-  // Scale divisor for rate filter (5..15)
-  int16_t scale = 10;
+  uint8_t mode = 0x10;   // +$62 curve select
+  int16_t scale = 10;    // rate filter divisor 5..15
 };
 
 // Stick curve tables (live $00C2B782 / $00C2B798 / $00C2B7C4)

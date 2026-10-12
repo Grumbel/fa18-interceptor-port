@@ -1252,3 +1252,22 @@ filter → integrate → angles
 - [x] Rate magnitude from matrix projection, not direct stick
 - [x] Exclusive one-of-three rate write confirmed in mode-$10 path
 - [ ] Desired-attitude / weight source from JOY accumulators
+
+## Attitude field ↔ Euler axis map (live structure)
+
+| Field | Off | Euler | Axis | Integration |
+|-------|-----|-------|------|-------------|
+| raw_rate0 | +`$50` | roll rate | R_x | → filter → +`$56` |
+| raw_rate1 | +`$52` | pitch rate | R_y | → filter → +`$58` |
+| raw_rate2 | +`$54` | yaw rate | R_z | → filter → +`$5A` |
+| angle0 | +`$68` | **roll** | R_x | `-= rate0` at `$00C2C418` |
+| angle1 | +`$6A` | **pitch** | R_y | `-= rate1` at `$00C2C418` |
+| +`$6C` | +`$6C` | **yaw?** | R_z | **not** in `$00C2C418`; mid-flight `$295F` |
+
+Mid-flight snapshot: rate2=296 (yaw active), rate0/1≈0; angle0=2240, angle1=88.  Yaw angle source for the matrix orchestrator’s D6 is still open — may be +`$6C` via a separate path, or derived.
+
+### Status
+
+- [x] angle0/1 = roll/pitch with integrator linkage
+- [x] rate2 filtered to +`$5A` (yaw rate)
+- [ ] yaw angle (D6) source; rate2→angle2 path
