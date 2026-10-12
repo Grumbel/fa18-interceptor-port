@@ -282,3 +282,46 @@ values written by the active draw mode before the walker runs.
 The alternate path at `0x28374` streams `(a1)+` from this same base —
 so +0..+4 may be vertex data or a count/header when that path is
 active.  In this dump only +0..+$a are nonzero.
+
+## Live `$12` resolution (in-flight dump)
+
+| Item | Value |
+|------|-------|
+| Live target of `jsr $12.L` | **`$00C062C2`** |
+| Body | **`rts`** (no-op stub) |
+| Chip RAM `$12` | `$081C00FC` (unrelated; not used by abs.l sites) |
+| Mode register `$36e` | live `$00C446D6` = `$0000` in this snapshot |
+
+### Mode $1b wrapper (confirmed)
+
+```asm
+$00C2D7C8  move.w  #$001B, $00C446D6   ; set mode register
+           jsr     $00C062C2            ; $12 → rts
+           moveq   #0, d0
+           rts
+```
+
+### Interpretation
+
+In this airborne snapshot `$12` is a **stub**.  Mode wrappers still
+write `$36e` and call `$12`, but the dispatcher body is `rts`.
+
+Possible reasons:
+
+1. Draw dispatch was torn down / not needed in the current game phase
+2. Real mode bodies are entered by other paths (walker, `$5ee`,
+   perspective) that do not go through `$12`
+3. `$12` is patched to a real dispatcher only during specific
+   draw-setup phases
+
+The substantial code immediately before the stub (`$00C062B0`:
+`jsr $00C15FE4 / bsr / jsr $00C15FAE / rts`) may be a related
+setup routine, not the dispatcher itself.
+
+### Status
+
+- [x] Live target identified (`$00C062C2`)
+- [x] Body is `rts` in this dump
+- [x] Mode register live address confirmed (`$00C446D6`)
+- [ ] Capture a dump during active line-draw to see if `$12` is
+      repatched to a real jump table

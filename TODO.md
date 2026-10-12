@@ -97,8 +97,10 @@
 16. [x] Action create body at $00C4F010 decoded; clear partial (FreeMem+null)
 17. [ ] Full action clear body (+$3EE past on-disk image end)
 18. [x] Runtime vectors $1a6/$22c → action hunk offsets $1A6/$22C
-19. [x] Live transform matrix/out addresses confirmed
-20. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+19. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
+20. [ ] Capture dump during active draw to see if $12 is repatched
+21. [x] Live transform matrix/out addresses confirmed
+22. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -131,7 +133,8 @@
 - fa18-port-067.1-live-4202-mapping-dc0339a.bundle (superseded)
 - fa18-port-068.1-overlay-residency-map-dc0339a.bundle (superseded)
 - fa18-port-069.1-action-create-live-dc0339a.bundle (superseded)
-- fa18-port-070.1-vectors-1a6-22c-action-dc0339a.bundle (current tip)
+- fa18-port-070.1-vectors-1a6-22c-action-dc0339a.bundle (superseded)
+- fa18-port-071.1-vector-12-rts-stub-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
