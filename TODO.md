@@ -136,6 +136,7 @@
 36. [x] ColorMap $00C05EB8 confirmed; ColorTable $00C069F8 == script palette
 37. [x] Sample-block queue: templates $00C06460 → holders $00C07488 → INTREQ via $00C16684
 38. [x] Live copper list Chip $0000A400; BPLCON0 $0200→$4200 (4 planes)→$0200
+39. [x] LOFCSR cprlist $00C01338 → start=$A400; InitVPort/MakeVPort/LoadView chain
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -160,12 +161,13 @@
 - [ ] One-axis stick hold to label roll vs pitch polarity
 
 ## Static-analyzable remaining
-- [x] Register-script *format* decoded; emitter still open (likely MakeVPort)
+- [x] Register-script format + copper path (MakeVPort/LoadView) done
 - [x] View/ViewPort + plane-clear + ColorMap + live copper list done
 - [x] Bootstrap of `$00C01550` pointer table: static data (resolved)
 - [x] Sample-block queue sites from game events (resolved)
 - [x] BPLCON0 `$0200`/`$4200` explained (4 active planes; 5th buffer unused here)
-- [ ] LOFCSN struct field map; script→copper builder step-through
+- [x] LOFCSR cprlist field map confirmed (start=$A400, MaxCount=42)
+- [ ] Alternate register-script copy at dump `$540F0` (mode template?)
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -230,7 +232,8 @@
 - fa18-port-112.1-reg-script-decode-dc0339a.bundle (superseded)
 - fa18-port-113.1-structA-static-colormap-dc0339a.bundle (superseded)
 - fa18-port-114.1-sample-block-queue-dc0339a.bundle (superseded)
-- fa18-port-115.1-live-copper-bplcon0-dc0339a.bundle (current tip)
+- fa18-port-115.1-live-copper-bplcon0-dc0339a.bundle (superseded)
+- fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

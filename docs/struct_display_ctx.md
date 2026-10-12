@@ -426,26 +426,56 @@ Likely double/triple buffering or separate UI vs 3D playfields.
 
 ## View / ViewPort chain
 
-### View at `$00C16D70`
+### View at `$00C16D70` (standard Amiga `struct View`)
 
 | Off | Value | Role |
 |-----|-------|------|
 | +0 | `$00C16D82` | ViewPort* |
-| +4 | `$00C01338` | LOFCSN (copper / colormap related) |
-| +8 | 0 | SHFCSN |
+| +4 | `$00C01338` | **LOFCSRlist*** (`struct cprlist`) |
+| +8 | 0 | SHFCSRlist* (unused) |
 | +C | `$002C` / `$0081` | DyOffset / DxOffset |
 
-Passed to **MakeVPort** (`$00C52B10` → Gfx LVO −$DE) from `$00C0CEB4` and `$00C14CCE`.
+### LOFCSR / cprlist at `$00C01338`
+
+| Off | Value | Role |
+|-----|-------|------|
+| +0 | `$00000000` | Next (null — single list) |
+| +4 | **`$0000A400`** | **start** → live copper list in Chip RAM |
+| +8 | `$002A` | MaxCount (42 instruction slots) |
+| +A | `$0000` | Count |
+
+Confirms the copper list discovered in `fa18_inflight_low.bin` is the
+one installed on the View.  MaxCount 42 covers the ~38 copper pairs
+from `$A400`–`$A498` plus headroom.
+
+### Display init call chain
+
+```
+$00C0CEA0  pea ViewPort ($00C16D82)
+           jsr InitVPort   ($00C52B68)
+$00C0CEAE  pea View      ($00C16D70)
+           jsr MakeVPort   ($00C52B10)   ; builds/links copper from VP
+$00C14946  pea View
+           jsr $00C52B34                 ; MrgCop-class helper
+$00C14954  pea ViewPort
+           jsr LoadView    ($00C52AD0)   ; installs copper into hardware
+$00C14CC8  pea View
+           jsr MakeVPort                 ; second site (mode switch)
+```
+
+MakeVPort is the script→copper builder: it consumes ViewPort/RasInfo
+(struct_A with the register-script template) and produces the Chip-RAM
+copper list that LOFCSR.start points at.
 
 ### ViewPort region `$00C16D82`
 
 | Off | Value | Role |
 |-----|-------|------|
 | +0 | 0 | Next |
-| +4 | `$00C05EB8` | ColorMap* (candidate) |
-| +8 | `$00C01550` | RasInfo* / extra (struct_A!) |
+| +4 | `$00C05EB8` | ColorMap* |
+| +8 | `$00C01550` | RasInfo* / extra (struct_A) |
 
-**InitVPort** (`$00C52B68` → Gfx LVO −$192) is called with `pea $00C16D82` during display init.
+**InitVPort** (`$00C52B68`) is called with `pea $00C16D82` during display init.
 
 ### Plane clear via OwnBlitter (`$00C2F228`)
 
@@ -463,12 +493,12 @@ Not the copper emitter — it is a **full-frame bitplane clear** using the activ
 ### Status
 
 - [x] View `$00C16D70` → ViewPort `$00C16D82`
-- [x] InitVPort + MakeVPort call sites
+- [x] InitVPort + MakeVPort + LoadView call sites
 - [x] Plane-clear via OwnBlitter at `$00C2F228`
 - [x] ColorMap `$00C05EB8` + ColorTable `$00C069F8` (matches script palette)
 - [x] Live copper list at Chip `$0000A400` (4 planes, BPLCON0 `$4200`)
-- [ ] LOFCSN struct at `$00C01338` full field map still rough
-- [ ] Script→copper builder (likely MakeVPort) not yet stepped
+- [x] LOFCSR cprlist at `$00C01338` → start=`$0000A400`, MaxCount=42
+- [x] Script→copper path: InitVPort → MakeVPort → LoadView
 
 ## Register-script stream at `$00C055F8`
 
@@ -555,9 +585,8 @@ manual register-script and the OS ColorMap object used by MakeVPort.
 - [x] struct_A / `$00C01550` is static image data (not runtime-allocated)
 - [x] Live copper list found in Chip RAM (see below)
 - [x] BPLCON0 `$0200` / `$4200` dual-value explained
-- [ ] Walker / emitter that consumes the script (likely MakeVPort /
-      graphics.library copper builder from the template)
-- [ ] Relationship of second copy at `$540F0`
+- [x] Script→copper path: InitVPort / MakeVPort / LoadView (Gfx library)
+- [ ] Relationship of second copy at `$540F0` (likely alternate mode template)
 
 ## Live copper list (Chip RAM `$0000A400`)
 
