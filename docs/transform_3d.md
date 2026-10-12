@@ -913,3 +913,75 @@ directly (already mapped: angle0=roll, angle1=pitch, angle2=yaw).
 - [x] `$4b0` writers identified (input + control paths)
 - [ ] Integrator that writes structure+$68 from rates
 - [ ] Which of +$68/+$6A/+$6C is roll vs pitch vs yaw
+
+## Attitude integrator at `$00C2C418`
+
+Located inside a larger control/physics routine that uses **a1 = player
+structure** (`$00C44EBC` family).
+
+### Core integration
+
+```asm
+; $00C2C416
+move.w  d5, d1
+sub.w   d1, $68(a1)        ; angle0 -= rate5
+bge.s   *+4
+neg.w   d1                 ; |Δ| for clamp tests
+
+cmpi.w  #1200, d1          ; 60° in 7200-circle
+ble.s   next
+cmpi.w  #27600, d1
+bge.s   next
+addq.w  #1, d0
+subi.w  #14400, d1         ; 2×7200 — wrap-related
+; …
+
+move.w  d6, d2
+sub.w   d2, $6A(a1)        ; angle1 -= rate6
+; same clamp family (1200 / 27600 / 14400)
+```
+
+| Operation | Field | Rate reg | Meaning |
+|-----------|-------|----------|---------|
+| `sub.w d5, $68(a1)` | +`$68` | **d5** | primary attitude axis |
+| `sub.w d6, $6A(a1)` | +`$6A` | **d6** | secondary attitude axis |
+
+### Clamp / wrap constants (7200-circle units)
+
+| Value | Degrees | Role |
+|------:|--------:|------|
+| 1200 | 60° | small-delta threshold |
+| 800 | 40° | cross-axis compare |
+| 6000 | 300° | gate on +`$66` |
+| 14400 | 720° (2 turns) | wrap subtract |
+| 22800 | 1140° | gate on +`$66` |
+| 27600 | 1380° | large-delta reject |
+
+### Related structure fields (in-flight)
+
+| Off | Live | Value | Notes |
+|-----|------|------:|-------|
+| +`$56` | `$00C44F12` | 4 | rate/flag cluster |
+| +`$58`/`$5A` | `$00C44F14`/`16` | 0 | rate/flag cluster |
+| +`$66` | `$00C44F22` | 28024 | integrator gate input |
+| +`$68` | `$00C44F24` | **2240** | angle0 (integrated) |
+| +`$6A` | `$00C44F26` | **88** | angle1 (integrated) |
+| +`$6C`/`$6E` | `$00C44F28`/`2A` | 10591 | further attitude state |
+
+### Chain (updated)
+
+```
+$4b0/$4b2 (8-bit stick)
+  → control decoder / rate tables ($00C4459A …)
+  → rates in d5/d6 (and struct +$56..)
+  → integrator $00C2C418:  +$68 -= d5,  +$6A -= d6
+  → orchestrator reads +$68 → D4
+  → builder A/B → matrix
+```
+
+### Status
+
+- [x] Integrator found: `sub.w` of rates into +`$68` / +`$6A`
+- [x] Clamp constants mapped to 7200-circle
+- [ ] Exact source of d5/d6 rates from stick (same function, earlier)
+- [ ] Label +`$68`/+`$6A` as roll/pitch/yaw from axis identity
