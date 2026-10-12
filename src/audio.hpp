@@ -74,13 +74,40 @@ public:
   void stop(int idx) {
     if (idx < 0 || idx > 3) return;
     ch_[idx].active = false;
+    holders_[idx] = nullptr;
     std::cout << "[audio] stop ch " << idx << "\n";
+  }
+
+  // $00C16684 — queue a sample-block template onto a channel and fire INTREQ.
+  // Mirrors: template table $00C06460 → holder $00C07488+4*ch → $00C4EBD8.
+  void queue(int idx, SampleBlock* block) {
+    if (idx < 0 || idx > 3) return;
+    holders_[idx] = block;
+    request(idx);
+    if (block)
+      play(idx, block);
+    else
+      stop(idx);
+  }
+
+  // $00C16660 — clear channel holder (silence on next interrupt).
+  void clear_queue(int idx) {
+    if (idx < 0 || idx > 3) return;
+    holders_[idx] = nullptr;
+    request(idx);
+    stop(idx);
+  }
+
+  SampleBlock* holder(int idx) const {
+    if (idx < 0 || idx > 3) return nullptr;
+    return holders_[idx];
   }
 
   AudioChannel& operator[](int i) { return ch_[i]; }
 
 private:
   std::array<AudioChannel, 4> ch_;
+  std::array<SampleBlock*, 4> holders_{};
 };
 
 }  // namespace fa18

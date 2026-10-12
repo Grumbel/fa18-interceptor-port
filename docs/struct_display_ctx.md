@@ -586,7 +586,22 @@ manual register-script and the OS ColorMap object used by MakeVPort.
 - [x] Live copper list found in Chip RAM (see below)
 - [x] BPLCON0 `$0200` / `$4200` dual-value explained
 - [x] Script→copper path: InitVPort / MakeVPort / LoadView (Gfx library)
-- [ ] Relationship of second copy at `$540F0` (likely alternate mode template)
+- [x] Alternate script at dump `$540E8` is a 32-colour variant (see below)
+
+## Alternate register-script (dump `$540E8`)
+
+Header `$0001 $FFFE $0000 $0000` (primary uses `$FFFF`).  Same 6-byte
+record format.  Differences vs primary (`$00C055F8`):
+
+| Feature | Primary | Alternate |
+|---------|---------|-----------|
+| COLORxx range | 00–15 | **00–31** (16–31 zeroed) |
+| DIW / DDF / BPLCON | identical | identical |
+| BPLPT | BPL1–4 | (decode runs into foreign data; likely same or absent) |
+
+This is a **32-colour mode template** sharing the same 16-colour palette
+in the low slots.  Not active in the in-flight dump (LOFCSR points at the
+16-colour copper list derived from the primary script).
 
 ## Live copper list (Chip RAM `$0000A400`)
 

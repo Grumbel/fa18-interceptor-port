@@ -137,6 +137,7 @@
 37. [x] Sample-block queue: templates $00C06460 → holders $00C07488 → INTREQ via $00C16684
 38. [x] Live copper list Chip $0000A400; BPLCON0 $0200→$4200 (4 planes)→$0200
 39. [x] LOFCSR cprlist $00C01338 → start=$A400; InitVPort/MakeVPort/LoadView chain
+40. [x] Alt register-script $540E8 = 32-colour variant; C++ palette + audio queue API
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -167,7 +168,7 @@
 - [x] Sample-block queue sites from game events (resolved)
 - [x] BPLCON0 `$0200`/`$4200` explained (4 active planes; 5th buffer unused here)
 - [x] LOFCSR cprlist field map confirmed (start=$A400, MaxCount=42)
-- [ ] Alternate register-script copy at dump `$540F0` (mode template?)
+- [x] Alternate register-script at `$540E8` = 32-colour mode template
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -233,7 +234,8 @@
 - fa18-port-113.1-structA-static-colormap-dc0339a.bundle (superseded)
 - fa18-port-114.1-sample-block-queue-dc0339a.bundle (superseded)
 - fa18-port-115.1-live-copper-bplcon0-dc0339a.bundle (superseded)
-- fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (current tip)
+- fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (superseded)
+- fa18-port-117.1-palette-cpp-audio-queue-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
