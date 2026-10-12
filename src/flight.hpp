@@ -54,6 +54,63 @@ struct ViewDesc {
   int   threshold_fine   = 0x20;  // $378
 };
 
+// Player attitude state at live $00C44EBC (docs/transform_3d.md).
+// Angles in 7200-circle units (7200 = 360°).
+constexpr int kAngleCircle = 7200;
+
+struct PlayerAttitude {
+  // Raw rates from stick curves (+$50/+$52/+$54)
+  int16_t raw_rate[3] = {};
+  // Filtered rates after scale+blend (+$56/+$58/+$5A)
+  int16_t rate[3] = {};
+  // Attitude angles (+$68/+$6A/+$6C)
+  int16_t angle[3] = {};
+  // Mode nibble selects curve (+$62)
+  uint8_t mode = 0x10;
+  // Scale divisor for rate filter (5..15)
+  int16_t scale = 10;
+};
+
+// Stick curve tables (live $00C2B782 / $00C2B798 / $00C2B7C4)
+inline const int16_t kCurveSteep[]  = {
+  160,320,480,560,640,720,800,960,1040,1120,1280};
+inline const int16_t kCurveMedium[] = {
+  80,120,160,240,320,320,400,480,480,560,640};
+inline const int16_t kCurveGentle[] = {
+  8,16,24,32,40,48,56,64,72,80,88};
+
+inline const int16_t* select_curve(uint8_t mode) {
+  if ((mode & 0xF0) == 0x10) return kCurveSteep;
+  if (mode == 0x14) return kCurveMedium;
+  return kCurveGentle;
+}
+
+// Low-pass rate filter ($00C2C1F0): scale new deltas, blend 50/50 with old.
+inline void filter_rates(PlayerAttitude& att, const int16_t new_delta[3]) {
+  int16_t sc = att.scale;
+  if (sc < 5) sc = 5;
+  if (sc > 15) sc = 15;
+  for (int i = 0; i < 3; ++i) {
+    int16_t nd = static_cast<int16_t>(new_delta[i] / sc);
+    int16_t avg = static_cast<int16_t>((att.rate[i] + nd) / 2);
+    int16_t smoothed = static_cast<int16_t>((avg + nd) / 2);
+    att.rate[i] = smoothed;
+  }
+}
+
+// Integrator ($00C2C418): angle0 -= rate0, angle1 -= rate1.
+inline void integrate_attitude(PlayerAttitude& att) {
+  att.angle[0] = static_cast<int16_t>(att.angle[0] - att.rate[0]);
+  att.angle[1] = static_cast<int16_t>(att.angle[1] - att.rate[1]);
+  // Wrap into [0, kAngleCircle)
+  for (int i = 0; i < 2; ++i) {
+    while (att.angle[i] < 0) att.angle[i] =
+        static_cast<int16_t>(att.angle[i] + kAngleCircle);
+    while (att.angle[i] >= kAngleCircle) att.angle[i] =
+        static_cast<int16_t>(att.angle[i] - kAngleCircle);
+  }
+}
+
 // $c6 motion step: proximity cull + optional ×15/16 damp + position integrate.
 // Returns true (d0=1) on success / object processed.
 // See docs/func_c6.md for the full path-B / accept-path analysis.
