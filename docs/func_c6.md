@@ -1,4 +1,4 @@
-# Function `$c6` — object-indexed post-transform worker
+# Function `$c6` — object motion update (physics step)
 
 ## Resolution
 
@@ -221,22 +221,37 @@ neg.w   d6
 cmp.w   d7, d6
 bge.w   accept
 
-; within threshold — finer object work
+; within threshold — integrate motion deltas at object+24
 moveq   #8, d5
-movem.w 24(a3), d0-d2       ; object+24..28
+movem.w 24(a3), d0-d2       ; velocity/delta at object+24..28
 subi.l  #$20, d1
 moveq   #6, d4
 btst    #4, 38(a3)          ; object+$26 flag bit 4
-bne.s   ...
-btst    #5, 38(a3)          ; object+$26 flag bit 5
-beq.s   ...
-; … continues with shifts / further tests …
+bne.s   scale
+btst    #5, 38(a3)          ; bit 5
+beq.s   write_deltas
+addi.l  #$20, d1
+moveq   #2, d4
+; scale: x -= x>>4  (×15/16 damping)
+move.l  dn, d3; lsr.l #4, d3; sub.l d3, dn   ; for d0,d1,d2
+scale:
+write_deltas:
+movem.w d0-d2, 24(a3)       ; write back damped deltas
+add.l   d0, 0(a3)           ; position X +=
+add.l   d1, 4(a3)           ; position Y +=
+add.l   d2, 8(a3)           ; position Z +=
+
+; second, tighter proximity test with threshold $378
+; if still near: dbf-style loop back to delta load
+; if far: fall through
 ```
 
-Path-B is a **distance cull**: high-byte of object position vs the
-view/camera descriptor at `$b54`, using threshold `$376`.  Objects
-outside the threshold skip straight to accept/exit; nearby ones get
-finer processing (flag bits on object+`$26`, fields at +24).
+Path-B is a **motion integrator with two-tier distance cull**:
+
+1. Coarse cull (threshold `$376`): far objects skip to accept path.
+2. Near objects: load velocity at +24, optionally damp by ×15/16
+   (controlled by object+`$26` bits 4/5), write back, **add to position**.
+3. Fine cull (threshold `$378`): if still near, loop; else done.
 
 ### Path-C (+$16C) — table-driven
 
@@ -262,6 +277,37 @@ Path-C tables (live):
 ```
 $00C4C4C8:  pointer array (e.g. $00C3A58C ×3, $00C39B52 ×5, …)
 $00C4C4F4:  word records (0x0010, 0x4143, 0x0500, 0x2F00, …)
+```
+
+### Accept path (+$314) — alternate delta source
+
+Used when the coarse cull decides the object is "far" (or index < 20
+on the first check).  Same damping/integrate pattern, but reads and
+writes **object+12..16** instead of +24..28, with ±`$100` bias:
+
+```asm
+movem.w 12(a3), d0-d2
+subi.l  #$100, d1
+; flag bits 4/5 on object+$26 → optional addi.l #$100,d1 + damping
+movem.w d0-d2, 12(a3)
+tst.w   36(a3)              ; object+$24
+bne.s   apply
+move.w  #1, 36(a3)          ; mark active
+bra.s   done
+apply:
+add.l   d0, 0(a3)           ; position +=
+add.l   d1, 4(a3)
+add.l   d2, 8(a3)
+done:
+bra.w   exit_region         ; → +$5B4
+```
+
+### Success return (+$3BA)
+
+```asm
+moveq   #1, d0              ; status = success
+unlk    a6
+rts
 ```
 
 ## On-disk symbols used (before reloc)
@@ -296,6 +342,8 @@ $00C4C4F4:  word records (0x0010, 0x4143, 0x0500, 0x2F00, …)
 - [x] Path-B / path-C entry points and tables identified
 - [x] Path-B decompiled: 3-axis proximity cull vs `$b54` / threshold `$376`
 - [x] Path-C decompiled: table-driven via `$5400`/`$542C`, falls into path-B
-- [ ] Remaining path-B tail after flag-bit tests on object+`$26`
-- [ ] Exact meaning of gate flags `$18d`/`$17e`
-- [ ] Port skeleton of `$c6` into C++ object loop
+- [x] Path-B tail: damp velocity (×15/16), integrate into position X/Y/Z
+- [x] Accept path: same integrate using object+12 deltas; success returns d0=1
+- [x] **Core purpose identified: per-object motion/physics step**
+- [ ] Exact meaning of gate flags `$18d`/`$17e` and object+`$26` bits
+- [ ] Port `$c6` motion step into C++ object loop
