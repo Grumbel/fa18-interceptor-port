@@ -144,10 +144,15 @@ sibling) with instance-pool streams (`$00C43xxx`).
 +16  .w  0000
 ```
 
-Flag low byte and +12 LOD word agree on the active tier.  Coords A/B are
-likely world or local position components (scale still TBD).  Stream
+Flag low byte and +12 LOD word agree on the active tier.  Stream
 `$00C39690` (flag `$2D03`) is a pure DL with PP=`$72`/`$22` and Axxx
 offset tables — sits just before the `$39710` cluster.
+
+**Coord scale (hypothesis):** `coord_a` / `coord_b` are **Q8.8** world
+XZ.  Observed range ≈ (−36, −28) … (+41, +56) after ÷256.  The Flight
+demo positions scene-loaded meshes with this scale (further ×0.15 for
+the demo camera).  Unconfirmed against live object-pool positions
+(pool was zero in the inflight snapshot).
 
 **Pre-walker setup handlers** (from the drawable map):
 

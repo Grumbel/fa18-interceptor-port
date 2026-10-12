@@ -249,8 +249,13 @@ int main(int argc, char* argv[]) {
       static fa18::Mesh craftDump = fa18::mesh_from_dump_file(
           "dumps/inflight/fa18_inflight_code.bin", 0x00C39710, 256,
           "dump_auto_$00C39710");
-      // Meshes resolved from scene list A → dispatch → stream
-      static std::vector<fa18::Mesh> sceneMeshes;
+      // Meshes resolved from scene list A → dispatch → stream.
+      // Positions use scene-list coords as Q8.8 world units (hypothesis).
+      struct SceneMesh {
+        fa18::Mesh mesh;
+        float x = 0, z = 0;  // world XZ from coord_a/coord_b Q8.8
+      };
+      static std::vector<SceneMesh> sceneMeshes;
       static bool mesh_logged = false;
       if (!mesh_logged) {
         auto logm = [](const fa18::Mesh& m) {
@@ -269,13 +274,14 @@ int main(int argc, char* argv[]) {
         for (size_t i = 0; i < scenes.size() && i < 12; ++i) {
           const auto& s = scenes[i];
           auto slot = fa18::dispatch_slot_from_dump(dump, s.dispatch_ptr);
+          float wx = s.coord_a / 256.0f;
+          float wz = s.coord_b / 256.0f;
           std::cout << "  [" << i << "] flag=" << std::hex << s.flag
                     << " type=" << int(s.type_id())
                     << " lod=" << int(s.lod_tier())
                     << " h=" << slot.handler
                     << " s0=" << slot.stream[0]
-                    << " ca=" << std::dec << s.coord_a
-                    << " cb=" << s.coord_b << "\n";
+                    << " pos=(" << std::dec << wx << "," << wz << ")\n";
           uint32_t stream = slot.stream[0];
           if (!stream) continue;
           uint32_t rec = fa18::cluster_record_start(stream);
@@ -287,11 +293,11 @@ int main(int argc, char* argv[]) {
           auto m = fa18::mesh_from_dump_file(dump, rec, 512, name);
           if (!m.verts.empty()) {
             logm(m);
-            sceneMeshes.push_back(std::move(m));
+            sceneMeshes.push_back({std::move(m), wx, wz});
           }
         }
         std::cout << "[scene] loaded " << sceneMeshes.size()
-                  << " unique cluster meshes\n";
+                  << " unique cluster meshes (Q8.8 positions)\n";
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =
@@ -307,12 +313,14 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, structB, orient, {-5.f, -0.5f, 24.f}, 12);
       if (!craftDump.edges.empty())
         fa18::draw_mesh(ren, gfx, craftDump, orient, {-6.f, 0.5f, 15.f}, 14);
-      for (size_t i = 0; i < sceneMeshes.size() && i < 4; ++i) {
-        if (sceneMeshes[i].edges.empty()) continue;
-        float x = -6.f + float(i) * 4.f;
-        fa18::draw_mesh(ren, gfx, sceneMeshes[i], orient,
-                        {x, 2.0f, 28.f + float(i) * 3.f},
-                        static_cast<uint8_t>(8 + i));
+      for (size_t i = 0; i < sceneMeshes.size() && i < 6; ++i) {
+        if (sceneMeshes[i].mesh.edges.empty()) continue;
+        // Scene coords as Q8.8; scale down for the demo camera
+        float x = sceneMeshes[i].x * 0.15f;
+        float z = 18.f + sceneMeshes[i].z * 0.15f;
+        fa18::draw_mesh(ren, gfx, sceneMeshes[i].mesh, orient,
+                        {x, 1.5f, z},
+                        static_cast<uint8_t>(8 + (i % 7)));
       }
 
       // 2-D hull radar silhouette (top-left, from mesh.hull)
