@@ -285,6 +285,7 @@ standard aircraft — relocated absolute pointers or shared runtime table.
 Low-12 as pure DL-relative offsets land in neighbouring records.
 
 **`PP` / `$70`**: meaning still open (pen, scale, or render flags).
+Note: `move.w #$70` at `$00C2F4A2` is radar scroll math, not DL setup.
 
 ## Open
 

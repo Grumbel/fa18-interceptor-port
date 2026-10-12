@@ -160,6 +160,7 @@
 60. [x] Companion runtime-written ($00C1CD88); edge cmds 800C begin / 8000 end / 8018+attrs
 61. [x] $5400 pointers = hull starts; $00C1CD38 transforms hull → companion
 62. [x] Companion transform: asl scale (d7) + translate (d2/d4) + $3FFF mask; attr hi/4 colour?
+63. [x] mesh_edges_from_dl skips end-attrs; $5400=hull note in mesh.hpp; $70 imm is radar not DL
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -225,7 +226,9 @@
 - [x] Companion transform: `asl.l d7` scale, add d2/d4 translate, `andi #$3FFF`
 - [~] Attr word: hi/4 = colour candidate (0..7), lo = style; `$100B` most common
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-- [ ] Confirm colour/style in actual draw/blitter path
+      (`move.w #$70` at `$00C2F4A2` is radar scroll, not DL)
+- [ ] Confirm colour/style (attr hi/4) in actual draw/blitter path
+- [x] mesh_edges_from_dl consumes/skips end-with-attrs trailing words
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -314,7 +317,8 @@
 - fa18-port-136.1-toplevel-dl-pattern-80ll-dc0339a.bundle (superseded)
 - fa18-port-137.1-companion-runtime-edge-attrs-dc0339a.bundle (superseded)
 - fa18-port-138.1-slot-ptrs-are-hull-starts-dc0339a.bundle (superseded)
-- fa18-port-139.1-companion-transform-attr-colour-dc0339a.bundle (current tip)
+- fa18-port-139.1-companion-transform-attr-colour-dc0339a.bundle (superseded)
+- fa18-port-140.1-edge-attr-skip-hull-ptr-note-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -11,13 +11,14 @@
 namespace fa18 {
 
 // Model format recovered from in-flight dump cluster $00C39700–$00C3A600.
-// Pointer table $00C4C4C8 (abs $5400) references these headers.
+// Pointer table $00C4C4C8 (abs $5400) references **2-D hull starts**
+// (not the FFFF/N vertex header).
 //
 // Full cluster record:
 //   7FFF 7FFF              — record separator
 //   tag0 tag1              — type tags (aircraft: 0100 0200)
 //   0000 × N               — reserved / padding
-//   (x,y).w pairs…         — 2-D top-down hull / radar silhouette
+//   (x,y).w pairs…         — 2-D top-down hull  ← $5400 points here
 //   FFFF FFFF              — end of hull
 //   word N                 — declared vertex count (often under-states)
 //   (x,y,z).w × N+         — signed local coords; continues past N
@@ -184,12 +185,15 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
     while (k < mesh_word_count && k < sub + 40) {
       uint16_t w = mesh_words[k];
       if (w == 0xFFFF) break;
-      if ((w >= 0x8000 && w < 0xE000) || (w >= 0xC000 && w < 0xE000)) {
+      const uint16_t hi = w & 0xF000;
+      const uint16_t lo = w & 0xFF;
+      if (hi == 0x8000 || hi == 0xC000) {
         ++k;
+        // $800C / $C00C = begin: collect vertex byte-offsets
+        // $8000 = end (no attrs); $8018/$1E/$24/$2A = end + attr word(s)
         std::vector<int> idxs;
         while (k < mesh_word_count) {
           uint16_t v = mesh_words[k];
-          // Vertex byte-offset: multiple of 6, small enough for nverts
           if (v < 0x200 && (v % 6) == 0) {
             int idx = v / 6;
             if (idx >= 0 && static_cast<size_t>(idx) < nverts)
@@ -199,7 +203,17 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
             break;
           }
         }
-        // Polyline edges; close if triangle-or-more
+        // End-with-attrs: skip non-opcode trailing words (colour/style)
+        // Attr hi/4 is a colour-index candidate (0..7); lo = style flags.
+        if (lo != 0x00 && lo != 0x0C && k < mesh_word_count) {
+          uint16_t attr = mesh_words[k];
+          if (attr < 0x8000 && attr != 0xFFFF) {
+            ++k;  // consume attr; (attr >> 8) / 4 → colour candidate
+            // optional second word (e.g. $0100 / $0096)
+            if (k < mesh_word_count && mesh_words[k] < 0x100)
+              ++k;
+          }
+        }
         for (size_t e = 1; e < idxs.size(); ++e)
           edges.emplace_back(idxs[e - 1], idxs[e]);
         if (idxs.size() >= 3)
