@@ -179,6 +179,7 @@
 79. [x] 39980 C0C0-style aircraft edges + pens; wired into Flight demo
 80. [x] mesh_edges_from_dl: always full C00C scan + offset targets; shared-sublist note
 81. [x] PP/$70 observations table; mesh_from_words helper; hull radar in Flight demo
+82. [x] Walker bit14-skip worked example; structure_3A4A8 in Flight demo
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -265,6 +266,7 @@
 - [x] 39980 C0C0-style aircraft: dump-derived edges + edge_pens; demo slot
 - [x] mesh_edges_from_dl always full-scans C00C + follows offsets; shared-sublist note
 - [x] PP/$70 observation table (40PP vs 60xx); mesh_from_words; hull radar demo
+- [x] Walker bit14-skip worked example (4070 skips 4022); structure_3A4A8 demo
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -372,7 +374,8 @@
 - fa18-port-155.1-link-graph-dl-parser-dc0339a.bundle (superseded)
 - fa18-port-156.1-39980-c0c0-edges-pens-dc0339a.bundle (superseded)
 - fa18-port-157.1-mesh-dl-fullscan-shared-subs-dc0339a.bundle (superseded)
-- fa18-port-158.1-pp-obs-mesh-from-words-hull-demo-dc0339a.bundle (current tip)
+- fa18-port-158.1-pp-obs-mesh-from-words-hull-demo-dc0339a.bundle (superseded)
+- fa18-port-159.1-walker-skip-worked-example-3a4a8-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

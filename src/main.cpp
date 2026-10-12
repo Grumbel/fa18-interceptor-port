@@ -240,6 +240,7 @@ int main(int argc, char* argv[]) {
       static fa18::Mesh craft4 = fa18::mesh_aircraft_39980();
       static fa18::Mesh craftB = fa18::mesh_from_dump_B();
       static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
+      static fa18::Mesh structA = fa18::mesh_structure_3A4A8();
       static bool mesh_logged = false;
       if (!mesh_logged) {
         auto logm = [](const fa18::Mesh& m) {
@@ -249,7 +250,7 @@ int main(int argc, char* argv[]) {
                     << " dl=" << m.display_list.size() << "\n";
         };
         logm(craft); logm(craft2); logm(craft3); logm(craft4);
-        logm(craftB); logm(craftE);
+        logm(craftB); logm(craftE); logm(structA);
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =
@@ -261,6 +262,7 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, craft4, orient, { 3.f,  0.5f, 20.f}, 10);
       fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
       fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
+      fa18::draw_mesh(ren, gfx, structA, orient, { 6.f,  0.f, 22.f},  8);
 
       // 2-D hull radar silhouette (top-left, from mesh.hull)
       fa18::draw_hull_2d(ren, gfx, craft, 40, 40, 0.04f, 13);

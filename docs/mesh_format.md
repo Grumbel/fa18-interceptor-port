@@ -418,6 +418,21 @@ bra     loop
 `$4xxx` is recognized (bit 14) and skips the following word — consistent
 with command+param encoding, but the low-byte consumer is not this path.
 
+**Worked example** — aircraft DL `4070 4022 C016 4240 0022 C016`:
+
+| Fetch | bit15 | bit14 | thresh | Action |
+|-------|-------|-------|--------|--------|
+| 4070  | 0     | 1     | 14     | skip next word (`4022`), loop |
+| C016  | 1     | —     | —      | edge-command path |
+| 4240  | 0     | 1     | 72     | skip next word (`0022`), loop |
+| C016  | 1     | —     | —      | edge-command path |
+
+The PP words (`4022`, `0022`) are **never fetched as commands** by this
+walker; they are parameter payloads attached to the preceding `$4xxx`.
+The same skip occurs for non-aircraft `4070 60xx` pairs.  A second
+occurrence of the bit14-skip pattern exists at `$00C1EC2C` (related
+draw path).  The actual PP consumer remains open.
+
 ## Open
 
 - [~] Display-list edge encoding + offset base + `80LL` end-offset known;
