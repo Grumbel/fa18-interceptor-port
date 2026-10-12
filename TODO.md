@@ -170,6 +170,7 @@
 70. [x] Object→drawable table $00C21000; 19 instances; 3977A/39E42/etc mapped
 71. [x] LOD tables ($00C3A47E/$00C3A576): count+ptrs+hull+mesh; $00C1D8A0 trampoline
 72. [x] PP on ADF (static); walker uses only bit14 of $4xxx; $100B attrs cluster-only
+73. [x] Mesh pipeline overview diagram in mesh_format.md
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -349,7 +350,8 @@
 - fa18-port-146.1-pen-from-draw-stream-dc0339a.bundle (superseded)
 - fa18-port-147.1-object-drawable-table-dc0339a.bundle (superseded)
 - fa18-port-148.1-lod-tables-trampoline-dc0339a.bundle (superseded)
-- fa18-port-149.1-pp-static-attrs-cluster-only-dc0339a.bundle (current tip)
+- fa18-port-149.1-pp-static-attrs-cluster-only-dc0339a.bundle (superseded)
+- fa18-port-150.1-mesh-pipeline-overview-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

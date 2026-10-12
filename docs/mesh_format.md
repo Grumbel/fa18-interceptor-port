@@ -1,5 +1,33 @@
 # Mesh / model format (in-flight)
 
+## Pipeline overview
+
+```
+Object type
+    │
+    ▼
+$00C21000 dispatch table ──► 3D cluster DL  ($00C39700+)
+    │                        LOD table       (count+ptrs+hull+mesh)
+    │                        Instance pool   ($00C43700+, stride $6A)
+    │                        Walker trampoline ($00C1D8A0 → $00C1D96C)
+    │
+    ▼
+LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
+    │
+    ├─► Hull → companion ($00C1CD38 transform, stride 256)
+    │
+    └─► Display list walk ($00C1D96C / $00C08232)
+            bit15 → edge cmds ($800C verts, $8018+attrs, $80LL end)
+            bit14 → $4xxx skip-next (PP low byte not consumed here)
+            else  → threshold filter / in-list offset
+            │
+            ▼
+        Pen from separate a2 stream → $5ee line draw
+```
+
+**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` low-byte consumer;
+edge-attr semantics beyond residual style/flags hypothesis.
+
 ## Pointer table / LOD slots
 
 | Abs (load model) | Live | Role |
