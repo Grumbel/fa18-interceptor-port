@@ -171,17 +171,40 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
   }
   const size_t dl_start = i;  // word index of first DL opcode
 
-  // Collect offset-table entries (consecutive mid-range values)
+  // Collect offset-table entries.  Preferred pattern:
+  //   Axxx  80LL  Axxx  [byte offsets from DL start…]
+  // Offsets may be small ($3A) or large ($035C); stop at next opcode.
   std::vector<uint16_t> offsets;
-  for (size_t j = dl_start; j + 2 < mesh_word_count && j < dl_start + 80; ++j) {
-    if (mesh_words[j] >= 0x100 && mesh_words[j] < 0x800 &&
-        mesh_words[j + 1] >= 0x80 && mesh_words[j + 1] < 0x800 &&
-        mesh_words[j + 2] >= 0x80 && mesh_words[j + 2] < 0x800) {
-      size_t k = j;
-      while (k < mesh_word_count &&
-             mesh_words[k] >= 0x80 && mesh_words[k] < 0x800)
-        offsets.push_back(mesh_words[k++]);
+  for (size_t j = dl_start; j + 3 < mesh_word_count && j < dl_start + 40; ++j) {
+    const uint16_t a = mesh_words[j], b = mesh_words[j + 1], c = mesh_words[j + 2];
+    if ((a & 0xF000) == 0xA000 && (b & 0xF000) == 0x8000 &&
+        ((c & 0xF000) == 0xA000 || (c > 0x20 && c < 0x800))) {
+      size_t k = ((c & 0xF000) == 0xA000) ? j + 3 : j + 2;
+      while (k < mesh_word_count) {
+        uint16_t v = mesh_words[k];
+        // Accept pure data offsets; reject opcodes and terminators
+        if (v == 0xFFFF || v == 0x7FFF) break;
+        if ((v & 0xF000) >= 0x4000) break;  // 4xxx/8xxx/Axxx/Cxxx
+        if (v < 0x10) break;                // too small to be useful
+        offsets.push_back(v);
+        ++k;
+        if (offsets.size() > 10) break;
+      }
       break;
+    }
+  }
+  // Fallback: consecutive mid-range values (legacy heuristic)
+  if (offsets.empty()) {
+    for (size_t j = dl_start; j + 2 < mesh_word_count && j < dl_start + 80; ++j) {
+      if (mesh_words[j] >= 0x100 && mesh_words[j] < 0x800 &&
+          mesh_words[j + 1] >= 0x80 && mesh_words[j + 1] < 0x800 &&
+          mesh_words[j + 2] >= 0x80 && mesh_words[j + 2] < 0x800) {
+        size_t k = j;
+        while (k < mesh_word_count &&
+               mesh_words[k] >= 0x80 && mesh_words[k] < 0x800)
+          offsets.push_back(mesh_words[k++]);
+        break;
+      }
     }
   }
 

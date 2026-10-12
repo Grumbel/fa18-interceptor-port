@@ -174,6 +174,7 @@
 74. [x] 39738 edges from dump sub-lists (18 unique); edge_pens from attr_hi/4
 75. [x] 39800/398C6/39E00 dump-derived edges + edge_pens
 76. [x] 39B66 (5 edges) + 3A4A8 (4-cycle) dump-derived edges
+77. [x] mesh_edges_from_dl: Axxx/80LL offset-table pattern (handles small offsets)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -357,7 +358,8 @@
 - fa18-port-150.1-mesh-pipeline-overview-dc0339a.bundle (superseded)
 - fa18-port-151.1-39738-dump-edges-pens-dc0339a.bundle (superseded)
 - fa18-port-152.1-more-aircraft-dump-edges-dc0339a.bundle (superseded)
-- fa18-port-153.1-39B66-3A4A8-dump-edges-dc0339a.bundle (current tip)
+- fa18-port-153.1-39B66-3A4A8-dump-edges-dc0339a.bundle (superseded)
+- fa18-port-154.1-offset-table-parser-axxx-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
