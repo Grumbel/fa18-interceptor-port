@@ -111,6 +111,22 @@ inline void integrate_attitude(PlayerAttitude& att) {
   }
 }
 
+// Rate auto-center ($00C2C476): nudge filtered rates toward zero.
+// Live global $00C07384 = 144.
+inline void auto_center_rates(PlayerAttitude& att, int16_t strength = 144) {
+  for (int i = 0; i < 2; ++i) {
+    int16_t bias = (att.rate[i] >= 0) ? strength : static_cast<int16_t>(-strength);
+    // Original adds bias into the rate long; approximate with saturating add.
+    int32_t next = int32_t(att.rate[i]) + bias;
+    // Don't cross through zero in one step — spring toward zero.
+    if ((att.rate[i] > 0 && next < 0) || (att.rate[i] < 0 && next > 0))
+      att.rate[i] = 0;
+    else if (next > 32767) att.rate[i] = 32767;
+    else if (next < -32768) att.rate[i] = -32768;
+    else att.rate[i] = static_cast<int16_t>(next);
+  }
+}
+
 // $c6 motion step: proximity cull + optional ×15/16 damp + position integrate.
 // Returns true (d0=1) on success / object processed.
 // See docs/func_c6.md for the full path-B / accept-path analysis.

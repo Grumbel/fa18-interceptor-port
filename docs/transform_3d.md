@@ -1103,3 +1103,54 @@ artificial-horizon draw path that reads the same angles.
 - [x] Rate0→angle0, rate1→angle1 confirmed
 - [ ] Rate2→angle2 path
 - [ ] Stick axis ↔ rate axis identity
+
+## Rate auto-center (`$00C2C476`)
+
+After the main integrator, filtered rates are nudged toward zero:
+
+```asm
+move.w  $00C07384, d0      ; live $0090 = 144
+tst.w   $56(a1)
+bge.s   *+4
+neg.w   d0
+add.l   d0, $56(a1)        ; rate0 += sign-adjusted bias
+; same for +$58 (rate1)
+```
+
+`$00C07384` is a global centering strength (144 in this dump).  This is
+a weak spring pulling rates back to zero when the stick is released.
+
+## Input variable map
+
+| Addr | Name | Mid-flight | Writers | Role |
+|------|------|----------:|---------|------|
+| `$00C44818` | `$4b0` | 0 | `$00C24260`, `$00C1071E` | primary 8-bit stick axis |
+| `$00C4481A` | `$4b2` | 0 | `$00C10916`, `$00C10AC2` | secondary 8-bit stick axis |
+| `$00C448A0` | — | `$0017` | `$00C24218`, `$00C24250` | processed stick (post-curve in input path) |
+| `$00C44604` | — | `$0840` | `$00C24266` | input flags (bit 0 set on stick write) |
+| `$00C07384` | — | `$0090` | (static/init) | rate auto-center magnitude |
+
+### Stick → rate path (current understanding)
+
+```
+hardware stick
+  → input path $00C24260:  $4b0 = raw, $448A0 = processed, flags
+  → control decoder $00C10754 (reads $4b0, sets tables at $4459A)
+  → rate writers $00C2B6CA/B3F0/B554
+      (index from internal d3, NOT direct $4b0 absolute read)
+  → raw +$50/+$52/+$54
+  → filter → +$56/+$58/+$5A
+  → integrate → +$68/+$6A
+  → auto-center rates
+```
+
+The rate writers take their curve index from register d3 which is
+computed earlier in the same large function from structure fields
+(matrix elements at +$96.. and mode flags).  **Direct stick→d3 link
+still needs a controlled one-axis dump to pin identity.**
+
+### Status
+
+- [x] Rate auto-center at `$00C2C476` with global `$00C07384`
+- [x] Input variable map ($4b0, $4b2, $448A0, $44604)
+- [ ] Stick↔rate axis identity (blocked on dynamic evidence)

@@ -118,6 +118,7 @@
 29c. [x] Three rate writers ($50/$52/$54); curves by $62 mode
 29d. [ ] Stick↔rate identity; rate2→angle2; label R/P/Y
 29e. [x] C++ PlayerAttitude + filter_rates + integrate_attitude
+29f. [x] Rate auto-center $00C2C476; input var map $4b0/$4b2/$448A0
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -173,7 +174,8 @@
 - fa18-port-090.1-attitude-integrator-dc0339a.bundle (superseded)
 - fa18-port-091.1-attitude-rate-filter-dc0339a.bundle (superseded)
 - fa18-port-092.1-three-rate-axes-dc0339a.bundle (superseded)
-- fa18-port-093.1-player-attitude-cpp-dc0339a.bundle (current tip)
+- fa18-port-093.1-player-attitude-cpp-dc0339a.bundle (superseded)
+- fa18-port-094.1-rate-autocenter-input-map-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
