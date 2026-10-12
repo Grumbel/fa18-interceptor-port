@@ -595,3 +595,73 @@ family instead.
 - [x] `$00C4EBD8` writes INTREQ from object+$14
 - [ ] Full `$00C4EBF0` vector call semantics
 - [ ] Meaning of object+0 numeric field
+
+## Side table clarification: `$00C07478` vs `$00C07488`
+
+### `$00C07478` — audio channel descriptor pointers
+
+| Index | Pointer | Channel custom base |
+|------:|---------|---------------------|
+| 0 | `$00C07498` | `$00DFF0A0` (AUD0) |
+| 1 | `$00C074B4` | `$00DFF0B0` (AUD1) |
+| 2 | `$00C074D0` | `$00DFF0C0` (AUD2) |
+| 3 | `$00C074EC` | `$00DFF0D0` (AUD3) |
+
+Descriptor layout (at `$00C07498` family):
+
+| Off | Example | Role |
+|-----|---------|------|
+| +00 | `$00DFF0A0` | custom-register base for channel |
+| +04 | `$00C07488` | back-ref / related |
+| +08 | `$00C07508` | data block |
+| +0C | 7 | length / mode |
+| +10 | `$82010001` | flags |
+| +14 | `$80800080` | **INTREQ value** (written by `$00C4EBD8`) |
+| +18 | `$00C024E8` | further data |
+
+### `$00C07488` — action object side table
+
+| Index | Mid-flight | Notes |
+|------:|------------|-------|
+| 0 | `$00C01450` | = action table slot 2 |
+| 1 | `$00C01490` | = action table slot 3 |
+| 2–3 | 0 | empty |
+
+Written by dispatcher `$00C16684` when invoking an action.
+
+### `$00C4EBD8` is an audio INTREQ helper
+
+```asm
+; index in 4(sp), already used as d0<<2
+lea     $00C07478, a0
+move.l  (a0,d0.w), a0       ; channel descriptor
+move.w  $14(a0), $DFF09C    ; poke INTREQ
+rts
+```
+
+Action dispatcher passes its secondary arg into this helper — so action
+invoke can also fire an audio-channel interrupt when the arg indexes a
+valid channel (0–3).  Coupling between UI actions and sound effects.
+
+### `$00C4EBF2` — Exec LVO −162 path
+
+```asm
+object = $00C07478[idx]     ; NOTE: still the audio table base
+d0 = object+12
+a1 = object+8
+jsr (ExecBase - 162)        ; = jsr -162(a6) LVO
+object+18 = d0              ; save result
+```
+
+For pure audio descriptors, +8/+12 are data not code.  A parallel
+entry point `$00C4EC26` uses object+18 as a1 (chained call).  Third
+variant `$00C4EC52` does `jsr (ExecBase-168)` with a1=`$00C07560`.
+
+### Status
+
+- [x] `$00C07478` = 4 audio channel descriptors (AUD0–3)
+- [x] `$00C07488` = action object side table
+- [x] `$00C4EBD8` = INTREQ poke from channel+14
+- [x] Action invoke can trigger audio via shared index arg
+- [ ] Exact Exec LVO −162 / −168 identity
+- [ ] Full audio descriptor field meanings
