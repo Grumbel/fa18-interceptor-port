@@ -170,24 +170,33 @@ int main(int argc, char* argv[]) {
         fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
       }
 
-      // Object pool ($642 / $b8f) – player craft + two companions
-      fa18::ObjectList list;
-      auto* player = list.add();
-      *player = fa18::make_cube(0.8f);
-      player->orient_fp = fa18::mat_from_angles_q14(yaw_e, pitch, roll);
-      player->pos = {0.f, 0.f, 6.f};
+      // Object pool ($642 / $b8f) – persistent so $c6 motion integrates
+      static fa18::ObjectList list;
+      static bool pool_init = false;
+      if (!pool_init) {
+        auto* player = list.add();
+        *player = fa18::make_cube(0.8f);
+        player->pos = {0.f, 0.f, 6.f};
 
-      auto* c2 = list.add();
-      *c2 = fa18::make_cube(0.5f);
-      c2->orient_fp = fa18::mat_from_angles_q14(-yaw_e * 3 / 2, 0, 0);
-      c2->pos = {3.f, 0.5f, 9.f};
+        auto* c2 = list.add();
+        *c2 = fa18::make_cube(0.5f);
+        c2->pos = {3.f, 0.5f, 9.f};
+        c2->vel_near = {0.02f, 0.f, 0.f};   // drift right
+        c2->type_flags = 0x10;               // bit 4 → ×15/16 damping
 
-      auto* c3 = list.add();
-      *c3 = fa18::make_cube(0.4f);
-      c3->orient_fp = fa18::mat_from_angles_q14(yaw_e * 2 / 3, pitch / 2, 0);
-      c3->pos = {-2.5f, -0.3f, 8.f};
+        auto* c3 = list.add();
+        *c3 = fa18::make_cube(0.4f);
+        c3->pos = {-2.5f, -0.3f, 8.f};
+        c3->vel_near = {0.f, 0.015f, 0.f};  // drift up
+        c3->type_flags = 0x10;
+        pool_init = true;
+      }
+      // Player tracks input; companions keep integrated positions
+      list.objects[0].orient_fp = fa18::mat_from_angles_q14(yaw_e, pitch, roll);
+      list.objects[1].orient_fp = fa18::mat_from_angles_q14(-yaw_e * 3 / 2, 0, 0);
+      list.objects[2].orient_fp = fa18::mat_from_angles_q14(yaw_e * 2 / 3, pitch / 2, 0);
 
-      list.draw_all_fp(ren, gfx);  // Q2.14 path for entire pool
+      list.draw_all_fp(ren, gfx);  // $c6 motion → transform → draw
 
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;

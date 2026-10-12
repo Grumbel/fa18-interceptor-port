@@ -346,4 +346,4 @@ rts
 - [x] Accept path: same integrate using object+12 deltas; success returns d0=1
 - [x] **Core purpose identified: per-object motion/physics step**
 - [ ] Exact meaning of gate flags `$18d`/`$17e` and object+`$26` bits
-- [ ] Port `$c6` motion step into C++ object loop
+- [x] Port `$c6` motion step into C++ (`object_motion_step` in flight.hpp)
