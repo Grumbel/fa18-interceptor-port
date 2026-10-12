@@ -325,3 +325,76 @@ setup routine, not the dispatcher itself.
 - [x] Mode register live address confirmed (`$00C446D6`)
 - [ ] Capture a dump during active line-draw to see if `$12` is
       repatched to a real jump table
+
+## Live mode entry points (in-flight)
+
+Mode setters are thin: `move.w #MODE, $36e` then `jsr $12` (currently
+rts) or a branch into shared setup.  Real work is in the bodies that
+the setters fall into or that are reached independently.
+
+| Mode | File setter | Live (geometry/DDA base) | Real body |
+|------|-------------|--------------------------|-----------|
+| `$01` | `0x1C302` | DDA hunk `$00C231E0` | DDA at file `0x1C1F4` – reads `$3C00` edge list |
+| `$16` | `0x28698` | geometry `$00C2D7C8` | falls into walker; no `jsr $12` |
+| `$1b` | `0x28274` | `$00C2D7C8` | thin: set mode + `jsr $12` (stub) + rts |
+| walker | `0x2844E` | **`$00C2D9A2`** | edge walk + clip + `bsr` perspective/`$5ee` |
+
+### Vertex walker (file `0x2844E`, live `$00C2D9A2`)
+
+```asm
+link    a6, #-4
+lea     $4202.L, a1          ; edge descriptor (live $00C4B2CA)
+lea     $3000.L, a0          ; screen-space vertex buffer
+move.w  #1, -2(a6)           ; loop / edge counter
+movem.w (a1)+, d3-d5         ; load first vertex pair from descriptor
+
+cmp.w   d5, d3
+blt.s   path_lo
+; path_hi: d3 >= d5
+move.w  6(a1), d2            ; clip bound A ($4202+6)
+move.w  10(a1), d6           ; clip bound C ($4202+$a)
+cmp.w   d2, d6
+ble.s   next_edge
+bsr.w   perspective_or_edge  ; → +$27C region
+beq.w   done
+tst.w   $49A.L               ; flag
+bge.s   skip
+neg.w   d2
+cmp.w   d2, d6
+ble.s   skip
+bsr.w   alt_edge             ; → +$2AA
+…
+```
+
+Uses `$4202` fields +6 / +8 / +$a as signed clip bounds (confirmed
+live values 2422 / −305 / −145).  On accept, branches into
+perspective setup and ultimately `jsr $5ee` for span output.
+
+### DDA body (file `0x1C1F4`)
+
+```asm
+link    a6, #-6
+clr.w   d7
+lea     $3C00.L, a0          ; edge / span parameter list
+move.w  (a0)+, -2(a6)
+move.w  (a0)+, d0
+cmpi.w  #3, d0
+blt.s   …                    ; need ≥3 points for poly
+move.w  d0, -4(a6)
+lea     $3600.L, a1          ; working buffer
+lea     $1A2.L, a2
+lea     $198.L, a3
+lea     $FC.L, a4
+; … muls/divs DDA edge walk …
+```
+
+Mode `$01` setter at `0x1C302` writes `$36e` and calls `$12` (stub),
+then `bra` back into this DDA region — so the real work is the
+fall-through / branch target, not the `$12` call.
+
+### Implication of `$12` = rts
+
+Mode setters that only `jsr $12` and `rts` (like `$1b`) currently
+do nothing.  Modes that `bra` into a local body after the stub call
+(like `$01`) still run their algorithm.  Mode `$16` skips `$12`
+entirely and branches straight to the walker.
