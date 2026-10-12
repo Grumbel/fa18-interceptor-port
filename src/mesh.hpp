@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <array>
+#include <algorithm>
 #include <iostream>
 #include <cstring>
 #include "transform.hpp"
@@ -193,7 +194,28 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
       break;
     }
   }
-  // Fallback: consecutive mid-range values (legacy heuristic)
+  // Fallback: link-graph style — $80xx/$C0xx with lo ≥ $30 are
+  // intra-DL byte-offset links (e.g. 39B66: 8070 → DL+$70 → C00C…).
+  if (offsets.empty()) {
+    for (size_t j = dl_start; j < mesh_word_count && j < dl_start + 120; ++j) {
+      uint16_t w = mesh_words[j];
+      uint16_t hi = w & 0xF000;
+      uint16_t lo = w & 0xFF;
+      if ((hi == 0x8000 || hi == 0xC000) && lo >= 0x30 &&
+          lo != 0x3C /* attr-ish */) {
+        // Known edge-cmd low bytes to skip
+        if (lo == 0x0C || lo == 0x18 || lo == 0x1E || lo == 0x24 ||
+            lo == 0x2A)
+          continue;
+        offsets.push_back(lo);
+        if (offsets.size() > 16) break;
+      }
+    }
+    // Dedup link targets
+    std::sort(offsets.begin(), offsets.end());
+    offsets.erase(std::unique(offsets.begin(), offsets.end()), offsets.end());
+  }
+  // Legacy mid-range heuristic
   if (offsets.empty()) {
     for (size_t j = dl_start; j + 2 < mesh_word_count && j < dl_start + 80; ++j) {
       if (mesh_words[j] >= 0x100 && mesh_words[j] < 0x800 &&
@@ -216,42 +238,53 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
       const uint16_t hi = w & 0xF000;
       const uint16_t lo = w & 0xFF;
       if (hi == 0x8000 || hi == 0xC000) {
-        ++k;
-        // $800C / $C00C = begin: collect vertex byte-offsets
-        // $8000 = end (no attrs); $8018/$1E/$24/$2A = end + attr word(s)
-        std::vector<int> idxs;
-        while (k < mesh_word_count) {
-          uint16_t v = mesh_words[k];
-          if (v < 0x200 && (v % 6) == 0) {
-            int idx = v / 6;
-            if (idx >= 0 && static_cast<size_t>(idx) < nverts)
-              idxs.push_back(idx);
-            ++k;
-          } else {
-            break;
-          }
-        }
-        // End-with-attrs: attr hi/4 = colour candidate (0..7); lo = style.
-        uint8_t pen = 0xFF;  // unknown
-        if (lo != 0x00 && lo != 0x0C && k < mesh_word_count) {
-          uint16_t attr = mesh_words[k];
-          if (attr < 0x8000 && attr != 0xFFFF) {
-            uint8_t hi = static_cast<uint8_t>(attr >> 8);
-            if ((hi & 3) == 0 && hi / 4 <= 15)
-              pen = static_cast<uint8_t>(hi / 4);
-            ++k;
-            if (k < mesh_word_count && mesh_words[k] < 0x100)
+        // $800C / $C00C = begin edge group
+        if (lo == 0x0C) {
+          ++k;
+          std::vector<int> idxs;
+          while (k < mesh_word_count) {
+            uint16_t v = mesh_words[k];
+            if (v < 0x200 && (v % 6) == 0) {
+              int idx = v / 6;
+              if (idx >= 0 && static_cast<size_t>(idx) < nverts)
+                idxs.push_back(idx);
               ++k;
+            } else {
+              break;
+            }
           }
+          // Optional end-cmd + attr immediately after verts
+          uint8_t pen = 0xFF;
+          if (k < mesh_word_count) {
+            uint16_t end = mesh_words[k];
+            uint16_t elo = end & 0xFF;
+            if ((end & 0xF000) == 0x8000 &&
+                (elo == 0x00 || elo == 0x18 || elo == 0x1E ||
+                 elo == 0x24 || elo == 0x2A)) {
+              ++k;
+              if (elo != 0x00 && k < mesh_word_count) {
+                uint16_t attr = mesh_words[k];
+                if (attr < 0x8000 && attr != 0xFFFF) {
+                  uint8_t ahi = static_cast<uint8_t>(attr >> 8);
+                  if ((ahi & 3) == 0 && ahi / 4 <= 15)
+                    pen = static_cast<uint8_t>(ahi / 4);
+                  ++k;
+                }
+              }
+            }
+          }
+          auto emit = [&](int a, int b) {
+            edges.emplace_back(a, b);
+            if (out_pens) out_pens->push_back(pen);
+          };
+          for (size_t e = 1; e < idxs.size(); ++e)
+            emit(idxs[e - 1], idxs[e]);
+          if (idxs.size() >= 3)
+            emit(idxs.back(), idxs.front());
+        } else {
+          // Link, end-cmd without prior begin, or other — skip
+          ++k;
         }
-        auto emit = [&](int a, int b) {
-          edges.emplace_back(a, b);
-          if (out_pens) out_pens->push_back(pen);
-        };
-        for (size_t e = 1; e < idxs.size(); ++e)
-          emit(idxs[e - 1], idxs[e]);
-        if (idxs.size() >= 3)
-          emit(idxs.back(), idxs.front());
       } else {
         ++k;
       }

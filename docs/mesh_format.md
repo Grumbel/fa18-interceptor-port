@@ -409,6 +409,8 @@ with command+param encoding, but the low-byte consumer is not this path.
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
+- [x] Link-graph DL style (39B66): `$80xx`/`$C0xx` with lo ≥ `$30` = intra-DL
+      byte-offset link to sub-list (e.g. `$8070` → DL+$70 → `$C00C` edges)
 - [~] Attribute word: hi/4 = colour candidate; **unconfirmed** as pen source.
       `$100B` appears 12× in 3D cluster, **0×** in instance pool (instances use
       simpler edge encoding without these attrs).
@@ -424,6 +426,7 @@ with command+param encoding, but the low-byte consumer is not this path.
 
 - `Mesh` holds verts, edges, **hull**, tags, raw display_list
 - `mesh_parse()` — full cluster record (7FFF / tags / hull / verts / DL)
-- `mesh_edges_from_dl()` — partial decoder (sub-list byte-offset indices)
+- `mesh_edges_from_dl()` — offset-table (`Axxx 80LL Axxx`) + link-graph
+  (`$80xx` lo≥$30) + inline `$800C` edge decoder; attr_hi/4 pens
 - `mesh_aircraft_39738/39800/…` — include hull pairs + tags from dump
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette

@@ -175,6 +175,7 @@
 75. [x] 39800/398C6/39E00 dump-derived edges + edge_pens
 76. [x] 39B66 (5 edges) + 3A4A8 (4-cycle) dump-derived edges
 77. [x] mesh_edges_from_dl: Axxx/80LL offset-table pattern (handles small offsets)
+78. [x] Link-graph DL: $80xx lo≥$30 = intra-DL offset; parser follows links
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -251,6 +252,8 @@
       (ADF-static; walker tests only bit14 of `$4xxx`; low-byte consumer not located)
 - [x] `$100B` attrs are 3D-cluster-only (12×); instance pool uses simpler edges (0×)
 - [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
+- [x] Link-graph DL (39B66): `$80xx`/`$C0xx` lo≥`$30` = intra-DL byte-offset link
+- [x] mesh_edges_from_dl follows Axxx offset tables + link-graph targets
 - [~] Attr hi/4 → colour: wired into Mesh.edge_pens; **unconfirmed** — pen comes from
       a separate a2 draw-command stream (`move.w (a2)+, pen`), not mesh edge attrs
 - [x] `$5ee` copies pen `$324`→`$326` then draws; pen set before the call
@@ -359,7 +362,8 @@
 - fa18-port-151.1-39738-dump-edges-pens-dc0339a.bundle (superseded)
 - fa18-port-152.1-more-aircraft-dump-edges-dc0339a.bundle (superseded)
 - fa18-port-153.1-39B66-3A4A8-dump-edges-dc0339a.bundle (superseded)
-- fa18-port-154.1-offset-table-parser-axxx-dc0339a.bundle (current tip)
+- fa18-port-154.1-offset-table-parser-axxx-dc0339a.bundle (superseded)
+- fa18-port-155.1-link-graph-dl-parser-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
