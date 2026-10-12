@@ -88,25 +88,26 @@
 7. [x] Gate flags $18d/$17e: suppress object processing when nonzero
 8. [x] $be/$c6 install vars are numeric scales at $00C44426/$2E (not ptrs)
 9. [x] struct_A $00C01550 display/viewport hypothesis; struct_B secondary
-10. [ ] Find writer of pointer table $00C16E1E/$26; confirm copper list
-11. [x] Resolve $5ee → edge/span helper at $00C2E5D6
-12. [x] Full $5ee path_hi/lo/tail; span_setup in draw.hpp
-13. [x] Live $4202 mapped to $00C4B2CA
-14. [x] $4202 = 12-byte XYZ vertex records; alternate perspective ×160/90 exact
-15. [x] Overlay residency map: ~72/77 CODE hunks resident mid-flight
-16. [x] Mode $01 DDA body + $16 walker decoded; $1b is stub-only
-17. [x] Walker → perspective → $5ee chain complete
-18. [x] Port walker+perspective into C++
-19. [x] Wire walker_draw demo into main loop
-20. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
-21. [x] Action create body at $00C4F010 decoded; clear partial
-22. [ ] Full action clear body (+$3EE past on-disk image end)
-23. [x] Runtime vectors $1a6/$22c → action hunk offsets
-24. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
-25. [ ] Capture dump during active draw to see if $12 is repatched
-26. [x] Live transform matrix/out addresses confirmed
-27. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
-28. [ ] Live-trace which input axis feeds which Euler angle
+10. [x] Pointer table writers: AllocMem → $00C16E22; field +$22 → $00C16E26
+11. [ ] Confirm copper/bitplane interpretation of $00C055F8
+12. [x] Resolve $5ee → edge/span helper at $00C2E5D6
+13. [x] Full $5ee path_hi/lo/tail; span_setup in draw.hpp
+14. [x] Live $4202 mapped to $00C4B2CA
+15. [x] $4202 = 12-byte XYZ vertex records; alternate perspective ×160/90 exact
+16. [x] Overlay residency map: ~72/77 CODE hunks resident mid-flight
+17. [x] Mode $01 DDA body + $16 walker decoded; $1b is stub-only
+18. [x] Walker → perspective → $5ee chain complete
+19. [x] Port walker+perspective into C++
+20. [x] Wire walker_draw demo into main loop
+21. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
+22. [x] Action create body at $00C4F010 decoded; clear partial
+23. [ ] Full action clear body (+$3EE past on-disk image end)
+24. [x] Runtime vectors $1a6/$22c → action hunk offsets
+25. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
+26. [ ] Capture dump during active draw to see if $12 is repatched
+27. [x] Live transform matrix/out addresses confirmed
+28. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+29. [ ] Live-trace which input axis feeds which Euler angle
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -148,7 +149,8 @@
 - fa18-port-076.1-4202-xyz-perspective-dc0339a.bundle (superseded)
 - fa18-port-077.1-euler-yaw-pitch-roll-dc0339a.bundle (superseded)
 - fa18-port-078.1-be-c6-numeric-scales-dc0339a.bundle (superseded)
-- fa18-port-079.1-struct-display-ctx-dc0339a.bundle (current tip)
+- fa18-port-079.1-struct-display-ctx-dc0339a.bundle (superseded)
+- fa18-port-080.1-pointer-table-writers-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

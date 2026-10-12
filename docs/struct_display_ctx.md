@@ -70,3 +70,53 @@ setup) fills the `$00C16E1E`/`$26` pointer slots.  Not yet found as a
 - [x] struct_B: secondary context, under-specified
 - [ ] Find the writer of `$00C16E1E` / `$00C16E26`
 - [ ] Confirm copper / bitplane interpretation of `$00C055F8`
+
+## Pointer-table writers (primary)
+
+### AllocMem path → `$00C16E22`
+
+```asm
+; live $00C0CDF8 / $00C14922 (primary file 0x6F0 / 0x821A)
+pea     <size_or_template>
+jsr     $00C52880            ; AllocMem wrapper (ExecBase -$228)
+addq.l  #8, sp
+move.l  d0, $00C16E22        ; store allocated block pointer
+```
+
+`$00C52880` is a thin AllocMem:
+
+```
+move.l  ExecBase, a6         ; $00C06A9C
+move.l  8(sp), a1            ; attributes
+move.l  12(sp), d0           ; size
+jsr     -$228(a6)            ; AllocMem
+rts
+```
+
+In-flight: `$00C16E22` = **`$00C01E1E`** (allocated object).
+
+### Field copy → `$00C16E26`
+
+```asm
+; live $00C14938
+move.l  $00C16E22, a0
+move.l  $22(a0), $00C16E26   ; object field +$22 → table slot
+```
+
+So `$00C16E26` (struct_B pointer slot) is filled from **offset +$22 of the
+Allocated object**, not by a direct `lea` of `$00C03D46`.  The in-flight
+value `$00C03D46` is whatever that field currently holds (or a later
+overwrite).
+
+### Summary
+
+| Slot | Writer | Mechanism |
+|------|--------|-----------|
+| `$00C16E22` | primary `$00C0CDF8`, `$00C14922` | AllocMem result |
+| `$00C16E26` | primary `$00C1493E` | copy from alloc’d object `+$22` |
+| `$00C16E1E` | (not found as abs store) | may be field of another object or unaligned neighbour |
+| `$00C16E2E` | primary `$00C149E4` | `move.l a0, $00C16E2E` after another setup |
+
+The “pointer table” is a set of **globals holding AllocMem’d display /
+scene objects**, populated during init/mode change — not the `$be`/`$c6`
+install path.
