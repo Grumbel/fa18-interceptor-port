@@ -242,3 +242,80 @@ Related intermediates:
 - [ ] Bootstrap origin of the first `$00C01550` address in the table
       (no absolute `lea #$00C01550` in resident CODE — likely BSS
       fixed address or early AllocMem not yet traced)
+
+## Library bases (display / OS)
+
+| Address | Library | Open site |
+|---------|---------|-----------|
+| `$00C06AA0` | **dos.library** | `$00C0CBB2` (already known) |
+| `$00C16E22` | **graphics.library** (GfxBase) | `$00C0CDEC` |
+| `$00C16D60` | **intuition.library** | `$00C0D1BC` |
+
+```asm
+; $00C0CDEC
+moveq   #29, d0              ; version
+pea     graphics.library
+jsr     OpenLibrary_wrapper  ; $00C52880
+move.l  d0, $00C16E22        ; GfxBase
+```
+
+### graphics.library thin wrappers (`$00C52Axx`)
+
+| Wrapper | LVO | Function |
+|---------|-----|----------|
+| `$00C52AEC` | −210 | MrgCop |
+| `$00C52B02` | −216 | MakeVPort |
+| `$00C52B18` | −222 | LoadView |
+| `$00C52B28` | −228 | WaitBlit |
+| `$00C52B94` | −456 | OwnBlitter |
+| `$00C52BA4` | −462 | DisownBlitter |
+
+Copper programming is expected to go through **MakeVPort → MrgCop → LoadView** rather than hand-written COP1LC pokes.  Absolute callers of the wrappers were not found in this dump (likely register-indirect).
+
+## Register-programming table at `$00C055F8`
+
+Pointed to by struct_A+`$0C`.  Format (word triples / pairs):
+
+```
+.word  $F1xx     ; register = $DFF000 | ($F1xx & $0FFF)
+.word  value     ; 12-bit color or control value
+.word  $0000     ; pad
+```
+
+### Decoded entries (in-flight)
+
+| Reg | Custom | Value | Meaning |
+|-----|--------|------:|---------|
+| `$F180` | COLOR00 | `$0000` | black |
+| `$F182` | COLOR01 | `$0800` | dark red |
+| `$F184` | COLOR02 | `$0888` | grey |
+| `$F186` | COLOR03 | `$0111` | dark |
+| `$F188` | COLOR04 | `$0151` | |
+| `$F18A` | COLOR05 | `$0447` | |
+| `$F18C` | COLOR06 | `$0036` | |
+| `$F18E` | COLOR07 | `$0444` | |
+| `$F190` | COLOR08 | `$0555` | |
+| `$F192` | COLOR09 | `$0D92` | |
+| `$F194` | COLOR10 | `$0666` | |
+| `$F196` | COLOR11 | `$0030` | |
+| `$F198` | COLOR12 | `$0333` | |
+| `$F19A`–`$F19E` | COLOR13–15 | greys | |
+| `$F08E` | DIWSTRT | `$0581` | display window start |
+| `$F100` | BPLCON0 | `$0200` | |
+| `$F104` | BPLCON2 | `$0024` | |
+| `$F090` | DIWSTOP | `$40C1` | |
+| `$F092` | DDFSTRT | `$0038` | |
+| `$F094` | DDFSTOP | `$00D0` | |
+| `$F0E0`–`$F0EE` | BPLxPT | bitplane pointers | `$00012BC0` family |
+
+This is a **CPU-side register script**, not a native copper MOVE list
+(native copper uses `$0180` not `$F180`).  A loader walks the table and
+writes `custom[reg & $0FFF] = value`.
+
+### Status
+
+- [x] GfxBase / IntuitionBase located
+- [x] graphics.library LVO wrappers identified
+- [x] `$00C055F8` register script decoded (palette + DIW/DDF/BPL)
+- [ ] Emitter that walks the script into custom regs
+- [ ] View/VPort structures passed to MakeVPort
