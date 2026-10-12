@@ -91,3 +91,73 @@ void audio_play(int ch, const int8_t* sample, int len, int period, int vol);
 - [x] Complex play outline at `$00C4ED00`
 - [ ] Sample data format and period/volume source
 - [ ] Exec LVO −162/−168 identity (used by sibling helpers)
+
+## Sample block format
+
+Pointed to by `*(desc+4)` → sample list head.  Each node:
+
+| Off | Size | Role |
+|-----|------|------|
+| +00 | .l | sample data address → AUDxLC |
+| +04 | .l | length in **bytes** (asr#1 → AUDxLEN words) |
+| +08 | .l | period (low word → AUDxPER, clamped ≤ `$7C`) |
+| +0C | .l | volume (low word & `$3F` → AUDxVOL, 0–63) |
+| +10 | .l | play countdown (−1 = sticky / infinite) |
+| +14 | .l | reload value for +10 when countdown expires |
+| +20 | .l | next sample-block pointer (chain) |
+
+## Play routine `$00C4ED00` (full)
+
+```asm
+; a1 = channel descriptor
+move.w  16(a1), INTREQ          ; clear channel interrupt
+move.l  (a1), a0                ; custom base $DFFx0A0
+move.l  4(a1), a2               ; sample-list pointer holder
+move.l  (a2), a3                ; current sample block
+
+beq     silence                 ; null → stop channel
+
+move.l  (a3), (a0)              ; AUDxLC = sample data
+move.l  4(a3), d0
+asr.l   #1, d0
+move.w  d0, 4(a0)               ; AUDxLEN = bytes/2
+move.w  16(a1), DMACON          ; enable DMA (+10)
+jsr     $00C4EE08               ; set PER + VOL from sample
+
+; lifecycle
+cmpi.l  #-1, 16(a3)
+beq     done
+subq.l  #1, 16(a3)
+bpl     done
+move.l  32(a3), (a2)            ; advance to next block
+move.l  20(a3), 16(a3)          ; reload countdown
+bra     done
+
+silence:
+move.w  #0, 8(a0)               ; VOL = 0
+move.w  #$7C, 6(a0)             ; PER = default
+move.w  18(a1), DMACON          ; disable DMA (+12)
+; delay ~$190 iterations
+done:
+rts
+```
+
+## Period/volume helper `$00C4EE08`
+
+```asm
+period = sample[+8]           ; clamp to ≤ $7C (124)
+AUDxPER = period
+volume = sample[+12] & $3F    ; 0–63
+if volume > global_limit ($00C07576): volume = limit
+AUDxVOL = volume
+```
+
+Paula frequency ≈ `3579545 / (period × 2)` Hz (NTSC).  Period 124 ≈ 14.4 kHz.
+
+## Status
+
+- [x] Sample block layout (LC, len, per, vol, countdown, next)
+- [x] Play + silence paths decoded
+- [x] Period clamp `$7C`, volume 6-bit with global limit
+- [ ] Sample data encoding (8-bit signed PCM expected)
+- [ ] Who builds/queues sample blocks

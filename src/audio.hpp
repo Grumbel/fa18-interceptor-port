@@ -43,12 +43,32 @@ public:
               << "=$" << std::hex << ch_[idx].intreq_set << std::dec << "\n";
   }
 
-  // $00C4ED00 outline — play sample (backend TBD)
-  void play(int idx, const int8_t* /*sample*/, int len, int period, int vol) {
+  // Sample block mirrors live format (docs/audio_channels.md).
+  struct SampleBlock {
+    const int8_t* data = nullptr;  // +0  AUDxLC
+    int32_t length_bytes = 0;      // +4  → AUDxLEN = bytes/2
+    int16_t period = 0x7C;         // +8  clamped ≤ $7C
+    int16_t volume = 0;            // +12 bits 0–5 (0–63)
+    int32_t countdown = -1;        // +16 −1 = sticky
+    int32_t reload = 0;            // +20
+    SampleBlock* next = nullptr;   // +32 chain
+  };
+
+  // $00C4ED00 — program AUDx from sample block and enable DMA.
+  void play(int idx, SampleBlock* block) {
     if (idx < 0 || idx > 3) return;
+    if (!block || !block->data) {
+      stop(idx);
+      return;
+    }
+    int16_t per = block->period;
+    if (per > 0x7C) per = 0x7C;
+    int16_t vol = static_cast<int16_t>(block->volume & 0x3F);
     enable(idx);
     std::cout << "[audio] play ch " << idx
-              << " len=" << len << " per=" << period << " vol=" << vol << "\n";
+              << " len=" << block->length_bytes
+              << " per=" << per << " vol=" << vol << "\n";
+    // SDL backend: queue 8-bit signed PCM at ~3.58MHz/(per*2)
   }
 
   void stop(int idx) {
