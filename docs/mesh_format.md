@@ -31,8 +31,14 @@ LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
             (or jump-table path → edge-list $00C4ACC8 → DDA)
 ```
 
-**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` consumer (no runtime path
-found); edge-attr semantics beyond residual style/flags hypothesis.
+**Known gaps:** PP (`$22`/`$20`/`$BA` / `$60PP`) / `$70` consumer (no
+runtime path found; likely offline/asset-build).  Pure-DL streams in
+`$35xxx`/`$36xxx` need the live vertex pool at `$00C470C8`.
+
+**Edge-builder index convention:** handlers at `$84BA`/`$8512`/`$855E`
+read vertex indices from the stream as **byte offsets into the pool**
+(`lea (a3,d1.w), a4` with a3=`$00C470C8`).  ÷6 → vertex index.  Same
+convention as cluster sub-list indices after `$800C`.
 
 ### PP / $70 observations (still open)
 

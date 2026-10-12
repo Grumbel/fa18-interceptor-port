@@ -200,6 +200,7 @@
 100. [x] Skip pure-DL streams in auto-load; scale instance verts ÷64
 101. [x] Map pure DLs just before cluster records ($39690→$39710)
 102. [x] $36xxx B000 absolute sublist ptrs; shared edge targets catalogued
+103. [x] Edge-builder ÷6 pool index; sanitize_mesh_edges on auto-load
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -308,6 +309,7 @@
 - [x] Auto-load only cluster/instance records; ÷64 instance scale (fix long lines)
 - [x] Pure DL $39690 maps forward to cluster $39710
 - [x] $36xxx B000→shared edge sublists; no static verts (pool $470C8)
+- [x] Edge builders use byte-offset/6 into $470C8; sanitize_mesh_edges()
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -436,7 +438,8 @@
 - fa18-port-176.1-60xx-pp-secondary-form-dc0339a.bundle (superseded)
 - fa18-port-177.1-fix-autoload-garbage-dl-scale-dc0339a.bundle (superseded)
 - fa18-port-178.1-map-pre-cluster-dl-to-record-dc0339a.bundle (superseded)
-- fa18-port-179.1-36xxx-b000-shared-sublists-dc0339a.bundle (current tip)
+- fa18-port-179.1-36xxx-b000-shared-sublists-dc0339a.bundle (superseded)
+- fa18-port-180.1-edge-builder-index-sanitize-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

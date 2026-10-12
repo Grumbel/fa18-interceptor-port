@@ -418,6 +418,27 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
 // Parse a word stream, then fill edges/pens from the display list when
 // the auto-decoder finds any.  Hand-authored edges remain preferred when
 // the supplied window is too short for shared sub-lists.
+// Drop edges whose indices are out of range for mesh.verts.
+inline void sanitize_mesh_edges(Mesh& m) {
+  std::vector<std::pair<int, int>> kept;
+  std::vector<uint8_t> pens;
+  const int n = static_cast<int>(m.verts.size());
+  const bool has_pens = m.edge_pens.size() == m.edges.size();
+  for (size_t i = 0; i < m.edges.size(); ++i) {
+    int a = m.edges[i].first, b = m.edges[i].second;
+    if (a < 0 || b < 0 || a >= n || b >= n || a == b)
+      continue;
+    kept.push_back(m.edges[i]);
+    if (has_pens)
+      pens.push_back(m.edge_pens[i]);
+  }
+  m.edges = std::move(kept);
+  if (has_pens)
+    m.edge_pens = std::move(pens);
+  else
+    m.edge_pens.clear();
+}
+
 inline Mesh mesh_from_words(const uint16_t* words, size_t count,
                             const char* name) {
   Mesh m = mesh_parse(words, count, name);
@@ -429,6 +450,7 @@ inline Mesh mesh_from_words(const uint16_t* words, size_t count,
     m.edges = std::move(edges);
     m.edge_pens = std::move(pens);
   }
+  sanitize_mesh_edges(m);
   return m;
 }
 
@@ -586,6 +608,7 @@ inline Mesh mesh_from_instance_dump(const std::string& dump_path,
         m.edges.emplace_back(0, i);
     }
   }
+  sanitize_mesh_edges(m);
   return m;
 }
 
@@ -1008,6 +1031,7 @@ inline Mesh mesh_instance_4335E() {
   };
   return m;
 }
+
 
 inline void draw_mesh(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
                       const Mat3Fixed& orient, const Vec3& pos, int pen) {
