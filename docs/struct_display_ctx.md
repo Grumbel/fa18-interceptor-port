@@ -466,8 +466,9 @@ Not the copper emitter — it is a **full-frame bitplane clear** using the activ
 - [x] InitVPort + MakeVPort call sites
 - [x] Plane-clear via OwnBlitter at `$00C2F228`
 - [x] ColorMap `$00C05EB8` + ColorTable `$00C069F8` (matches script palette)
-- [ ] Copper list pointers (LOFCSN) confirmed
-- [ ] True copper/BPL emitter still open
+- [x] Live copper list at Chip `$0000A400` (4 planes, BPLCON0 `$4200`)
+- [ ] LOFCSN struct at `$00C01338` full field map still rough
+- [ ] Script→copper builder (likely MakeVPort) not yet stepped
 
 ## Register-script stream at `$00C055F8`
 
@@ -552,8 +553,63 @@ manual register-script and the OS ColorMap object used by MakeVPort.
 - [x] Plane PT values match primary bank `$00012BC0`…
 - [x] ColorMap confirmed; ColorTable matches script palette
 - [x] struct_A / `$00C01550` is static image data (not runtime-allocated)
-- [ ] Walker / emitter that consumes the script (no static `lea $00C055F8`
-      found; may be reached via struct_A pointer indirection or Gfx
-      LoadView path)
-- [ ] Why BPLCON0 is `$0200` while 5 planes are installed
+- [x] Live copper list found in Chip RAM (see below)
+- [x] BPLCON0 `$0200` / `$4200` dual-value explained
+- [ ] Walker / emitter that consumes the script (likely MakeVPort /
+      graphics.library copper builder from the template)
 - [ ] Relationship of second copy at `$540F0`
+
+## Live copper list (Chip RAM `$0000A400`)
+
+Found in `dumps/inflight/fa18_inflight_low.bin`.  Exact mirror of the
+register-script values, in standard copper MOVE format (`reg, data`
+word pairs, not the 6-byte script encoding).
+
+```
+A400: 2901 FFFE          WAIT  v=41
+A404: 0180 0000          COLOR00 = $0000
+ …   (COLOR01–15, same 16 values as script / ColorTable)
+A444: 008E 0581          DIWSTRT = $0581
+A448: 0100 0200          BPLCON0 = $0200     ← planes off (pre-display)
+A44C: 0104 0024          BPLCON2 = $0024
+A450: 0090 40C1          DIWSTOP = $40C1
+A454: 0092 0038          DDFSTRT = $0038
+A458: 0094 00D0          DDFSTOP = $00D0
+A45C: 0102 0000          BPLCON1 = 0
+A460: 0108 0000          BPLCON4 = 0
+A468: 00E0 0001 / 00E2 2BC0   BPL1PT = $00012BC0
+A470: 00E4 0001 / 00E6 4B00   BPL2PT = $00014B00
+A478: 00E8 0001 / 00EA 6A40   BPL3PT = $00016A40
+A480: 00EC 0001 / 00EE 8980   BPL4PT = $00018980
+A488: 2A01 FFFE          WAIT  v=42
+A48C: 0100 4200          BPLCON0 = $4200     ← 4 bitplanes ON
+A490: F201 FFFE          WAIT  v=242
+A494: 0100 0200          BPLCON0 = $0200     ← planes off (vblank)
+A498: FFFF FFFE          END
+```
+
+### BPLCON0 explanation
+
+| Value | Meaning |
+|-------|---------|
+| `$0200` | COLOR bit only, **0 bitplanes** (BPU=0) |
+| `$4200` | COLOR + **4 bitplanes** (BPU=4) |
+
+The register script and the copper list both start with `$0200`.  After
+a WAIT to line 42 the copper switches to `$4200` for the visible area,
+then back to `$0200` at line 242.  This is normal Amiga practice
+(disable planes during blanking).
+
+The earlier “5-plane” BitMap descriptors allocate five plane buffers;
+the **active copper list programs only four** (BPL1–4PT).  Plane 5 may
+be reserved for a different mode, dual-playfield, or HUD overlay not
+active in this dump.
+
+### Cross-references
+
+- Code longword `$0000A400` appears at dump offsets `$133C` (inside
+  the LOFCSN/View-related region), `$1564` (struct_A area), `$1E50`,
+  `$20C3`.
+- Register script `$00C055F8` is therefore a **Slow-RAM template**
+  whose values are compiled into this Chip-RAM copper list (by
+  MakeVPort or an equivalent builder).
