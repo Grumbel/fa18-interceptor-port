@@ -192,6 +192,7 @@
 92. [x] Scene record fields (flag type/LOD, coords, type_tag 3F44); C++ struct
 93. [x] scene_list_from_dump() + Flight demo logs scene list A
 94. [x] DispatchSlot + dispatch_slot_from_dump; demo resolves handler/stream
+95. [x] Scene→stream→cluster mesh auto-load; draw up to 4 in Flight demo
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -291,6 +292,7 @@
 - [x] Scene record field map + SceneDrawableRecord; stream $39690 noted
 - [x] scene_list_from_dump loads list A/B; demo logs flag/type/lod/coords
 - [x] DispatchSlot resolves handler+streams; demo logs full scene→stream path
+- [x] Scene streams mapped to cluster records; auto-load+draw in demo
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -411,7 +413,8 @@
 - fa18-port-168.1-scene-list-stride18-dispatch-link-dc0339a.bundle (superseded)
 - fa18-port-169.1-scene-record-fields-struct-dc0339a.bundle (superseded)
 - fa18-port-170.1-scene-list-from-dump-loader-dc0339a.bundle (superseded)
-- fa18-port-171.1-dispatch-slot-from-dump-dc0339a.bundle (current tip)
+- fa18-port-171.1-dispatch-slot-from-dump-dc0339a.bundle (superseded)
+- fa18-port-172.1-scene-stream-mesh-autoload-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

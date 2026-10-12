@@ -76,6 +76,25 @@ struct DispatchSlot {
   uint32_t stream[3] = {0, 0, 0};
 };
 
+// Known 7FFF-separated cluster record starts ($00C39710–$00C3A980).
+inline uint32_t cluster_record_start(uint32_t live_addr) {
+  static const uint32_t kRecords[] = {
+      0x00C39710, 0x00C397D8, 0x00C3989E, 0x00C39958,
+      0x00C39B3E, 0x00C39D92, 0x00C39F38, 0x00C3A980,
+  };
+  uint32_t best = live_addr;
+  for (uint32_t r : kRecords) {
+    if (r <= live_addr)
+      best = r;
+    else
+      break;
+  }
+  // Only remap when the stream sits near a known record (within 0x200)
+  if (best != live_addr && live_addr - best < 0x200)
+    return best;
+  return live_addr;
+}
+
 // Read a dispatch slot from the inflight CODE dump by live address.
 inline DispatchSlot dispatch_slot_from_dump(const std::string& dump_path,
                                             uint32_t live_addr) {
