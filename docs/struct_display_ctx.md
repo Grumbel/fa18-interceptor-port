@@ -464,3 +464,85 @@ Not the copper emitter — it is a **full-frame bitplane clear** using the activ
 - [ ] ColorMap object at `$00C05EB8` contents
 - [ ] Copper list pointers (LOFCSN) confirmed
 - [ ] True copper/BPL emitter still open
+
+## Register-script stream at `$00C055F8`
+
+Pointed to by struct_A `+$0C`.  Identical second copy exists at dump
+offset `$540F0` (overlay / alternate bank data).
+
+### Header (4 words)
+
+| Offset | Value | Notes |
+|--------|-------|-------|
+| +0 | `$0001` | version / entry count flag? |
+| +2 | `$FFFF` | terminator-style marker |
+| +4 | `$0000` | |
+| +6 | `$0000` | |
+
+### Record format
+
+6-byte records: `reg.w, value.w, pad.w`
+
+- `reg` is `$Fxxx` where the low 9 bits are the custom-chip offset
+  (`reg & $1FE` → `$DFF000` register).
+- `pad` is normally `$0000` (one late record has `$0001`).
+- Stream ends on a zero record (`0000 0000 0000`).
+
+### Decoded contents (in-flight)
+
+| Reg | Name | Value | Notes |
+|-----|------|-------|-------|
+| `$F180` | COLOR00 | `$0000` | black |
+| `$F182` | COLOR01 | `$0800` | |
+| `$F184` | COLOR02 | `$0888` | |
+| `$F186` | COLOR03 | `$0111` | |
+| `$F188` | COLOR04 | `$0151` | |
+| `$F18A` | COLOR05 | `$0447` | |
+| `$F18C` | COLOR06 | `$0036` | |
+| `$F18E` | COLOR07 | `$0444` | |
+| `$F190` | COLOR08 | `$0555` | |
+| `$F192` | COLOR09 | `$0D92` | |
+| `$F194` | COLOR10 | `$0666` | |
+| `$F196` | COLOR11 | `$0030` | |
+| `$F198` | COLOR12 | `$0333` | |
+| `$F19A` | COLOR13 | `$0777` | |
+| `$F19C` | COLOR14 | `$0777` | |
+| `$F19E` | COLOR15 | `$0333` | 16-colour palette |
+| `$F08E` | DIWSTRT | `$0581` | |
+| `$F100` | BPLCON0 | `$0200` | |
+| `$F104` | BPLCON2 | `$0024` | |
+| `$F090` | DIWSTOP | `$40C1` | |
+| `$F092` | DDFSTRT | `$0038` | |
+| `$F094` | DDFSTOP | `$00D0` | |
+| `$F102` | BPLCON1 | `$0000` | |
+| `$F108` | BPLCON4 | `$0000` | |
+| `$F10A` | (spare) | `$0000` | |
+| `$F0E0`/`$F0E2` | BPL1PT | `$00012BC0` | matches primary plane bank |
+| `$F0E4`/`$F0E6` | BPL2PT | `$00014B00` | |
+| `$F0E8`/`$F0EA` | BPL3PT | `$00016A40` | |
+| `$F0EC`/`$F0EE` | BPL4PT | `$00018980` | 5th plane (BPL5 absent in this list) |
+
+Plane addresses are consistent with the primary 320×200 bank
+(`$00C1964C` region).  BPLCON0 `$0200` looks sparse for a 5-plane mode;
+the list may be a partial / mode-specific template, or the high plane
+count is set elsewhere (MakeVPort / copper rebuild).
+
+### ColorMap candidate `$00C05EB8`
+
+| Off | Value | Role (hypothesised) |
+|-----|-------|---------------------|
+| +0 | `$00000020` | Type/Count = 32 |
+| +4 | `$00C069F8` | ColorTable* |
+| +8 | 0 | |
+| +C… | mixed ptrs / code | region continues into live code |
+
+### Status
+
+- [x] Script format decoded (6-byte reg/value/pad)
+- [x] Full palette + display-window + 4 plane-pointer entries listed
+- [x] Plane PT values match primary bank `$00012BC0`…
+- [ ] Walker / emitter that consumes the script (no static `lea $00C055F8`
+      found; may be reached via struct_A pointer indirection or Gfx
+      LoadView path)
+- [ ] Why BPLCON0 is `$0200` while 5 planes are installed
+- [ ] Relationship of second copy at `$540F0`

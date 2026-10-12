@@ -131,6 +131,7 @@
 32b. [x] Plane-install $00C15494; BitMap ptr $00C19634; 3 plane banks
 32c. [x] View $00C16D70 + ViewPort $00C16D82; InitVPort/MakeVPort; plane-clear
 33. [x] Fix kAngleCircle redefinition (keep sole definition in transform.hpp)
+34. [x] Decode register-script at $00C055F8 (6-byte reg/val/pad; palette + DIW + BPLPT)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -155,10 +156,11 @@
 - [ ] One-axis stick hold to label roll vs pitch polarity
 
 ## Static-analyzable remaining
-- [ ] Register-script emitter (walk `$00C055F8` → custom)
+- [x] Register-script *format* decoded; emitter/walker still open
 - [x] View/ViewPort + plane-clear done; ColorMap/copper list open
 - [ ] Bootstrap writer of `$00C01550` pointer table (may be static data)
 - [ ] Sample-block queue sites from game events
+- [ ] Why BPLCON0=$0200 while 5 planes installed; BPL5PT missing from script
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -219,7 +221,8 @@
 - fa18-port-108.1-display-buffers-5plane-dc0339a.bundle (superseded)
 - fa18-port-109.1-plane-install-banks-dc0339a.bundle (superseded)
 - fa18-port-110.1-view-viewport-plane-clear-dc0339a.bundle (superseded)
-- fa18-port-111.1-fix-kAngleCircle-redef-dc0339a.bundle (current tip)
+- fa18-port-111.1-fix-kAngleCircle-redef-dc0339a.bundle (superseded)
+- fa18-port-112.1-reg-script-decode-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
