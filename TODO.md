@@ -101,9 +101,10 @@
 19. [x] Port walker+perspective into C++
 20. [x] Wire walker_draw demo into main loop
 21. [x] DDA modes $01/$03–$0a/$1f = pure setters; shared body $00C231F8
-21b. [ ] Remaining modes outside DDA region ($0c–$0e, $0f–$26, …)
+21b. [x] Modes $0f–$12/$26 also pure setters; real bodies need live $12 dump
 22. [x] Action create body at $00C4F010 decoded; clear partial
 23. [x] Full action clear body at $00C4F3FE; table base $00C06460
+23b. [x] Create 272=temp workspace, permanent object=64 (matches clear)
 24. [x] Runtime vectors $1a6/$22c → action hunk offsets
 25. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
 26. [ ] Capture dump during active draw to see if $12 is repatched
@@ -156,7 +157,8 @@
 - fa18-port-081.1-copper-bitplane-00C055F8-dc0339a.bundle (superseded)
 - fa18-port-082.1-action-clear-body-dc0339a.bundle (superseded)
 - fa18-port-083.1-pointer-table-16e1e-writer-dc0339a.bundle (superseded)
-- fa18-port-084.1-dda-shared-body-dc0339a.bundle (current tip)
+- fa18-port-084.1-dda-shared-body-dc0339a.bundle (superseded)
+- fa18-port-085.1-create-size-split-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

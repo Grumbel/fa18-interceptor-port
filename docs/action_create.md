@@ -411,3 +411,69 @@ that were created during init remain populated mid-flight.
 - [x] FreeMem / AllocMem wrappers identified
 - [ ] Exact meaning of the 272-byte create vs 64-byte free split
 - [ ] Secondary allocation layout (object+0 / +4)
+
+## Create/free size split resolved
+
+| Allocation | Size | Lifetime | Role |
+|------------|------|----------|------|
+| Create body AllocMem | **272** (`$110`) | Temporary | Workspace for init helpers |
+| Create body FreeMem | **272** | end of create | Releases the workspace |
+| Outer/wrapper AllocMem | **64** (`$40`) | Permanent | Actual action-slot object |
+| Clear FreeMem | **64** | on clear | Matches permanent object |
+
+### Create body sequence (refined)
+
+```asm
+; $00C4F010
+link    a6, #-16
+clr.l   -8(a6)
+move.l  #$00010000, -(sp)      ; MEMF_PUBLIC | MEMF_CLEAR
+move.l  #$00000110, -(sp)      ; 272 bytes
+jsr     $00C52710              ; AllocMem
+move.l  d0, -12(a6)
+beq     fail
+addq.l  #4, d0
+andi.l  #$FFFFFFFC, d0         ; align
+move.l  #$3ED, -(sp)
+move.l  8(a6), -(sp)
+move.l  d0, -16(a6)
+jsr     $00C5265C              ; init helper A (lib LVO -$54)
+; … helpers $00C5268C, $00C52678 …
+move.l  $7C(a0), -8(a6)        ; extract result from workspace+$7C
+
+move.l  #$110, -(sp)
+move.l  -12(a6), -(sp)
+jsr     $00C52728              ; FreeMem the 272-byte workspace
+
+move.l  -8(a6), d0             ; return extracted object/handle
+unlk    a6
+rts
+```
+
+The 272-byte block is **construction scratch**, not the long-lived
+action object.  The permanent 64-byte object is allocated by the
+create wrapper / pair path (`moveq #64` + AllocMem at `$00C4F0D6`)
+and stored into the action table at `$00C06460 + index×4`.
+
+Clear’s main FreeMem of 64 bytes matches that permanent object.
+The optional sub-block free (when `object+4` bit 31 clear) handles a
+secondary allocation some slots carry.
+
+### Init helpers (library LVOs via base `$00C06AA0`)
+
+| Helper | LVO | Notes |
+|--------|-----|-------|
+| `$00C5265C` | `-$54` | first init |
+| `$00C52678` | `-$5A` | middle |
+| `$00C5268C` | `-$66` | last |
+
+Base `$00C06AA0` sits 4 bytes after ExecBase (`$00C06A9C`) — likely a
+second library pointer (Intuition/Graphics or game-private).
+
+### Status
+
+- [x] 272 vs 64 split explained (temp workspace vs permanent object)
+- [x] Create frees its own 272-byte block before return
+- [x] Clear 64-byte free matches wrapper allocation
+- [ ] Identify library at `$00C06AA0` and the three LVO functions
+- [ ] Layout of the 64-byte action object beyond +0/+4/+8/+12/+16
