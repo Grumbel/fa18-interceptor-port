@@ -154,7 +154,8 @@
 54. [x] Proximity threshold 320 (asr#8); LOD countdown d5=8..1; companion stride-256 records
 55. [x] Full cluster record layout (7FFF/tags/hull/verts/DL); Mesh.hull + draw_hull_2d()
 56. [~] $00C2FF10 is radar scope pair-walker but data is fixed overlay ($00C4D454), not mesh hull
-57. [x] DL sub-list edge cmds refined: 800C begin, 8000 end, C00C polyline; offset-table base open
+57. [x] DL sub-list edge cmds refined: 800C begin, 8000 end, C00C polyline
+58. [x] Offset-table base = DL start (byte offsets); mesh_edges_from_dl() fixed
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -211,7 +212,7 @@
 - [x] Mesh.hull + draw_hull_2d(); mesh_parse handles full records
 - [~] `$00C2FF10` radar pair-walker uses fixed overlay `$00C4D454`, not mesh hull
 - [x] DL sub-list cmds: `$800C` begin edges, `$8000` end group, `$C00C` polyline
-- [ ] Offset-table base address (how `0270` etc. resolve)
+- [x] Offset-table base = DL start (byte offsets from first opcode word)
 - [ ] Top-level low-byte params (`$70`, `$22`/`$20`/`$BA`) exact meaning
 - [ ] Companion record payload beyond the first 2 match-bytes
 - [ ] Runtime consumer of mesh 2-D hull pairs
@@ -298,7 +299,8 @@
 - fa18-port-131.1-lod-threshold-companion-records-dc0339a.bundle (superseded)
 - fa18-port-132.1-cluster-record-hull-2d-dc0339a.bundle (superseded)
 - fa18-port-133.1-radar-hull-consumer-dc0339a.bundle (superseded)
-- fa18-port-134.1-dl-sublist-refine-radar-correct-dc0339a.bundle (current tip)
+- fa18-port-134.1-dl-sublist-refine-radar-correct-dc0339a.bundle (superseded)
+- fa18-port-135.1-offset-table-dl-base-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

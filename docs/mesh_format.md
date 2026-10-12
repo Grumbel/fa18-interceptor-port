@@ -195,7 +195,9 @@ The runtime consumer of mesh hull pairs remains **open**.
 Top-level DL ends with a short **offset table** (e.g. `0270 02D6 02E2
 0330 035C`) then trailing data / `7FFF`.
 
-Sub-list bodies hold the edge commands:
+**Offset base = display-list start** (first opcode word).  Byte offsets
+added to the DL address resolve to sub-list bodies (verified 5/5, 4/4,
+3/3 on aircraft meshes 39738 / 39800 / 398C6).
 
 ```
 800C 0006 0024 002A 8000 …   ; triangle verts 1,6,7 (byte-off÷6)
@@ -210,14 +212,12 @@ C00C 0006 0030 0036 8024 …   ; polyline variant
 | `$8018`/`$8024`/`$802A`/`$801E` | edge group; flags in low byte |
 | `$C00C` | polyline / alternate edge class |
 
-Offset-table base address is still open (values can land in neighbouring
-records if added to the mesh FFFF).  Edge encoding (byte-offset ÷ 6) is
-solid.
+`mesh_edges_from_dl()` uses DL-start as the offset base.
 
 ## Open
 
 - [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
-      top-level high-byte taxonomy sketched, low-byte params still open
+      offset base = DL start; top-level low-byte params still open
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
@@ -225,7 +225,7 @@ solid.
 - [x] 2D hull captured in Mesh; runtime consumer of hull pairs still open
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
-- [ ] Offset-table base address (how `0270` etc. resolve to sub-lists)
+- [x] Offset-table base = DL start (byte offsets from first opcode)
 - [ ] Full face/poly strip interpretation (cmd low-byte flags)
 - [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
 

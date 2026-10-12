@@ -121,18 +121,22 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
 // Two-level structure observed in aircraft models:
 //
 //   Top level:  40xx / C016 state commands, then a short offset table
-//               (words in ~$0100–$07FF) relative to the mesh header base.
+//               (words in ~$0100–$07FF).  Offsets are **byte offsets from
+//               the display-list start** (first opcode word).
 //
 //   Sub-lists at those offsets:
-//     8xxx command word
-//     zero or more vertex indices encoded as **byte offsets**
+//     8xxx / Cxxx command word
+//       $800C  begin edge/poly
+//       $8000  end of edge group
+//       $8018/$8024/$802A/$801E  edge group with flags
+//       $C00C  polyline variant
+//     zero or more vertex indices as **byte offsets**
 //       (index × 6, since each vertex is 3 × int16)
-//     FFFF terminator (optional)
+//     optional trailing params / FFFF
 //
 //   Example:  800C 0006 0024 002A  →  cmd, verts 1, 6, 7
 //
-// Top-level 40xx/C016 encoding and full coverage remain open; this
-// recovers a useful subset of edges to supplement hand-authored ones.
+// Top-level 40xx low-byte params remain open.
 // ---------------------------------------------------------------------------
 inline std::vector<std::pair<int, int>>
 mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
@@ -141,7 +145,7 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
   if (!mesh_words || mesh_word_count < 4 || nverts == 0)
     return edges;
 
-  // Locate DL start (same logic as mesh_parse)
+  // Locate DL start (first opcode after hull / N / verts)
   size_t i = 0;
   while (i + 1 < mesh_word_count) {
     if (mesh_words[i] == 0xFFFF && mesh_words[i + 1] == 0xFFFF) {
@@ -159,26 +163,34 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
       break;
     i += 3;
   }
+  const size_t dl_start = i;  // word index of first DL opcode
 
-  // Scan DL for offset-table entries and walk each sub-list
-  for (size_t j = i; j < mesh_word_count && j < i + 80; ++j) {
-    uint16_t off = mesh_words[j];
-    if (off < 0x100 || off >= 0x800) continue;
-    // Offset is in bytes from the mesh header start (word 0)
-    size_t sub = off / 2;  // convert byte offset → word index
-    if (sub >= mesh_word_count) continue;
+  // Collect offset-table entries (consecutive mid-range values)
+  std::vector<uint16_t> offsets;
+  for (size_t j = dl_start; j + 2 < mesh_word_count && j < dl_start + 80; ++j) {
+    if (mesh_words[j] >= 0x100 && mesh_words[j] < 0x800 &&
+        mesh_words[j + 1] >= 0x80 && mesh_words[j + 1] < 0x800 &&
+        mesh_words[j + 2] >= 0x80 && mesh_words[j + 2] < 0x800) {
+      size_t k = j;
+      while (k < mesh_word_count &&
+             mesh_words[k] >= 0x80 && mesh_words[k] < 0x800)
+        offsets.push_back(mesh_words[k++]);
+      break;
+    }
+  }
 
+  auto walk_sublist = [&](size_t sub) {
     size_t k = sub;
-    while (k < mesh_word_count && k < sub + 30) {
+    while (k < mesh_word_count && k < sub + 40) {
       uint16_t w = mesh_words[k];
       if (w == 0xFFFF) break;
-      if (w >= 0x8000 && w < 0xE000) {
-        // Command — collect following byte-offset indices
+      if ((w >= 0x8000 && w < 0xE000) || (w >= 0xC000 && w < 0xE000)) {
         ++k;
         std::vector<int> idxs;
         while (k < mesh_word_count) {
           uint16_t v = mesh_words[k];
-          if (v < 0x100 && (v % 6) == 0) {
+          // Vertex byte-offset: multiple of 6, small enough for nverts
+          if (v < 0x200 && (v % 6) == 0) {
             int idx = v / 6;
             if (idx >= 0 && static_cast<size_t>(idx) < nverts)
               idxs.push_back(idx);
@@ -187,14 +199,27 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
             break;
           }
         }
+        // Polyline edges; close if triangle-or-more
         for (size_t e = 1; e < idxs.size(); ++e)
           edges.emplace_back(idxs[e - 1], idxs[e]);
         if (idxs.size() >= 3)
-          edges.emplace_back(idxs.back(), idxs.front());  // close poly
+          edges.emplace_back(idxs.back(), idxs.front());
       } else {
         ++k;
       }
     }
+  };
+
+  if (!offsets.empty()) {
+    // Offsets are byte offsets from the DL start
+    for (uint16_t off : offsets) {
+      size_t sub = dl_start + off / 2;
+      if (sub < mesh_word_count)
+        walk_sublist(sub);
+    }
+  } else {
+    // Fallback: scan whole DL for inline 8xxx edge commands
+    walk_sublist(dl_start);
   }
 
   // Deduplicate
