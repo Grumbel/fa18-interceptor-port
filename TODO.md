@@ -115,7 +115,8 @@
 28. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 29. [x] Integrator $00C2C418: +$68-=d5, +$6A-=d6; clamps in 7200-circle units
 29b. [x] Rates +$50..+$5A; filter $00C2C1F0; stick curve →+$50
-29c. [ ] Three-axis stick identity; label +$68/+$6A as R/P/Y
+29c. [x] Three rate writers ($50/$52/$54); curves by $62 mode
+29d. [ ] Stick↔rate identity; rate2→angle2; label R/P/Y
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -169,7 +170,8 @@
 - fa18-port-088.1-edge-list-format-dc0339a.bundle (superseded)
 - fa18-port-089.1-attitude-struct-68-dc0339a.bundle (superseded)
 - fa18-port-090.1-attitude-integrator-dc0339a.bundle (superseded)
-- fa18-port-091.1-attitude-rate-filter-dc0339a.bundle (current tip)
+- fa18-port-091.1-attitude-rate-filter-dc0339a.bundle (superseded)
+- fa18-port-092.1-three-rate-axes-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

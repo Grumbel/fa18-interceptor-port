@@ -1045,3 +1045,61 @@ stick $4b0/$4b2
 - [x] Stick-curve writer at `$00C2B6CA` for rate0
 - [ ] Full three-axis stick identity (which stick axis → which rate)
 - [ ] Label angles +`$68`/+`$6A` as R/P/Y
+
+## Three parallel rate-axis writers
+
+| Site | Stores | Clears | Axis |
+|------|--------|--------|------|
+| `$00C2B6CA` | d3 → +`$50` | +`$52`, +`$54` | **0** |
+| `$00C2B3F0` | d3 → +`$52` | +`$54`, +`$50` | **1** |
+| `$00C2B554` | d3 → +`$54` | +`$52`, +`$50` | **2** |
+
+Each path:
+1. Selects a curve table from `$62(a1)` mode:
+   - `$62 & $F0 == $10` → `$00C2B782` (steep: 160…1280)
+   - `$62 == $14` → `$00C2B798` (medium: 80…640)
+   - else → `$00C2B7C4` (gentle: 8…88)
+2. Indexes the table by stick-derived d3
+3. Writes the curve output as that axis’s raw rate
+
+### Curve table samples (`$00C2B782`)
+
+```
+160, 320, 480, 560, 640, 720, 800, 960, 1040, 1120, 1280, …
+```
+
+Non-linear stick response (dead-zone / progressive).
+
+### Integration mapping
+
+| Filtered rate | Integrator target | Notes |
+|---------------|-------------------|-------|
+| +`$56` (from raw 0) | +`$68` angle0 | confirmed `sub.w d5, $68(a1)` |
+| +`$58` (from raw 1) | +`$6A` angle1 | confirmed `sub.w d6, $6A(a1)` |
+| +`$5A` (from raw 2) | +`$6C`? | not yet seen in integrator; mid-flight raw +`$54`=296 active |
+
+### Mid-flight snapshot
+
+| Field | Value | Interpretation |
+|-------|------:|----------------|
+| +`$50`/`$52` | 0 | raw 0/1 idle |
+| +`$54` | 296 | raw 2 active |
+| +`$56` | 4 | filtered 0 small |
+| +`$68` | 2240 | angle0 ~112° |
+| +`$6A` | 88 | angle1 ~4.4° |
+
+### Axis identity (still open)
+
+`$4b0` / `$4b2` are the two 8-bit sticks.  Three rate axes exist, so
+at least one is a derived/composite (rudder from stick+pedal, or
+auto-trim).  Pinning roll vs pitch vs yaw needs a controlled dump
+with one stick axis at a time, or a cross-ref from the HUD ladder /
+artificial-horizon draw path that reads the same angles.
+
+### Status
+
+- [x] Three exclusive rate writers (axis 0/1/2)
+- [x] Curve table selection by `$62` mode
+- [x] Rate0→angle0, rate1→angle1 confirmed
+- [ ] Rate2→angle2 path
+- [ ] Stick axis ↔ rate axis identity
