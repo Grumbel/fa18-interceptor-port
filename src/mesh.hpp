@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <cstring>
 #include <fstream>
@@ -439,6 +440,25 @@ inline void sanitize_mesh_edges(Mesh& m) {
     m.edge_pens.clear();
 }
 
+// Scale verts so the largest absolute component equals target_extent
+// (default 40).  No-op when already within range or empty.
+inline void normalize_mesh_scale(Mesh& m, float target_extent = 40.f) {
+  float max_abs = 0.f;
+  for (const auto& v : m.verts) {
+    max_abs = std::max(max_abs, std::fabs(v.x));
+    max_abs = std::max(max_abs, std::fabs(v.y));
+    max_abs = std::max(max_abs, std::fabs(v.z));
+  }
+  if (max_abs < 1.f || max_abs <= target_extent * 1.5f)
+    return;
+  const float s = target_extent / max_abs;
+  for (auto& v : m.verts) {
+    v.x *= s;
+    v.y *= s;
+    v.z *= s;
+  }
+}
+
 inline Mesh mesh_from_words(const uint16_t* words, size_t count,
                             const char* name) {
   Mesh m = mesh_parse(words, count, name);
@@ -451,6 +471,7 @@ inline Mesh mesh_from_words(const uint16_t* words, size_t count,
     m.edge_pens = std::move(pens);
   }
   sanitize_mesh_edges(m);
+  normalize_mesh_scale(m);
   return m;
 }
 
@@ -609,6 +630,7 @@ inline Mesh mesh_from_instance_dump(const std::string& dump_path,
     }
   }
   sanitize_mesh_edges(m);
+  normalize_mesh_scale(m);
   return m;
 }
 
