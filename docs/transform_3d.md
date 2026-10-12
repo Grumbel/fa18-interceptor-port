@@ -1297,3 +1297,50 @@ Note: the **integrator** `$00C2C418` updates +`$68` and +`$6A` only (from rate0/
 - [x] +`$66`/+`$68`/+`$6A` = three Euler angles for matrix path
 - [x] +`$66` in 57600-unit circle (valid attitude, not gate)
 - [ ] rate2 → +`$66` integration step
+
+## Integrator block correction (`$00C2C350`–`$00C2C4B0`)
+
+Earlier notes described `+$68 -= rate0`.  Re-disassembly shows a more
+complex **servo / stabilizer** block, not a simple rate integrator:
+
+```asm
+; +$66 path — adjust third angle
+move.w  $66(a1), d0
+asr.w   #1, d0
+; clamp vs 3600 / 7200
+; … sin-based correction using +$22 …
+move.w  $66(a1), d4
+add.w   d0, d4              ; +$66 += correction
+; range-check d4
+
+; +$68 / +$6A path — error vs targets in d5/d6
+move.w  d5, d1
+sub.w   $68(a1), d1         ; error = target − angle
+; abs, clamp vs 1200 / 27600
+move.w  d6, d2
+sub.w   $6A(a1), d2
+; … flag / auto-center rates if errors small …
+```
+
+Filtered rates (+`$56`/`+$58`/`+$5A`) are **tested and auto-centered**
+here, but not directly subtracted into the angle fields in this block.
+The actual `angle += rate` step may live elsewhere, or rates feed the
+target registers (d5/d6) upstream of this servo.
+
+### Working model (updated)
+
+```
+curves → raw rates +$50/+$52/+$54
+       → filter → +$56/+$58/+$5A
+       → (unknown) → target angles in d5/d6?
+       → servo block pulls +$68/+$6A toward targets
+       → +$66 adjusted by stabilizer
+       → matrix from +$66/+$68/+$6A
+```
+
+### Status
+
+- [x] Servo-like nature of `$00C2C418` region documented
+- [x] +`$66` adjusted by computed correction (not raw rate2)
+- [ ] True rate→angle integration site (if separate)
+- [ ] Source of target angles d5/d6 entering the servo
