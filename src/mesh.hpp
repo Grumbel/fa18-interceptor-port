@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <iostream>
+#include <cstring>
 #include "transform.hpp"
 #include "draw.hpp"
 #include "gfx_state.hpp"
@@ -14,10 +15,14 @@ namespace fa18 {
 //
 //   [2D hull word-pairs…]  FFFF FFFF
 //   word N                 — declared vertex count (often under-states)
-//   (x,y,z).w × N+         — signed local coords; more verts follow until
-//                            a display-list opcode (word with bits 14–15 set
-//                            and |value| large, typically $40xx/$80xx/$C0xx)
+//   (x,y,z).w × N+         — signed local coords; stream continues past N
+//                            until a display-list opcode
 //   display list…          — edge/poly commands (encoding still open)
+//
+// Opcode heuristic (word w):
+//   0x4000–0x7FFF  → command (bit 14 set)
+//   0x8000–0xDFFF  → command (bit 15 set, not a small negative coord)
+//   0xE000–0xFFFF  → small negative coordinate (|v| < 8192)
 //
 // Scale: raw / kMeshScale → world units for the port.
 
@@ -26,11 +31,63 @@ constexpr float kMeshScale = 64.f;
 struct Mesh {
   std::vector<Vec3> verts;
   std::vector<std::pair<int, int>> edges;
+  std::vector<uint16_t> display_list;  // raw opcodes (encoding open)
   const char* name = "";
 };
 
 inline Vec3 V(int16_t x, int16_t y, int16_t z) {
   return {x / kMeshScale, y / kMeshScale, z / kMeshScale};
+}
+
+inline int16_t s16(uint16_t u) {
+  return static_cast<int16_t>(u);
+}
+
+// True if the word is a display-list opcode rather than a coordinate.
+inline bool is_mesh_opcode(uint16_t w) {
+  if (w >= 0x4000 && w < 0x8000) return true;   // 4xxx
+  if (w >= 0x8000 && w < 0xE000) return true;   // 8xxx / Cxxx (not E/F)
+  return false;
+}
+
+// Parse a mesh header at the given big-endian word stream.
+// Skips optional 2-D hull up to FFFF FFFF, reads N, then vertices until
+// the first opcode word, then captures the following display-list words
+// up to a reasonable limit (or a second FFFF terminator).
+inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
+  Mesh m;
+  m.name = name;
+  size_t i = 0;
+  // Optional 2-D hull → FFFF FFFF
+  while (i + 1 < count) {
+    if (words[i] == 0xFFFF && words[i + 1] == 0xFFFF) {
+      i += 2;
+      break;
+    }
+    ++i;
+  }
+  if (i >= count) return m;
+  uint16_t N = words[i++];
+  (void)N;  // declared count is only a lower bound
+  while (i + 2 < count) {
+    if (is_mesh_opcode(words[i]) ||
+        is_mesh_opcode(words[i + 1]) ||
+        is_mesh_opcode(words[i + 2]))
+      break;
+    m.verts.push_back(V(s16(words[i]), s16(words[i + 1]), s16(words[i + 2])));
+    i += 3;
+    if (m.verts.size() > 64) break;
+  }
+  // Capture display-list words
+  while (i < count && m.display_list.size() < 128) {
+    uint16_t w = words[i++];
+    m.display_list.push_back(w);
+    // Soft stop on a lone FFFF that often terminates the record
+    if (w == 0xFFFF && !m.display_list.empty() &&
+        m.display_list.size() > 4)
+      break;
+  }
+  return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +97,6 @@ inline Vec3 V(int16_t x, int16_t y, int16_t z) {
 inline Mesh mesh_aircraft_39738() {
   Mesh m;
   m.name = "aircraft_$00C39738";
-  // Declared count=5 but stream continues to 10 usable verts
   m.verts = {
     V(  40,   0,  -40),  // 0 body
     V(   0,   0, -500),  // 1 nose
@@ -54,15 +110,16 @@ inline Mesh mesh_aircraft_39738() {
     V(   0, 100,    0),  // 9 center-up
   };
   m.edges = {
-    // fuselage nose → tail
     {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
-    // wings
     {3, 0}, {3, 2}, {3, 9},
     {7, 0}, {7, 6}, {7, 9},
-    // body ring
     {0, 2}, {2, 4}, {4, 6}, {6, 0},
-    // vertical
     {8, 0}, {8, 9}, {8, 1},
+  };
+  // Raw DL start (encoding open): 4070 4022 C016 4240 0022 C016 4380 0022 …
+  m.display_list = {
+    0x4070, 0x4022, 0xC016, 0x4240, 0x0022, 0xC016, 0x4380, 0x0022,
+    0xA244, 0x805C, 0xA23C, 0x0270, 0x02D6, 0x02E2, 0x0330, 0x035C,
   };
   return m;
 }
@@ -92,11 +149,43 @@ inline Mesh mesh_aircraft_39800() {
     {0, 2}, {2, 4}, {4, 6}, {6, 0},
     {8, 0}, {8, 9}, {8, 1},
   };
+  m.display_list = {
+    0x4070, 0x4020, 0xC016, 0x4340, 0x0020, 0xC016, 0x4500, 0x0020,
+    0xA17C, 0x805A, 0xA174, 0x01BA,
+  };
   return m;
 }
 
 // ---------------------------------------------------------------------------
-// Mesh B (table slot) $00C39B52/66 — same family, scale -320
+// Smaller craft $00C398C6 (N=4 → 8 verts)
+// ---------------------------------------------------------------------------
+inline Mesh mesh_aircraft_398C6() {
+  Mesh m;
+  m.name = "aircraft_$00C398C6";
+  m.verts = {
+    V( 150,   0, -150),
+    V(   0,   0, -234),
+    V(-150,   0, -150),
+    V(-234,   0,  234),
+    V( 150,   0,  150),
+    V( 234,   0,    0),
+    V( 150,  50, -150),
+    V(   0,1406,    0),
+  };
+  m.edges = {
+    {1, 0}, {0, 7}, {7, 4}, {1, 2}, {2, 7}, {7, 3},
+    {0, 2}, {2, 4}, {4, 5}, {5, 0},
+    {6, 0}, {6, 7}, {6, 1},
+  };
+  m.display_list = {
+    0x4070, 0x4020, 0xC016, 0x4340, 0x0020, 0xC016, 0x4500, 0x0020,
+    0xA0C2, 0x805A, 0xA0BA, 0x00EE,
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Mesh B (table slot) $00C39B66 — same family, scale ±320
 // ---------------------------------------------------------------------------
 inline Mesh mesh_from_dump_B() {
   Mesh m;
@@ -120,11 +209,77 @@ inline Mesh mesh_from_dump_B() {
     {0, 2}, {2, 4}, {4, 6}, {6, 0},
     {8, 0}, {8, 9},
   };
+  // DL starts with low words then 414A … (different style)
+  m.display_list = {
+    0x00B0, 0x0012, 0x414A, 0x000C, 0x0000, 0x002A, 0x0000, 0x002E,
+  };
   return m;
 }
 
 // ---------------------------------------------------------------------------
-// Mesh A $00C3A58C/A5A0 — larger extents (terrain / structure?)
+// Banked / elevated variant $00C39E00 (Y ≠ 0 on body ring)
+// ---------------------------------------------------------------------------
+inline Mesh mesh_aircraft_39E00() {
+  Mesh m;
+  m.name = "aircraft_$00C39E00";
+  m.verts = {
+    V(  36, 352,   -9),
+    V(   0,   0, -238),
+    V( -36, 352,   -9),
+    V( -59,   0,    0),
+    V( -36, 352,    9),
+    V(   0,   0,  238),
+    V(  36, 352,    9),
+    V(  59,   0,    0),
+    V(  36, 564,   -9),
+    V(   0,  20,    0),
+  };
+  m.edges = {
+    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
+    {3, 0}, {3, 2}, {3, 9},
+    {7, 0}, {7, 6}, {7, 9},
+    {0, 2}, {2, 4}, {4, 6}, {6, 0},
+    {8, 0}, {8, 9},
+  };
+  m.display_list = {
+    0x40B0, 0x40BA, 0xC016, 0x4180, 0x00BA, 0xC016, 0x4480, 0x00BA,
+    0xA022, 0x80F4, 0xA02A, 0x003A,
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Long-nose $00C39F66 (±2080)
+// ---------------------------------------------------------------------------
+inline Mesh mesh_aircraft_39F66() {
+  Mesh m;
+  m.name = "aircraft_$00C39F66";
+  m.verts = {
+    V( 104,   0,  -80),
+    V(   0,   0,-2080),
+    V(-104,   0,  -80),
+    V(-1600,  0,    0),
+    V(-104,   0,   80),
+    V(   0,   0, 2080),
+    V( 104,   0,   80),
+    V( 1600,  0,    0),
+    V( 104, 640,  -80),
+    V(   0, 520,    0),
+    V(   0,2020,   48),
+  };
+  m.edges = {
+    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
+    {3, 0}, {3, 2}, {3, 9},
+    {7, 0}, {7, 6}, {7, 9},
+    {0, 2}, {2, 4}, {4, 6}, {6, 0},
+    {8, 0}, {8, 9}, {8, 1},
+    {10, 9},
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Mesh A $00C3A5A0 — larger extents (terrain / structure)
 // ---------------------------------------------------------------------------
 inline Mesh mesh_from_dump_A() {
   Mesh m;
@@ -139,11 +294,39 @@ inline Mesh mesh_from_dump_A() {
     V( 1088,    0,  1568),
     V( 2464, 5726,  1024),
   };
-  // Sequential ring + spokes
   for (int i = 0; i < 8; ++i)
     m.edges.push_back({i, (i + 1) % 8});
   for (int i = 1; i < 8; ++i)
     m.edges.push_back({0, i});
+  m.display_list = {
+    0x80E4, 0xA016, 0x80E4, 0xFFFF, 0x4014, 0x40E4, 0xC010, 0x40A0,
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Structure $00C3A4A8
+// ---------------------------------------------------------------------------
+inline Mesh mesh_structure_3A4A8() {
+  Mesh m;
+  m.name = "structure_$00C3A4A8";
+  m.verts = {
+    V(  512,    0, -1024),
+    V(  -96, 1472,  -672),
+    V(-1280,    0,  -768),
+    V( -816, 1664,  -288),
+    V(-2048,    0,  1408),
+    V(  336, 3632,  1296),
+    V( 1408,    0,   512),
+    V(  576, 2816,  -336),
+  };
+  for (int i = 0; i < 8; ++i)
+    m.edges.push_back({i, (i + 1) % 8});
+  for (int i = 1; i < 8; ++i)
+    m.edges.push_back({0, i});
+  m.display_list = {
+    0x4380, 0x4070, 0xC00A, 0xE070, 0xC00A, 0x0012, 0x001E, 0x0038,
+  };
   return m;
 }
 

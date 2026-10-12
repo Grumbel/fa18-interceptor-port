@@ -148,6 +148,7 @@
 48. [x] README controls/status; AudioSystem hooked on state transitions
 49. [x] Mesh format from dump ($00C39B52/$00C3A58C); mesh.hpp + flight draw
 50. [x] Model cluster $39700–$3A600 catalogued; verts beyond N; aircraft edges
+51. [x] Opcode heuristic (4xxx/8–Dxxx vs E–Fxxx coords); mesh_parse(); more aircraft meshes
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -192,7 +193,9 @@
 - [x] Alternate register-script at `$540E8` = 32-colour mode template
 - [x] Mesh pointer table `$5400`/`$00C4C4C8` + model cluster catalogued
 - [x] Vertex stream continues past declared N until $40xx/$80xx/$C0xx opcodes
-- [ ] Display-list opcode → edge index encoding
+- [x] Opcode heuristic (exclude E000–FFFF small negatives); mesh_parse() + raw DL retained
+- [x] Additional aircraft meshes 398C6 / 39E00 / 39F66 + structure 3A4A8 in port
+- [ ] Display-list opcode → edge index encoding (`$C016` recurring; 40xx/A2xx pattern)
 - [ ] Object type → `$5400` slot mapping
 
 ## Bundle History
@@ -270,7 +273,8 @@
 - fa18-port-124.1-object-pen-palette-dc0339a.bundle (superseded)
 - fa18-port-125.1-readme-audio-hook-dc0339a.bundle (superseded)
 - fa18-port-126.1-mesh-from-dump-dc0339a.bundle (superseded)
-- fa18-port-127.1-mesh-cluster-aircraft-dc0339a.bundle (current tip)
+- fa18-port-127.1-mesh-cluster-aircraft-dc0339a.bundle (superseded)
+- fa18-port-128.1-mesh-parse-more-aircraft-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

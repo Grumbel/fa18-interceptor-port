@@ -234,21 +234,30 @@ int main(int argc, char* argv[]) {
       draw_world_line({0.f, 1.5f, 2.f}, {0.f, 1.5f, 32.f}, 13);
 
       // Real mesh data from dump cluster $00C39700–$00C3A600
-      static fa18::Mesh craft = fa18::mesh_aircraft_39738();
+      static fa18::Mesh craft  = fa18::mesh_aircraft_39738();
       static fa18::Mesh craft2 = fa18::mesh_aircraft_39800();
+      static fa18::Mesh craft3 = fa18::mesh_aircraft_398C6();
+      static fa18::Mesh craftB = fa18::mesh_from_dump_B();
+      static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
       static bool mesh_logged = false;
       if (!mesh_logged) {
-        std::cout << "[mesh] " << craft.name << " verts=" << craft.verts.size()
-                  << " edges=" << craft.edges.size() << "\n";
-        std::cout << "[mesh] " << craft2.name << " verts=" << craft2.verts.size()
-                  << " edges=" << craft2.edges.size() << "\n";
+        auto logm = [](const fa18::Mesh& m) {
+          std::cout << "[mesh] " << m.name
+                    << " verts=" << m.verts.size()
+                    << " edges=" << m.edges.size()
+                    << " dl=" << m.display_list.size() << "\n";
+        };
+        logm(craft); logm(craft2); logm(craft3); logm(craftB); logm(craftE);
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =
           fa18::mat_from_angles_q14(0, att.angle[1] / 3, att.angle[2] / 2);
-      // Player craft ahead; second craft off to the side
-      fa18::draw_mesh(ren, gfx, craft, orient, {0.f, 0.f, 10.f}, 13);
-      fa18::draw_mesh(ren, gfx, craft2, orient, {5.f, -0.5f, 16.f}, 9);
+      // Player craft ahead; companions off to the sides / above
+      fa18::draw_mesh(ren, gfx, craft,  orient, { 0.f,  0.f, 10.f}, 13);
+      fa18::draw_mesh(ren, gfx, craft2, orient, { 5.f, -0.5f, 16.f},  9);
+      fa18::draw_mesh(ren, gfx, craft3, orient, {-4.f,  0.f, 14.f}, 11);
+      fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
+      fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
 
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
