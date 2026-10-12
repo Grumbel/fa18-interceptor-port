@@ -408,16 +408,15 @@ inline Mesh mesh_from_dump_B() {
     V(  40, 256,  -40),
     V(   0, 100,    0),
   };
+  // Dump-derived edges from C00C sites at $00C39C3C+
   m.edges = {
-    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
-    {3, 0}, {3, 2}, {3, 9},
-    {7, 0}, {7, 6}, {7, 9},
-    {0, 2}, {2, 4}, {4, 6}, {6, 0},
-    {8, 0}, {8, 9},
+    {1, 9}, {1, 2}, {2, 9}, {9, 3}, {3, 1},
   };
-  // DL starts with low words then 414A … (different style)
+  m.edge_pens = {4, 4, 4, 4, 4};
+  // DL: link-graph style (80xx cross-refs) rather than flat offset table
   m.display_list = {
-    0x00B0, 0x0012, 0x414A, 0x000C, 0x0000, 0x002A, 0x0000, 0x002E,
+    0x4380, 0x01C0, 0xA088, 0x81E8, 0xA080, 0x0006, 0x0000, 0x0000,
+    0x0012, 0x0046, 0x0056, 0x0006, 0x0000, 0x0000, 0x0012, 0x005E,
   };
   return m;
 }
@@ -536,12 +535,14 @@ inline Mesh mesh_structure_3A4A8() {
     V( 1408,    0,   512),
     V(  576, 2816,  -336),
   };
-  for (int i = 0; i < 8; ++i)
-    m.edges.push_back({i, (i + 1) % 8});
-  for (int i = 1; i < 8; ++i)
-    m.edges.push_back({0, i});
+  // Dump-derived: sequential 800C pairs form a 4-cycle on verts 0..3
+  m.edges = {
+    {0, 1}, {1, 2}, {2, 3}, {3, 0},
+  };
+  m.edge_pens = {4, 4, 4, 4};
   m.display_list = {
     0x4380, 0x4070, 0xC00A, 0xE070, 0xC00A, 0x0012, 0x001E, 0x0038,
+    0x8052, 0xC00C, 0x0000, 0x0006, 0x8018, 0x100B,
   };
   return m;
 }
