@@ -371,3 +371,51 @@ ViewPort.DWidth/DHeight or RasInfo geometry.
 - [x] Palette mirror at `$00C19600`
 - [ ] Full BitMap/ViewPort/RasInfo struct field map
 - [ ] Double-buffer flip path
+
+## Plane-pointer install / buffer select (`$00C15494`)
+
+```asm
+tst.b   $00C4450E
+beq     skip
+move.l  $00C19634, a0       ; current BitMap-like object
+move.l  $08(a0), $00C1964C  ; plane 0 → active descriptor
+move.l  $0C(a0), $00C19650  ; plane 1
+move.l  $10(a0), $00C19654  ; plane 2
+move.l  $14(a0), $00C19658  ; plane 3
+move.l  $18(a0), $00C1965C  ; plane 4
+```
+
+`$00C19634` holds the **active BitMap pointer** (set by splash/picture
+load).  Its +8…+18 are the five plane addresses.  Flag `$00C4450E`
+gates the copy into the display descriptor at `$00C1964C`.
+
+### BitMap-like object (pointed to by `$00C19634`)
+
+| Off | Role |
+|-----|------|
+| +08 | plane 0 |
+| +0C | plane 1 |
+| +10 | plane 2 |
+| +14 | plane 3 |
+| +18 | plane 4 |
+
+Matches the five Chip-RAM planes observed mid-flight.
+
+### Multiple plane banks in Slow-RAM descriptors
+
+| Base | Plane0 | Notes |
+|------|--------|-------|
+| `$00C1964C` | `$00012BC0` | primary 320×200×5 |
+| `$00C19678` | `$00007FB0` | secondary bank |
+| `$00C196A8` | `$0000AB28` | tertiary bank |
+
+Likely double/triple buffering or separate UI vs 3D playfields.
+
+### Status
+
+- [x] Plane-install routine `$00C15494`
+- [x] Active BitMap ptr `$00C19634`
+- [x] Gate flag `$00C4450E`
+- [x] Three plane banks identified
+- [ ] Which bank is front vs back during flight
+- [ ] Copper/BPL write from active descriptor
