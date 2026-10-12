@@ -536,3 +536,78 @@ centre = (160, 90) and focal lengths 160 / 90.
 - [x] Alternate path exact perspective (×160/÷Z+160, ×90/÷Z+90)
 - [x] Matches existing C++ `project()`
 - [ ] Walker’s use of `6(a1)`/`10(a1)` after post-inc (next-record vs bounds)
+
+## Mode setters vs real bodies (DDA region)
+
+All of modes `$01`, `$03`–`$0a`, `$1f` in the DDA hunk are **pure setters**:
+
+```asm
+move.w #MODE, $00C446D6   ; $36e
+jsr    $00C062C2          ; $12 → currently RTS
+```
+
+They do **not** contain unique drawing algorithms.  The real DDA work
+lives at a single shared entry that is **called directly** (not via `$12`).
+
+### Shared DDA body — live `$00C231F8`
+
+| Item | Value |
+|------|-------|
+| Entry | **`$00C231F8`** |
+| Direct `jsr` sites | 7 (`$00C1F6CC`, `$00C1F762`, `$00C1F898`, `$00C1FA08`, `$00C1FC26`, `$00C1FD18`, `$00C29B3A`) |
+| Edge-list source | **`$00C4ACC8`** |
+| Scratch A | `$00C4A6C8` |
+| Scratch B | `$00C4D652` / `$00C4D648` / `$00C4D5AC` |
+
+#### Algorithm outline
+
+```asm
+link    a6, #-6
+clr.w   d7
+lea     $00C4ACC8, a0
+move.w  (a0)+, -2(a6)      ; header word
+move.w  (a0)+, d0          ; vertex/edge count
+cmpi.w  #3, d0
+blt     fallback           ; need ≥ 3
+move.w  d0, -4(a6)
+
+lea     $00C4A6C8, a1
+lea     $00C4D652, a2
+lea     $00C4D648, a3
+lea     $00C4D5AC, a4
+clr.l   (a2)
+clr.l   4(a4)
+
+; ── per-edge loop ──
+movem.w (a0)+, d0-d2       ; load vertex components
+asl.l   #3, d0             ; ×8 scale
+asl.l   #3, d1
+asl.l   #3, d2
+; DDA slope setup (muls/divs, sign handling)
+; …
+bsr     $00C23318          ; span/plot helper
+; loop until count exhausted
+```
+
+Fixed-point: coordinates are scaled **×8** (`asl.l #3`) before the DDA
+step, matching the earlier observation that mode `$01` does muls/divs
+edge interpolation.
+
+#### Port implication
+
+```cpp
+// Mode numbers $01/$03–$0a/$1f only select a draw style flag.
+// The actual edge-list DDA is invoked directly:
+void dda_edge_list(const int16_t* edges /* at $00C4ACC8 */);
+```
+
+When `$12` is a live dispatcher (not RTS), it may also route to this
+body for certain modes — that path needs an active-draw dump to confirm.
+
+### Status
+
+- [x] Modes `$01`,`$03`–`$0a`,`$1f` confirmed pure setters
+- [x] Shared DDA body at `$00C231F8` with 7 direct callers
+- [x] Edge list `$00C4ACC8`, ×8 coordinate scale
+- [ ] Full DDA slope/interpolation math (helper `$00C23318`)
+- [ ] Remaining modes outside DDA region (`$0c`–`$0e`, `$0f`–`$26`, …)
