@@ -177,6 +177,7 @@
 77. [x] mesh_edges_from_dl: Axxx/80LL offset-table pattern (handles small offsets)
 78. [x] Link-graph DL: $80xx lo≥$30 = intra-DL offset; parser follows links
 79. [x] 39980 C0C0-style aircraft edges + pens; wired into Flight demo
+80. [x] mesh_edges_from_dl: always full C00C scan + offset targets; shared-sublist note
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -261,6 +262,7 @@
 - [x] mesh_edges_from_dl consumes/skips end-with-attrs trailing words
 - [x] Mesh.edge_pens parallel array; draw_mesh uses per-edge pen when present
 - [x] 39980 C0C0-style aircraft: dump-derived edges + edge_pens; demo slot
+- [x] mesh_edges_from_dl always full-scans C00C + follows offsets; shared-sublist note
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -366,7 +368,8 @@
 - fa18-port-153.1-39B66-3A4A8-dump-edges-dc0339a.bundle (superseded)
 - fa18-port-154.1-offset-table-parser-axxx-dc0339a.bundle (superseded)
 - fa18-port-155.1-link-graph-dl-parser-dc0339a.bundle (superseded)
-- fa18-port-156.1-39980-c0c0-edges-pens-dc0339a.bundle (current tip)
+- fa18-port-156.1-39980-c0c0-edges-pens-dc0339a.bundle (superseded)
+- fa18-port-157.1-mesh-dl-fullscan-shared-subs-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

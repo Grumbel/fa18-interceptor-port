@@ -196,12 +196,21 @@ Common aircraft pattern (e.g. `$00C39738`):
    optional pre-header hull), ended by `$7FFF $7FFF`.
 
 `mesh_edges_from_dl()` in the port implements the sub-list decoder and
-recovers a useful subset of edges.  Hand-authored edges remain the
+recovers a useful subset of edges.  It always scans the supplied DL for
+inline `C00C`/`800C` groups and, when an offset table or link-graph is
+present, also follows those targets.  Hand-authored edges remain the
 primary draw path until top-level parameters are fully mapped.
 
 Some models (e.g. `$00C39B66`, `$00C39980`) use a different top-level mix
 (`C0C0`, `414A`, …); the sub-list format still applies where offsets are
 present.
+
+**Shared sub-lists:** several aircraft DLs (notably `$00C39738`) have
+offset-table entries that land *later* in the cluster, inside the body
+of neighbouring records such as `$00C39980`.  Those targets contain
+`C00C … 0030 0036` groups whose indices (8, 9) are valid only for the
+larger 10-vert meshes.  The parser therefore filters by the caller’s
+`nverts`; high indices simply drop for the 8-vert models.
 
 ## Model cluster catalogue
 

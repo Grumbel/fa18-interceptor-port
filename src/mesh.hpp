@@ -264,7 +264,9 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
               ++k;
               if (elo != 0x00 && k < mesh_word_count) {
                 uint16_t attr = mesh_words[k];
-                if (attr < 0x8000 && attr != 0xFFFF) {
+                // Attr words seen: $100B, $100D, $1C0D, $180D, $0C0A, $FC00…
+                // Hypothesis: high byte / 4 is palette index when divisible by 4.
+                if (attr != 0xFFFF) {
                   uint8_t ahi = static_cast<uint8_t>(attr >> 8);
                   if ((ahi & 3) == 0 && ahi / 4 <= 15)
                     pen = static_cast<uint8_t>(ahi / 4);
@@ -291,16 +293,21 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
     }
   };
 
+  // Always scan the DL region for inline C00C/800C edge groups.
+  // This covers C0C0-style DLs (no offset table) and any groups that
+  // the offset table does not reach inside the supplied word window.
+  walk_sublist(dl_start);
+
+  // Additionally follow explicit offset-table / link-graph targets.
+  // Some aircraft DLs point into shared sub-lists that live later in
+  // the cluster; when the caller supplies a long enough window those
+  // targets yield extra edges.
   if (!offsets.empty()) {
-    // Offsets are byte offsets from the DL start
     for (uint16_t off : offsets) {
       size_t sub = dl_start + off / 2;
       if (sub < mesh_word_count)
         walk_sublist(sub);
     }
-  } else {
-    // Fallback: scan whole DL for inline 8xxx edge commands
-    walk_sublist(dl_start);
   }
 
   // Deduplicate (keep first pen for each undirected edge)
