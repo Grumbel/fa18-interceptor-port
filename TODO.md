@@ -189,6 +189,7 @@
 89. [x] Drawable map entries catalogued; structure_3A980; cluster 7FFF record list
 90. [x] Drawable selection path ($4D6E2/$4DD72 tables); $21618 pre-walker; dump trim
 91. [x] Scene list stride $18: flag + dispatch-slot ptr → handler/stream LOD
+92. [x] Scene record fields (flag type/LOD, coords, type_tag 3F44); C++ struct
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -285,6 +286,7 @@
 - [x] Drawable map $20B94 entries; structure_3A980; 8 cluster 7FFF records listed
 - [x] Selection via $4D6E2/$4DD72 + $446E2 index; $21618 flag gate; dump auto-trim
 - [x] Scene list stride $18 (flag, dispatch ptr); links to $21000 LOD slots
+- [x] Scene record field map + SceneDrawableRecord; stream $39690 noted
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -402,7 +404,8 @@
 - fa18-port-165.1-alternate-dl-prebuilt-drawable-map-dc0339a.bundle (superseded)
 - fa18-port-166.1-drawable-map-structure-3a980-dc0339a.bundle (superseded)
 - fa18-port-167.1-drawable-selection-path-dump-trim-dc0339a.bundle (superseded)
-- fa18-port-168.1-scene-list-stride18-dispatch-link-dc0339a.bundle (current tip)
+- fa18-port-168.1-scene-list-stride18-dispatch-link-dc0339a.bundle (superseded)
+- fa18-port-169.1-scene-record-fields-struct-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

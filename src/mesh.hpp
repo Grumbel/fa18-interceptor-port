@@ -50,6 +50,26 @@ struct Mesh {
   const char* name = "";
 };
 
+// Scene/drawable list record at $00C4D6E2 / $00C4DD72 (stride $18).
+// flag.lo and lod_echo agree on the active LOD tier (0..3).
+// dispatch_ptr → object→drawable slot: handler + up to 3 stream ptrs.
+struct SceneDrawableRecord {
+  uint16_t flag = 0;          // hi=type candidate, lo=LOD tier
+  uint32_t dispatch_ptr = 0;  // live abs addr into $00C21000 table
+  int16_t  coord_a = 0;       // +6
+  int16_t  coord_b = 0;       // +A
+  uint16_t param = 0;         // +C
+  uint16_t type_tag = 0;      // +E (3E42 / 3F44)
+  uint16_t lod_echo = 0;      // +12 (0000/0100/0200/0300)
+
+  uint8_t type_id() const { return static_cast<uint8_t>(flag >> 8); }
+  uint8_t lod_tier() const { return static_cast<uint8_t>(flag & 0xFF); }
+};
+
+constexpr uint32_t kSceneListA = 0x00C4D6E2;
+constexpr uint32_t kSceneListB = 0x00C4DD72;
+constexpr size_t   kSceneStride = 0x18;
+
 inline Vec3 V(int16_t x, int16_t y, int16_t z) {
   return {x / kMeshScale, y / kMeshScale, z / kMeshScale};
 }

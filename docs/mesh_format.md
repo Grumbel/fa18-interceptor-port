@@ -126,6 +126,29 @@ Example scene-list entries (`$00C4D6E2`):
 Alt list `$00C4DD72` mostly targets handler `$00C08232` (geometry walker
 sibling) with instance-pool streams (`$00C43xxx`).
 
+**Scene-list record layout (stride `$18`):**
+
+```
++0   .w  flag
+        hi = object-type candidate (2D, 15, 46, 3E, 3F, 52, …)
+        lo = LOD tier (01 / 02 / 03) — matches trailing LOD word
++2   .l  dispatch slot ptr → (handler, stream×3)
++6   .w  coord A (often large negative: DC00, EE00, FE00, …)
++8   .w  0000
++A   .w  coord B (E400, 3600, 1949, …)
++C   .w  small param (0010, 0015, 001D, …)
++E   .w  type tag (3E42 / 3F44 most common)
++10  .w  0000
++12  .w  LOD echo (0000 / 0100 / 0200 / 0300)
++14  .w  0000
++16  .w  0000
+```
+
+Flag low byte and +12 LOD word agree on the active tier.  Coords A/B are
+likely world or local position components (scale still TBD).  Stream
+`$00C39690` (flag `$2D03`) is a pure DL with PP=`$72`/`$22` and Axxx
+offset tables — sits just before the `$39710` cluster.
+
 **Pre-walker setup handlers** (from the drawable map):
 
 | Addr | Role |
