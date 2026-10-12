@@ -124,6 +124,7 @@
 31b. [x] $00C07478=AUD0-3 descriptors; $00C07488=action side table
 31c. [x] Audio control API $00C4EBxx; DMACON/INTREQ bits; C++ AudioSystem
 31d. [x] Sample block format; play $00C4ED00; PER/VOL helper
+31e. [x] SetIntVector/AddIntServer; server $00C4ED80; interrupt-driven
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -185,7 +186,8 @@
 - fa18-port-096.1-action-dispatch-side-tables-dc0339a.bundle (superseded)
 - fa18-port-097.1-audio-channel-table-dc0339a.bundle (superseded)
 - fa18-port-098.1-audio-control-api-dc0339a.bundle (superseded)
-- fa18-port-099.1-sample-block-play-dc0339a.bundle (current tip)
+- fa18-port-099.1-sample-block-play-dc0339a.bundle (superseded)
+- fa18-port-100.1-audio-int-server-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

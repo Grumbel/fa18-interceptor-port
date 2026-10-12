@@ -161,3 +161,103 @@ Paula frequency ≈ `3579545 / (period × 2)` Hz (NTSC).  Period 124 ≈ 14.4 kH
 - [x] Period clamp `$7C`, volume 6-bit with global limit
 - [ ] Sample data encoding (8-bit signed PCM expected)
 - [ ] Who builds/queues sample blocks
+
+## Interrupt-driven dispatch
+
+`$00C4ED00` is **not** called via direct `jsr` from game logic.  It is
+installed as a per-channel **handler pointer** in two tables:
+
+### Low-memory handler table (`$00C00322` family)
+
+Triplets (one per channel):
+
+```
+.l  channel_descriptor    ; e.g. $00C07498
+.l  handler               ; $00C4ED00
+.l  sample_list_head      ; e.g. $00C07508
+```
+
+### Runtime mirror (`$00C07508` family)
+
+Same triplet pattern at `$00C0751A` / `$1E` / `$34` / `$4A`.
+
+When an audio interrupt fires (INTREQ AUDn bit), the system looks up
+the channel’s handler and calls `$00C4ED00` with the descriptor in a1
+(or via the descriptor table index).  Game code queues work by writing
+a sample-block pointer into the sample-list head; the interrupt handler
+picks it up on the next AUD interrupt.
+
+### Queuing model
+
+```
+game thread                     audio interrupt
+─────────────                   ───────────────
+build SampleBlock               $00C4ED00:
+block->data = pcm                 read sample list head
+block->length_bytes = …           program AUDx + enable DMA
+block->period / volume = …        advance countdown / chain
+*sample_list_head = block
+$00C4EBD8(ch)  → INTREQ         next interrupt → next block
+```
+
+### Sample data location
+
+Descriptor-linked pointers such as `$00FC3522` sit outside the Slow RAM
+dump (likely Chip RAM samples).  8-bit signed PCM is the Paula native
+format; confirmation needs a chip-RAM capture during playback.
+
+## Status
+
+- [x] Handler installed in `$00C00322` + `$00C075xx` tables
+- [x] Interrupt-driven, not direct jsr from game code
+- [x] Queuing via sample-list head pointer
+- [ ] Chip-RAM sample capture for PCM confirmation
+- [ ] Exact interrupt server (AddIntServer / custom)
+
+## Exec LVO identity
+
+| Offset | LVO | Function |
+|--------|-----|----------|
+| −162 (−`$A2`) | **SetIntVector** | `$00C4EBF2` path |
+| −168 (−`$A8`) | **AddIntServer** | `$00C4EC52` path |
+
+```asm
+; $00C4EC52 — install vertical-blank server
+moveq   #5, d0              ; INTB_VERTB
+lea     $00C07560, a1       ; Interrupt structure
+jsr     -168(ExecBase)      ; AddIntServer
+```
+
+### Interrupt structure `$00C07560`
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| ln_Type | 2 | NT_INTERRUPT |
+| ln_Pri | `$88` | priority |
+| ln_Name | NULL | |
+| is_Data | NULL | |
+| is_Code | **`$00C4ED80`** | multi-channel server |
+
+### Multi-channel server `$00C4ED80`
+
+```asm
+movem.l …
+moveq   #0, d3              ; channel index
+lea     $00C07478, a0       ; descriptor table
+; for each channel:
+move.l  (a0,d3…), …        ; get descriptor
+; null-sample check
+jsr     $00C4EE3A           ; prep helper
+jsr     $00C4EE08           ; set PER/VOL
+; advance sample pointers …
+```
+
+Runs on VERTB (or as SetIntVector target for AUD interrupts).  Walks
+all four channel descriptors each firing and programs Paula from the
+queued sample blocks.
+
+## Status
+
+- [x] −162 = SetIntVector, −168 = AddIntServer
+- [x] Interrupt struct at `$00C07560` → server `$00C4ED80`
+- [x] Server walks AUD0–3 descriptors each tick
