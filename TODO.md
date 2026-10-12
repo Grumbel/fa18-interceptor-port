@@ -90,6 +90,7 @@
 9. [x] struct_A $00C01550 display/viewport hypothesis; struct_B secondary
 10. [x] Pointer table writers: AllocMem → $00C16E22; field +$22 → $00C16E26
 11. [x] Confirm copper/bitplane interpretation of $00C055F8
+11b. [x] Writer of $00C16E1E: copy from $00C16D8A at $00C14C74; indexed table path
 12. [x] Resolve $5ee → edge/span helper at $00C2E5D6
 13. [x] Full $5ee path_hi/lo/tail; span_setup in draw.hpp
 14. [x] Live $4202 mapped to $00C4B2CA
@@ -152,7 +153,8 @@
 - fa18-port-079.1-struct-display-ctx-dc0339a.bundle (superseded)
 - fa18-port-080.1-pointer-table-writers-dc0339a.bundle (superseded)
 - fa18-port-081.1-copper-bitplane-00C055F8-dc0339a.bundle (superseded)
-- fa18-port-082.1-action-clear-body-dc0339a.bundle (current tip)
+- fa18-port-082.1-action-clear-body-dc0339a.bundle (superseded)
+- fa18-port-083.1-pointer-table-16e1e-writer-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -68,7 +68,8 @@ setup) fills the `$00C16E1E`/`$26` pointer slots.  Not yet found as a
 - [x] Pointer-table refs located
 - [x] struct_A: display/viewport hypothesis (BPLCON-class const, DIW-like)
 - [x] struct_B: secondary context, under-specified
-- [x] Find the writer of `$00C16E22` / `$00C16E26` (AllocMem + field+$22); `$00C16E1E` still open
+- [x] Find the writer of `$00C16E22` / `$00C16E26` (AllocMem + field+$22)
+- [x] Find the writer of `$00C16E1E` (copy from `$00C16D8A` at `$00C14C74`)
 - [x] Confirm copper / bitplane interpretation of `$00C055F8`
 
 ## Pointer-table writers (primary)
@@ -192,3 +193,52 @@ The table is **not** a packed copper list.  Register tags and values are interle
 - [x] COLOR00–15 palette recovered
 - [x] DIW/DDF/BPLCON and four BPLPT addresses recovered
 - [ ] Locate the copper-list emitter / custom-reg writer that consumes the block
+
+## Pointer-table topology (complete)
+
+```
+$00C16E12  ←  $00C16D74     (copy)
+$00C16E16  ←  $00C16D74     (copy)
+$00C16E1A  ←  $00C16D8A     (copy)
+$00C16E1E  ←  $00C16D8A     (copy)   ★ struct_A slot
+$00C16E22  ←  AllocMem result
+$00C16E26  ←  (AllocMem object)+$22
+$00C16E2E  ←  a0 after setup
+```
+
+### Writers for `$00C16E1E` (struct_A pointer)
+
+| Site | Instruction | Role |
+|------|-------------|------|
+| `$00C14C74` | `move.l $00C16D8A, $00C16E1E` | primary publish |
+| `$00C14C38` | `move.l a0, $00C16D8A` then later copy | a0=0 clears intermediate |
+
+`$00C16D8A` itself is filled by:
+
+| Site | Instruction | Role |
+|------|-------------|------|
+| `$00C14CC4` | `move.l (a0), $00C16D8A` | indexed load: `index×4 + $00C16E1A` |
+| `$00C14C38` | `move.l a0, $00C16D8A` | clear path (a0=0) |
+
+Bootstrap: `$00C16E1A` starts as a table of context pointers; an index
+selects an entry into `$00C16D8A`, which is then published to
+`$00C16E1E`.  In-flight both hold **`$00C01550`** (struct_A).
+
+Related intermediates:
+
+| Slot | In-flight value |
+|------|-----------------|
+| `$00C16D74` | `$00C01338` |
+| `$00C16D8A` | `$00C01550` |
+| `$00C16E12` | `$00C05EC0` |
+| `$00C16E16` | `$00C01338` |
+| `$00C16E1A` | `$00C06A38` (secondary table base) |
+| `$00C16E1E` | `$00C01550` |
+
+### Status update
+
+- [x] Writer of `$00C16E1E` found: copy from `$00C16D8A` at `$00C14C74`
+- [x] `$00C16D8A` filled by indexed table load at `$00C14CC4`
+- [ ] Bootstrap origin of the first `$00C01550` address in the table
+      (no absolute `lea #$00C01550` in resident CODE — likely BSS
+      fixed address or early AllocMem not yet traced)
