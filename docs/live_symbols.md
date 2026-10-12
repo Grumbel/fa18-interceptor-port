@@ -72,9 +72,15 @@ row2:   7739  -2290  14259
 - `$12` holds an **RTS stub** (`4E75`) in this snapshot — the real
   draw-mode bodies are installed only while a mode is active, or live
   in an overlay not resident at dump time.
-- `$c6` → `$00C03D46` (outside primary CODE; likely an overlay or
-  early-loaded hunk).  Worth disassembling in a future pass.
-- `$be` → `$00C01550` (similarly outside primary).
+- **`$c6` has two meanings:**
+  1. *Static relocatable reference* — `jsr $c6.L` in primary resolves
+     at load time to the object-worker function at **`$00C25206`**
+     (offset `$C6` inside the CODE hunk at file `0x1EA04`).
+     See [func_c6.md](func_c6.md).
+  2. *Vector slot* at live `$00C16E26` (written by overlay install from
+     table `$151a`).  Held `$00C03D46` in this dump — separate mechanism.
+- `$be` vector slot at `$00C16E1E` → `$00C01550` (sibling of the
+  vector-slot `$c6`).
 
 ## How the map was built
 

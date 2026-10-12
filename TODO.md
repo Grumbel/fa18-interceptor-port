@@ -74,18 +74,22 @@
 - [x] Full symbol remap: static $xxxx → live $00Cxxxxx (docs/live_symbols.md)
 - [x] Confirmed game state lives in Slow RAM $00C00000, not Chip low mem
 - [x] Live $c6 → $00C03D46; $12 → RTS stub; matrix/world pos live in-flight
+- [x] Static jsr $c6 is relocatable ref to offset $C6 in CODE hunk file 0x1EA04
+- [x] $c6 function live at $00C25206: index×64 pool worker (docs/func_c6.md)
 
 
 ## Next Steps
 1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
-2. [ ] Disassemble live $c6 target ($00C03D46) and $be target ($00C01550)
-3. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
-4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
-5. [ ] Action clear body (overlay past file end)
-6. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
-7. [ ] Disassemble live primary CODE (transform / matrix builders) from inflight dump
-8. [ ] Map remaining resident overlay hunks
-9. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+2. [x] Resolve static jsr $c6 → object worker at $00C25206 (docs/func_c6.md)
+3. [ ] Finish $c6 function body decompilation (~2 KB hunk)
+4. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
+5. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
+6. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
+7. [ ] Action clear body (overlay past file end)
+8. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
+9. [ ] Disassemble live primary transform ($77d8) from inflight dump (entry confirmed)
+10. [ ] Map remaining resident overlay hunks
+11. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -101,7 +105,8 @@
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
 - fa18-port-053.1-matrix-writer-dynamic-trace-dc0339a.bundle (superseded)
 - fa18-port-055.1-ram-dump-map-dc0339a.bundle (superseded)
-- fa18-port-056.1-live-symbols-inflight-dumps-dc0339a.bundle (current tip)
+- fa18-port-056.1-live-symbols-inflight-dumps-dc0339a.bundle (superseded)
+- fa18-port-057.1-func-c6-object-worker-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
