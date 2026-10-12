@@ -163,6 +163,7 @@
 63. [x] mesh_edges_from_dl skips end-attrs; $5400=hull note in mesh.hpp; $70 imm is radar not DL
 64. [x] Mesh.edge_pens + draw_mesh per-edge colour from attr hi/4 (hypothesis)
 65. [x] Axxx → runtime mesh-instance pool ($00C43700+); slot table at $00C21400
+66. [x] Instance stride $6A; tag $04D0; ptrs +46/+78; handler $00C08232 = geom walker
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -221,8 +222,10 @@
 - [x] DL sub-list cmds: `$800C` begin edges, `$8000` end group, `$C00C` polyline
 - [x] Offset-table base = DL start (byte offsets from first opcode word)
 - [x] Top-level pattern `4070 40PP C016 …`; `80LL` = end-of-DL byte offset
-- [x] `Axxx` → runtime mesh-instance pool (`$00C43700`+); descriptor `04D0` + 2 ptrs + edges
-- [x] Slot table `$00C21400` → static DLs or runtime instances + handler `$00C08232`
+- [x] `Axxx` → runtime mesh-instance pool (`$00C43700`+); stride `$6A`, tag `$04D0`
+- [x] Instance: ptr A = base+46 (sub-hdr), ptr B = base+78 (N + view coords)
+- [x] Slot table `$00C21400` → static DLs or runtime instances
+- [x] Handler `$00C08232` = geometry walker (`link a6,#-152`, same as `$00C1D96C`)
 - [x] Companion runtime-written at `$00C1CD88` (projected hull / attrs from a0)
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
 - [x] `$5400` pointers = **hull starts**; `$00C1CD38` is the hull→companion transform
@@ -324,7 +327,8 @@
 - fa18-port-139.1-companion-transform-attr-colour-dc0339a.bundle (superseded)
 - fa18-port-140.1-edge-attr-skip-hull-ptr-note-dc0339a.bundle (superseded)
 - fa18-port-141.1-edge-pens-from-attr-dc0339a.bundle (superseded)
-- fa18-port-142.1-axxx-runtime-instances-dc0339a.bundle (current tip)
+- fa18-port-142.1-axxx-runtime-instances-dc0339a.bundle (superseded)
+- fa18-port-143.1-instance-stride-handler-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

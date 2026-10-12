@@ -284,17 +284,24 @@ Axxx
 (`$00C43700`–`$00C43B00`).  For the three standard aircraft,
 `DL_start + Axxx` → `$00C439BE` (inside instance `$00C439B2`).
 
-Instance descriptor layout:
+Runtime instance pool — **fixed stride 106 bytes (`$6A`)**:
 
 ```
-04D0                    ; type / size tag
-00C4 xxxx → ptr A       ; sub-structure
-00C4 yyyy → ptr B
-8078 …                  ; edge/attr commands (same encoding as DL)
++0   04D0                 ; type magic (shared by all 11 instances)
++2   ptr A = base+46      ; sub-header (0C00 FFFF FFFF …)
++6   ptr B = base+78      ; vertex block (N, coords… FFFF)
++10  8078 000C …          ; edge/attr commands (same 8xxx encoding)
++46  [ptr A target]
++78  [ptr B target: N + view-space coords]
++106 [next instance]
 ```
 
-Table at `$00C21400` maps slots → static DL starts (`$00C39842`, …) or
-these runtime instances, interleaved with shared handler `$00C08232`.
+Self-contained drawable: internal ptrs always land at fixed offsets.
+Edge section matches static DL encoding; +78 holds projected coords.
+
+Table at `$00C21400` maps slots → static DL starts or these instances,
+interleaved with handler `$00C08232` (geometry walker: `link a6,#-152`,
+walks `(a2)+` — same frame size as `$00C1D96C`).
 
 **`PP` / `$70`**: meaning still open (pen, scale, or render flags).
 Tags (`0100 0200` / `0100 0300`) do not correlate with PP.
@@ -303,7 +310,9 @@ Tags (`0100 0200` / `0100 0300`) do not correlate with PP.
 ## Open
 
 - [~] Display-list edge encoding + offset base + `80LL` end-offset known;
-      `PP`/`$70` still open; `Axxx` → runtime instance pool
+      `PP`/`$70` still open
+- [x] `Axxx` → runtime instance pool (stride `$6A`, tag `$04D0`, ptrs at +46/+78)
+- [x] Handler `$00C08232` = geometry walker (same `link a6,#-152` as `$00C1D96C`)
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
