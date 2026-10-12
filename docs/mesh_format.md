@@ -180,6 +180,39 @@ present.
 Port: `kMeshScale = 64` so raw coords fit the runway world units.
 Transform path multiplies by 64 again for Q2.14 matrix input.
 
+## Radar scope consumer (2-D hull)
+
+Live code at **`$00C2FF10`** walks word-pairs from `a2` until `$FFFF`:
+
+```
+moveq   #10, d2              ; max pairs
+loop:
+  move.w  (a2)+, d0
+  bge.s   normal             ; high bit clear → normal pair
+  cmpi.w  #$FFFF, d0
+  beq.s   done
+  bclr    #15, d0            ; flagged pair: clear sign, keep magnitude
+  move.w  (a2)+, d1          ; Y
+  jsr     $00C2E162          ; plot flagged
+  bra.s   next
+normal:
+  move.w  (a2)+, d1
+  jsr     $00C2E14C          ; plot normal
+next:
+  dbf     d2, loop
+```
+
+Plot centre (before the loop): screen `(158,167)` + runtime scroll
+(`$00C446C0` / `$00C44610`).  Clip: X against `$013F` (319).
+
+`$00C2E162` takes low 4 bits of the (flag-stripped) X as a sub-index;
+`$00C2E14C` is the standard pair plotter.  Both ultimately mark pixels
+relative to the radar centre — this is the **in-cockpit radar scope**
+drawing the top-down mesh hull.
+
+A related path at `$00C29AA2` also walks to `$FFFF` and can issue
+draw-mode `$20` via `jsr $12` (blitter line dispatcher).
+
 ## Open
 
 - [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
@@ -188,11 +221,11 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
 - [ ] Remaining companion-record bytes (attribute / 2-D payload)
-- [x] 2D hull captured (6-pair top-down silhouette); runtime consumer still open
+- [x] 2D hull captured; **radar scope consumer at `$00C2FF10` identified**
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
 - [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
-- [ ] Radar / map code path that consumes the 2D hull at runtime
+- [ ] Radar range scale / how hull coords map to scope pixels
 
 ## Port
 
@@ -203,3 +236,4 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 - `mesh_edges_from_dl()` — partial decoder (sub-list byte-offset indices)
 - `mesh_aircraft_39738/39800/…` — include hull pairs + tags from dump
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
+  (radar-scope style; original consumer at `$00C2FF10`)
