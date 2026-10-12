@@ -28,6 +28,25 @@ LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
 **Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` low-byte consumer;
 edge-attr semantics beyond residual style/flags hypothesis.
 
+### PP / $70 observations (still open)
+
+| Mesh   | Setup | PP   | Secondary cmds          |
+|--------|-------|------|-------------------------|
+| 39738  | 4070  | $22  | 4240, 4380              |
+| 39800  | 4070  | $20  | 4340, 4500              |
+| 398C6  | 4070  | $20  | 4340, 4500              |
+| 39E00  | 40B0  | $BA  | 4180, 4480              |
+| 39F66  | 40B0  | mixed| different structure    |
+| (36xxx)| 4070  | —    | second word is **60xx**, not 40PP |
+
+- Aircraft use `4070 40PP C016 … 00PP C016` (PP restated after each group).
+- Many non-aircraft DLs use `4070 60xx C1xx` instead — different command class.
+- The geometry walker only tests **bit 14** of `$4xxx` (skip-next); the low
+  byte of `$4070` / `$40PP` is **not** consumed on that path.
+- No `cmpi.w #$4070` (or `$40xx`) appears in the live CODE image; classification
+  is bit-driven.  Consumer of the PP value itself remains unlocated (likely a
+  setup/state path that runs before the walker or while building pens).
+
 ## Pointer table / LOD slots
 
 | Abs (load model) | Live | Role |

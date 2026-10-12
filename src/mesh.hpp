@@ -120,6 +120,23 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
   return m;
 }
 
+// Parse a word stream, then fill edges/pens from the display list when
+// the auto-decoder finds any.  Hand-authored edges remain preferred when
+// the supplied window is too short for shared sub-lists.
+inline Mesh mesh_from_words(const uint16_t* words, size_t count,
+                            const char* name) {
+  Mesh m = mesh_parse(words, count, name);
+  if (m.verts.empty())
+    return m;
+  std::vector<uint8_t> pens;
+  auto edges = mesh_edges_from_dl(words, count, m.verts.size(), 0, &pens);
+  if (!edges.empty()) {
+    m.edges = std::move(edges);
+    m.edge_pens = std::move(pens);
+  }
+  return m;
+}
+
 // ---------------------------------------------------------------------------
 // Partial display-list → edge decoder
 //

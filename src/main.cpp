@@ -262,6 +262,10 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
       fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
 
+      // 2-D hull radar silhouette (top-left, from mesh.hull)
+      fa18::draw_hull_2d(ren, gfx, craft, 40, 40, 0.04f, 13);
+      fa18::draw_hull_2d(ren, gfx, craft2, 90, 40, 0.04f, 9);
+
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
                           fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 13);
