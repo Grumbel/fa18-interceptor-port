@@ -17,12 +17,10 @@ static size_t byterun1_decode(const uint8_t* src, size_t src_len,
   while (si < src_len && di < dst_len) {
     int8_t n = static_cast<int8_t>(src[si++]);
     if (n >= 0) {
-      // copy n+1 bytes
       int count = n + 1;
       for (int i = 0; i < count && si < src_len && di < dst_len; i++)
         dst[di++] = src[si++];
     } else if (n != -128) {
-      // run of (-n)+1 copies of next byte
       int count = (-n) + 1;
       if (si >= src_len) break;
       uint8_t b = src[si++];
@@ -73,11 +71,14 @@ bool IlbmImage::load(const std::string& path) {
   if (width <= 0 || height <= 0 || planes <= 0 || body.empty())
     return false;
 
-  // Decode planar BODY into indexed pixels
+  // ILBM BODY is row-interleaved: for each y, for each plane, row_bytes.
+  // mskHasMask (1) adds an extra mask plane per row; mskHasTransparentColor (2)
+  // does not.
   int row_words = (width + 15) / 16;
   int row_bytes = row_words * 2;
-  int plane_size = row_bytes * height;
-  std::vector<uint8_t> planar(plane_size * planes, 0);
+  int planes_in_body = planes + (masking == 1 ? 1 : 0);
+  int total = row_bytes * planes_in_body * height;
+  std::vector<uint8_t> planar(total, 0);
 
   if (compression == 1) {
     byterun1_decode(body.data(), body.size(), planar.data(), planar.size());
@@ -93,19 +94,20 @@ bool IlbmImage::load(const std::string& path) {
       int bit = 15 - (x & 15);
       int word = x / 16;
       for (int p = 0; p < planes; p++) {
-        const uint8_t* row = planar.data() + p * plane_size + y * row_bytes;
-        uint16_t w = (row[word*2] << 8) | row[word*2+1];
+        // Row-interleaved: offset = (y * planes_in_body + p) * row_bytes
+        const uint8_t* row =
+            planar.data() + (y * planes_in_body + p) * row_bytes;
+        uint16_t w = (row[word * 2] << 8) | row[word * 2 + 1];
         if (w & (1 << bit))
-          idx |= (1 << p);
+          idx |= static_cast<uint8_t>(1 << p);
       }
       pixels[y * width + x] = idx;
     }
   }
 
   if (palette.empty()) {
-    // grayscale fallback
     for (int i = 0; i < (1 << planes); i++) {
-      uint8_t v = i * 255 / ((1 << planes) - 1);
+      uint8_t v = static_cast<uint8_t>(i * 255 / ((1 << planes) - 1));
       palette.push_back({v, v, v, 255});
     }
   }
@@ -114,20 +116,27 @@ bool IlbmImage::load(const std::string& path) {
 
 SDL_Texture* IlbmImage::to_texture(SDL_Renderer* ren) const {
   if (pixels.empty()) return nullptr;
+
+  // Expand indexed → RGBA32 so rendering is reliable across SDL backends
+  // (INDEX8 textures are poorly supported / pitch-sensitive).
   SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(
-      0, width, height, 8, SDL_PIXELFORMAT_INDEX8);
+      0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
   if (!surf) return nullptr;
 
-  SDL_Palette* pal = SDL_AllocPalette(256);
-  std::vector<SDL_Color> cols(256, {0,0,0,255});
-  for (size_t i = 0; i < palette.size() && i < 256; i++)
-    cols[i] = palette[i];
-  SDL_SetPaletteColors(pal, cols.data(), 0, 256);
-  SDL_SetSurfacePalette(surf, pal);
+  auto* dst = static_cast<uint32_t*>(surf->pixels);
+  int pitch_px = surf->pitch / 4;
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      uint8_t idx = pixels[y * width + x];
+      SDL_Color c = (idx < palette.size()) ? palette[idx]
+                                           : SDL_Color{0, 0, 0, 255};
+      dst[y * pitch_px + x] =
+          (uint32_t(c.a) << 24) | (uint32_t(c.r) << 16) |
+          (uint32_t(c.g) << 8) | uint32_t(c.b);
+    }
+  }
 
-  std::memcpy(surf->pixels, pixels.data(), pixels.size());
   SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
   SDL_FreeSurface(surf);
-  SDL_FreePalette(pal);
   return tex;
 }

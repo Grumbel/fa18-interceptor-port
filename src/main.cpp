@@ -145,85 +145,84 @@ int main(int argc, char* argv[]) {
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
     } else if (game.state() == GameState::Flight ||
                game.state() == GameState::Qualification) {
-      // Crosshair (HUD) — COLOR13 mid-gray
+      // Attitude: axes → rate deltas → filter → integrate (docs/transform_3d.md)
+      static fa18::PlayerAttitude att;
+      int16_t deltas[3] = {
+        static_cast<int16_t>((int(input.axis_0) - 128) * 4),  // pitch rate
+        static_cast<int16_t>((int(input.axis_1) - 128) * 4),  // yaw rate
+        0
+      };
+      fa18::filter_rates(att, deltas);
+      fa18::integrate_attitude(att);
+      fa18::auto_center_rates(att, 32);
+
+      fa18::Mat3Fixed view =
+          fa18::mat_from_angles_q14(att.angle[0], att.angle[1], att.angle[2]);
+
+      auto draw_world_line = [&](fa18::Vec3 a, fa18::Vec3 b, int col) {
+        auto ta = fa18::transform_point_fp(view,
+            static_cast<int16_t>(a.x * 64),
+            static_cast<int16_t>(a.y * 64),
+            static_cast<int16_t>(a.z * 64));
+        auto tb = fa18::transform_point_fp(view,
+            static_cast<int16_t>(b.x * 64),
+            static_cast<int16_t>(b.y * 64),
+            static_cast<int16_t>(b.z * 64));
+        ta.z += 4.f; tb.z += 4.f;
+        if (ta.z < 0.2f && tb.z < 0.2f) return;
+        int sx0, sy0, sx1, sy1;
+        fa18::project(ta, sx0, sy0);
+        fa18::project(tb, sx1, sy1);
+        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, col);
+      };
+
+      // Horizon — COLOR05
+      draw_world_line({-20.f, 0.f, 8.f}, {20.f, 0.f, 8.f}, 5);
+
+      // Runway: edges + markers + centerline
+      const float half_w = 1.2f;
+      for (int i = 0; i < 10; ++i) {
+        float z0 = 2.f + i * 3.f;
+        float z1 = z0 + 3.f;
+        draw_world_line({-half_w, 1.5f, z0}, {-half_w, 1.5f, z1}, 11);
+        draw_world_line({ half_w, 1.5f, z0}, { half_w, 1.5f, z1}, 11);
+        draw_world_line({-half_w, 1.5f, z0}, { half_w, 1.5f, z0}, 11);
+      }
+      draw_world_line({0.f, 1.5f, 2.f}, {0.f, 1.5f, 32.f}, 13);
+
+      // Object pool ($642 / $b8f)
+      static fa18::ObjectList list;
+      static bool pool_init = false;
+      if (!pool_init) {
+        auto* c2 = list.add();
+        *c2 = fa18::make_cube(0.4f);
+        c2->pos = {3.f, 0.0f, 12.f};
+        c2->vel_near = {0.015f, 0.f, 0.f};
+        c2->type_flags = 0x10;
+
+        auto* c3 = list.add();
+        *c3 = fa18::make_cube(0.3f);
+        c3->pos = {-2.5f, -0.2f, 10.f};
+        c3->vel_near = {0.f, 0.01f, 0.f};
+        c3->type_flags = 0x10;
+        pool_init = true;
+      }
+      list.objects[0].orient_fp =
+          fa18::mat_from_angles_q14(0, att.angle[1] / 2, att.angle[2]);
+      list.objects[1].orient_fp =
+          fa18::mat_from_angles_q14(0, 0, -att.angle[2]);
+      list.draw_all_fp(ren, gfx);
+
+      // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
                           fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 13);
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
                           fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 13);
 
-      // Object loop ($72dc) → transform ($77d8) → view translate → project → line
-      // Euler angles from $4b0/$4b2-style axes (0–255 → ±90° in 7200-circle)
-      int pitch = fa18::InputState::axis_to_euler(input.axis_0);
-      int yaw_e = fa18::InputState::axis_to_euler(input.axis_1);
-      int roll  = 0;
-
-      // Horizon — COLOR05
-      fa18::draw_line_pal(ren, 0, fa18::PLAYFIELD_CY,
-                          fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 5);
-
-      // Ground grid (static depth cue) — COLOR11 dark green
-      for (int gz = 2; gz <= 12; gz += 2) {
-        float z = float(gz);
-        int sx0, sy0, sx1, sy1;
-        fa18::project({-6.f, -1.5f, z}, sx0, sy0);
-        fa18::project({ 6.f, -1.5f, z}, sx1, sy1);
-        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, 11);
-      }
-      for (int gx = -6; gx <= 6; gx += 2) {
-        int sx0, sy0, sx1, sy1;
-        fa18::project({float(gx), -1.5f, 2.f}, sx0, sy0);
-        fa18::project({float(gx), -1.5f, 12.f}, sx1, sy1);
-        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, 11);
-      }
-
-      // Object pool ($642 / $b8f) – persistent so $c6 motion integrates
-      static fa18::ObjectList list;
-      static bool pool_init = false;
-      if (!pool_init) {
-        auto* player = list.add();
-        *player = fa18::make_cube(0.8f);
-        player->pos = {0.f, 0.f, 6.f};
-
-        auto* c2 = list.add();
-        *c2 = fa18::make_cube(0.5f);
-        c2->pos = {3.f, 0.5f, 9.f};
-        c2->vel_near = {0.02f, 0.f, 0.f};   // drift right
-        c2->type_flags = 0x10;               // bit 4 → ×15/16 damping
-
-        auto* c3 = list.add();
-        *c3 = fa18::make_cube(0.4f);
-        c3->pos = {-2.5f, -0.3f, 8.f};
-        c3->vel_near = {0.f, 0.015f, 0.f};  // drift up
-        c3->type_flags = 0x10;
-        pool_init = true;
-      }
-      // Player tracks input; companions keep integrated positions
-      list.objects[0].orient_fp = fa18::mat_from_angles_q14(roll, pitch, yaw_e);  // roll, pitch, yaw
-      list.objects[1].orient_fp = fa18::mat_from_angles_q14(0, 0, -yaw_e * 3 / 2);  // yaw only
-      list.objects[2].orient_fp = fa18::mat_from_angles_q14(0, pitch / 2, yaw_e * 2 / 3);  // pitch+yaw
-
-      list.draw_all_fp(ren, gfx);  // $c6 motion → transform → draw
-
-      // Mode $16 walker demo: edge list → clip → perspective → $5ee span
-      // EdgeDesc bounds from in-flight $4202 snapshot (+6=2422, +8=-305, +$a=-145)
-      {
-        fa18::EdgeDesc ed;
-        ed.bound_a = 2422;
-        ed.bound_b = -305;
-        ed.bound_c = -145;
-        // Simple screen-space diamond (pre-bias coords near origin)
-        static const int16_t diamond[] = {
-           0, -40,
-          40,   0,
-           0,  40,
-         -40,   0,
-        };
-        fa18::walker_draw(ren, gfx, diamond, 4, ed);
-      }
-
+      // Instrument panel (inst5) — full width, native aspect ×2
       if (tex_inst) {
         int w = inst5.width * 2, h = inst5.height * 2;
-        SDL_Rect dst = { (fa18::WINDOW_W-w)/2, fa18::WINDOW_H-h-8, w, h };
+        SDL_Rect dst = { (fa18::WINDOW_W - w) / 2, fa18::WINDOW_H - h, w, h };
         SDL_RenderCopy(ren, tex_inst, nullptr, &dst);
       }
     }
