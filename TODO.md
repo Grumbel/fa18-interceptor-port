@@ -172,6 +172,7 @@
 72. [x] PP on ADF (static); walker uses only bit14 of $4xxx; $100B attrs cluster-only
 73. [x] Mesh pipeline overview diagram in mesh_format.md
 74. [x] 39738 edges from dump sub-lists (18 unique); edge_pens from attr_hi/4
+75. [x] 39800/398C6/39E00 dump-derived edges + edge_pens
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -353,7 +354,8 @@
 - fa18-port-148.1-lod-tables-trampoline-dc0339a.bundle (superseded)
 - fa18-port-149.1-pp-static-attrs-cluster-only-dc0339a.bundle (superseded)
 - fa18-port-150.1-mesh-pipeline-overview-dc0339a.bundle (superseded)
-- fa18-port-151.1-39738-dump-edges-pens-dc0339a.bundle (current tip)
+- fa18-port-151.1-39738-dump-edges-pens-dc0339a.bundle (superseded)
+- fa18-port-152.1-more-aircraft-dump-edges-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
