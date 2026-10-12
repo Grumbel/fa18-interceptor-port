@@ -1,6 +1,6 @@
 # Mesh / model format (in-flight)
 
-## Pointer table
+## Pointer table / LOD slots
 
 | Abs (load model) | Live | Role |
 |------------------|------|------|
@@ -9,12 +9,34 @@
 
 In-flight slots point into the **model cluster** `$00C39700`–`$00C3A600`.
 
-Observed live slots (first 9):
+### Slot selection (not object-type)
 
-| Slot | Target |
-|------|--------|
-| 0–2 | `$00C3A58C` (mesh A family) |
-| 3–8 | `$00C39B52` / `$00C39B66` (mesh B) |
+Path-C inside `$c6` (`$00C25372`) indexes the table by a **LOD /
+proximity counter** `d5`, not by a static object-type field:
+
+```
+cmpi.w  #10, d5          ; valid range 0..9
+bge     reject
+addq.w  #1, d5
+lea     $00C4C4C8, a0    ; mesh pointer table
+lea     $00C4C4F4, a1    ; companion table
+move.w  d5, d0
+asl.w   #2, d0           ; ×4 longword index
+move.l  (0,a0,d0.w), d1  ; mesh header pointer (blt if empty)
+```
+
+Object fields `+$10` / `+$26` are flags/type for behaviour, but the
+**mesh slot is distance-selected**.  Consecutive slots sharing the same
+pointer are LOD bands over identical geometry (companion words may
+still differ).
+
+### Observed live slots
+
+| Slot | Target | Band |
+|------|--------|------|
+| 0–2 | `$00C3A58C` (mesh A / structure) | near |
+| 3–8 | `$00C39B52` / `$00C39B66` (mesh B / aircraft ±320) | mid–far |
+| 9+ | `$00000000` | empty |
 
 ## Header layout
 
@@ -54,9 +76,22 @@ Common aircraft pattern (e.g. `$00C39738`):
 
 **Two-level encoding:**
 
-1. **Top level** — `$40xx` / `$C016` / `$A2xx` state commands (LOD, colour,
-   or draw-mode; exact meaning still open).  Followed by a short table of
-   **byte offsets** relative to the mesh header.
+1. **Top level** — high-byte command taxonomy (low byte = parameter):
+
+   | High byte | Role (hypothesis) |
+   |-----------|-------------------|
+   | `$40` | setup / begin (low=`$70` common on aircraft) |
+   | `$41`–`$45` | group / face bank |
+   | `$C0` | separator / end-group (`$C016` very common; also `$C01C`, `$C00A`) |
+   | `$A0`–`$A2` | secondary command or local pointer |
+   | `$80`–`$83` | edge/sub-list opener (also used inside sub-lists) |
+
+   Groups often look like `40xx pppp C016` or `4xxx pppp C016` where
+   `pppp` is a shared parameter (e.g. `$0022` / `$0020` / `$00BA` repeated
+   across groups of one mesh — scale, colour, or flags).
+
+   After the state block comes a short table of **byte offsets** relative
+   to the mesh header (`$0270`, `$02D6`, …).
 
 2. **Sub-lists** at those offsets:
    ```
@@ -70,11 +105,11 @@ Common aircraft pattern (e.g. `$00C39738`):
    Example: `0006 0024 002A` → indices 1, 6, 7.
 
 3. **Trailing 2-D coords** — radar / silhouette hull (same format as the
-   optional pre-header hull).
+   optional pre-header hull), ended by `$7FFF $7FFF`.
 
-`mesh_edges_from_dl()` in the port implements this partial decoder and
+`mesh_edges_from_dl()` in the port implements the sub-list decoder and
 recovers a useful subset of edges.  Hand-authored edges remain the
-primary draw path until top-level `$40xx`/`$C016` is fully understood.
+primary draw path until top-level parameters are fully mapped.
 
 Some models (e.g. `$00C39B66`, `$00C39980`) use a different top-level mix
 (`C0C0`, `414A`, …); the sub-list format still applies where offsets are
@@ -117,11 +152,13 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 ## Open
 
 - [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
-      top-level `$40xx`/`$C016` state commands still open
-- [ ] Object type → `$5400` slot mapping
+      top-level high-byte taxonomy sketched, low-byte params still open
+- [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
+- [ ] Exact mapping of distance thresholds → `d5` LOD band
+- [ ] Companion table `$00C4C4F4` per-slot semantics
 - [ ] Whether 2D hull pairs are used at runtime or only for tools
 - [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
-- [ ] Meaning of the frequent `$C016` command word
+- [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
 
 ## Port
 

@@ -150,6 +150,7 @@
 50. [x] Model cluster $39700–$3A600 catalogued; verts beyond N; aircraft edges
 51. [x] Opcode heuristic (4xxx/8–Dxxx vs E–Fxxx coords); mesh_parse(); more aircraft meshes
 52. [x] DL two-level: offset table → sub-lists; byte-offset/6 vert indices; mesh_edges_from_dl()
+53. [x] $5400 slot = LOD counter d5 (0..9) from path-C; high-byte DL command taxonomy
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -197,8 +198,11 @@
 - [x] Opcode heuristic (exclude E000–FFFF small negatives); mesh_parse() + raw DL retained
 - [x] Additional aircraft meshes 398C6 / 39E00 / 39F66 + structure 3A4A8 in port
 - [x] DL sub-list edge encoding: byte-offset/6 indices after 8xxx cmds; mesh_edges_from_dl()
-- [ ] Top-level `$40xx`/`$C016` state-command meaning
-- [ ] Object type → `$5400` slot mapping
+- [x] `$5400` slot = LOD/proximity d5 (0..9), not object-type; companion table noted
+- [x] Top-level high-byte command taxonomy (40/41–45/C0/A0–A2/80–83)
+- [ ] Top-level low-byte params (`$70`, `$22`/`$20`/`$BA`) exact meaning
+- [ ] Distance thresholds that drive d5 LOD band
+- [ ] Companion table `$00C4C4F4` per-slot semantics
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -277,7 +281,8 @@
 - fa18-port-126.1-mesh-from-dump-dc0339a.bundle (superseded)
 - fa18-port-127.1-mesh-cluster-aircraft-dc0339a.bundle (superseded)
 - fa18-port-128.1-mesh-parse-more-aircraft-dc0339a.bundle (superseded)
-- fa18-port-129.1-dl-sublist-byteoffset-edges-dc0339a.bundle (current tip)
+- fa18-port-129.1-dl-sublist-byteoffset-edges-dc0339a.bundle (superseded)
+- fa18-port-130.1-lod-slots-dl-taxonomy-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
