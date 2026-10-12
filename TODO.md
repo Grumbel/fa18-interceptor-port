@@ -145,6 +145,7 @@
 45. [x] Flight axes from held keys (release → centre 128); ILBM decode smoke-ok
 46. [x] Sky/ground fill from pitch; ILBM load diagnostics
 47. [x] Object lines via gfx.pen palette (blitter_line_stub → draw_line_pal)
+48. [x] README controls/status; AudioSystem hooked on state transitions
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -260,7 +261,8 @@
 - fa18-port-121.1-ilbm-fix-runway-view-dc0339a.bundle (superseded)
 - fa18-port-122.1-axis-hold-center-dc0339a.bundle (superseded)
 - fa18-port-123.1-sky-ground-ilbm-log-dc0339a.bundle (superseded)
-- fa18-port-124.1-object-pen-palette-dc0339a.bundle (current tip)
+- fa18-port-124.1-object-pen-palette-dc0339a.bundle (superseded)
+- fa18-port-125.1-readme-audio-hook-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

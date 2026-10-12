@@ -11,11 +11,12 @@
 #include "input_state.hpp"
 #include "transform.hpp"
 #include "flight.hpp"
+#include "audio.hpp"
 
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
             << "Keys: SPACE/ENTER = next, BACKSPACE = prev, ESC = quit\n"
-            << "Flight: up/down = pitch, left/right = yaw (angle1/angle2)\n\n";
+            << "Flight: arrows/WASD hold = pitch/yaw (release centres)\n\n";
 
   std::string exe_path = "assets/F-18_Interceptor_amiga";
   if (argc > 1) exe_path = argv[1];
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
   fa18::GfxState gfx;
   gfx.view_z = 0;  // camera; object pos.z supplies depth
   fa18::InputState input;
+  fa18::AudioSystem audio;  // mirrors $00C07478 channel table
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
@@ -140,6 +142,14 @@ int main(int argc, char* argv[]) {
     if (game.state() != prev) {
       gfx.phase = static_cast<uint16_t>(game.state());
       update_title();
+      // Action-table style sound trigger ($00C16684 queue path).
+      // No PCM yet — logs the channel enable / INTREQ sequence.
+      if (game.state() == GameState::Flight)
+        audio.enable(0);
+      else if (prev == GameState::Flight)
+        audio.stop(0);
+      else
+        audio.request(static_cast<int>(game.state()) & 3);
     }
     if (game.state() == GameState::Exit) running = false;
 
