@@ -5,65 +5,76 @@
 | Abs (load model) | Live | Role |
 |------------------|------|------|
 | `$5400` | `$00C4C4C8` | longword pointer table to mesh headers |
-| | `$00C4C4F4` | companion per-slot data (stride related) |
+| | `$00C4C4F4` | companion per-slot data |
 
-In-flight slots:
+In-flight slots point into the **model cluster** `$00C39700`–`$00C3A600`.
 
-| Slot | Pointer | Notes |
-|------|---------|-------|
-| 0–2 | `$00C3A58C` | mesh A (count=4) |
-| 3–8 | `$00C39B52` | mesh B (count=5) |
-
-Filled at runtime (stores at `$00C1CD7A`); consumed from `$c6` path-C
-(`lea $00C4C4C8` at `$00C2537C` / `$00C260B6`).
-
-## Header layout (best-effort)
+## Header layout
 
 ```
-word pairs …        ; 2D hull / silhouette (radar?), ends with
-FFFF FFFF           ; terminator
-word N              ; vertex count
-N × (x.w, y.w, z.w) ; signed 16-bit local coordinates
-…                   ; face/edge data (format still open)
+[2D hull word-pairs…]     ; optional radar/silhouette hull
+FFFF FFFF                 ; terminator
+word N                    ; declared vertex count (often under-states)
+(x,y,z).w × N+            ; signed local coords — stream continues past N
+                          ; until a display-list opcode
+display list…             ; words with high bits set ($40xx/$80xx/$C0xx)
 ```
 
-### Mesh B (`$00C39B52`) — 5 verts
+### Vertex stream
 
-| # | x | y | z |
-|---|----|----|----|
-| 0 | 40 | 0 | -40 |
-| 1 | 0 | 0 | -320 |
-| 2 | -40 | 0 | -40 |
-| 3 | -320 | 0 | 0 |
-| 4 | -40 | 0 | 40 |
+Declared `N` is a lower bound.  Symmetric aircraft models continue with
+matching wing/tail tips past `N` until the first opcode word:
 
-Following words look like additional verts `(0,0,320)`, `(40,0,40)`,
-`(320,0,0)` — included as best-effort in the port.
+| Top bits | Typical | Role (hypothesis) |
+|----------|---------|-------------------|
+| `$4xxx` | `$4070` `$4022` | draw / poly command |
+| `$8xxx` | `$80E4` `$805C` | move / state |
+| `$Cxxx` | `$C016` `$C0B4` | end-poly / special |
 
-### Mesh A (`$00C3A58C`) — 4 verts
+Exact edge encoding inside the display list is **still open**.  The port
+uses hand-authored edges derived from vertex positions.
 
-| # | x | y | z |
-|---|------|------|------|
-| 0 | 2112 | 0 | -896 |
-| 1 | 1152 | 6764 | -4192 |
-| 2 | -2080 | 0 | -2048 |
-| 3 | -3328 | 3720 | 480 |
+## Model cluster catalogue
 
-Larger extents; may be terrain / carrier / distant object.
+| Address | Declared N | Usable verts | Notes |
+|---------|------------|--------------|-------|
+| `$00C39738` | 5 | **10** | aircraft cross ±500 |
+| `$00C39800` | 5 | **10** | aircraft cross ±437/525 |
+| `$00C398C6` | 4 | 8 | smaller craft |
+| `$00C39980` | 4 | 8 | variant |
+| `$00C39B66` | 5 | 10 | table-slot mesh B (±320) |
+| `$00C39E00` | 5 | ~10 | y≠0 (banked?) |
+| `$00C39F66` | 5 | ~10 | long nose −2080 |
+| `$00C3A4A8` | 4 | 8 | larger structure |
+| `$00C3A5A0` | 4 | 8 | mesh A (table slot) |
+
+### Aircraft topology (e.g. `$00C39738`)
+
+```
+        v1 nose (0,0,-500)
+       / | \
+     v0  v9  v2     body ring + center-up
+    /    |    \
+  v3-----|------v7  wings (±500,0,0)
+    \    |    /
+     v6  |  v4
+       \ | /
+        v5 tail (0,0,+500)
+         v8 vertical (40,400,-40)
+```
 
 ## Scale
 
-Port uses `kMeshScale = 64` so raw coords map into the same world units
-as the runway demo (transform path multiplies local verts by 64 again
-for the Q2.14 matrix).
+Port: `kMeshScale = 64` so raw coords fit the runway world units.
+Transform path multiplies by 64 again for Q2.14 matrix input.
 
 ## Open
 
-- Exact edge / face list encoding after the vertex block
-- How object type index selects a `$5400` slot
-- Relationship of the 2D hull pairs to the 3D verts
-- Full catalogue of meshes beyond A/B
+- [ ] Display-list opcode → edge index encoding
+- [ ] Object type → `$5400` slot mapping
+- [ ] Whether 2D hull pairs are used at runtime or only for tools
+- [ ] Full face/poly strip interpretation
 
 ## Port
 
-`src/mesh.hpp` — `Mesh`, `mesh_from_dump_A/B()`, `draw_mesh()`.
+`src/mesh.hpp` — `mesh_aircraft_39738/39800`, `mesh_from_dump_A/B`, `draw_mesh()`.

@@ -147,6 +147,7 @@
 47. [x] Object lines via gfx.pen palette (blitter_line_stub → draw_line_pal)
 48. [x] README controls/status; AudioSystem hooked on state transitions
 49. [x] Mesh format from dump ($00C39B52/$00C3A58C); mesh.hpp + flight draw
+50. [x] Model cluster $39700–$3A600 catalogued; verts beyond N; aircraft edges
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -189,10 +190,10 @@
 - [x] BPLCON0 `$0200`/`$4200` explained (4 active planes; 5th buffer unused here)
 - [x] LOFCSR cprlist field map confirmed (start=$A400, MaxCount=42)
 - [x] Alternate register-script at `$540E8` = 32-colour mode template
-- [x] Mesh pointer table `$5400`/`$00C4C4C8` + two headers decoded
-- [ ] Mesh edge/face list encoding after vertex block
+- [x] Mesh pointer table `$5400`/`$00C4C4C8` + model cluster catalogued
+- [x] Vertex stream continues past declared N until $40xx/$80xx/$C0xx opcodes
+- [ ] Display-list opcode → edge index encoding
 - [ ] Object type → `$5400` slot mapping
-- [ ] Full mesh catalogue beyond A/B
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -268,7 +269,8 @@
 - fa18-port-123.1-sky-ground-ilbm-log-dc0339a.bundle (superseded)
 - fa18-port-124.1-object-pen-palette-dc0339a.bundle (superseded)
 - fa18-port-125.1-readme-audio-hook-dc0339a.bundle (superseded)
-- fa18-port-126.1-mesh-from-dump-dc0339a.bundle (current tip)
+- fa18-port-126.1-mesh-from-dump-dc0339a.bundle (superseded)
+- fa18-port-127.1-mesh-cluster-aircraft-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

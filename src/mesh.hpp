@@ -2,94 +2,148 @@
 #include <cstdint>
 #include <vector>
 #include <array>
+#include <iostream>
 #include "transform.hpp"
 #include "draw.hpp"
 #include "gfx_state.hpp"
 
 namespace fa18 {
 
-// Model format recovered from in-flight dump at $00C39B52 / $00C3A58C
-// (pointer table $00C4C4C8 / abs $5400):
+// Model format recovered from in-flight dump cluster $00C39700–$00C3A600.
+// Pointer table $00C4C4C8 (abs $5400) references these headers.
 //
-//   word pairs …  FFFF FFFF   — 2D hull / radar silhouette (optional)
-//   word count                — number of 3D vertices
-//   count × (x,y,z) words     — signed 16-bit local coords
-//   remaining data            — faces/edges (still partially open)
+//   [2D hull word-pairs…]  FFFF FFFF
+//   word N                 — declared vertex count (often under-states)
+//   (x,y,z).w × N+         — signed local coords; more verts follow until
+//                            a display-list opcode (word with bits 14–15 set
+//                            and |value| large, typically $40xx/$80xx/$C0xx)
+//   display list…          — edge/poly commands (encoding still open)
 //
-// Scale: raw units are large; port divides by kMeshScale for world space.
+// Scale: raw / kMeshScale → world units for the port.
 
 constexpr float kMeshScale = 64.f;
 
 struct Mesh {
-  std::vector<Vec3> verts;                 // local space
-  std::vector<std::pair<int, int>> edges;  // indices into verts
+  std::vector<Vec3> verts;
+  std::vector<std::pair<int, int>> edges;
   const char* name = "";
 };
 
-// Build sequential edges + close the loop.
-inline void edges_loop(Mesh& m) {
-  const int n = static_cast<int>(m.verts.size());
-  for (int i = 0; i + 1 < n; ++i)
-    m.edges.push_back({i, i + 1});
-  if (n >= 3)
-    m.edges.push_back({n - 1, 0});
-}
-
-// Connect every vertex to the next and to vertex 0 (fan) — useful when
-// the true edge list is unknown.
-inline void edges_fan(Mesh& m) {
-  const int n = static_cast<int>(m.verts.size());
-  for (int i = 1; i < n; ++i)
-    m.edges.push_back({0, i});
-  for (int i = 1; i + 1 < n; ++i)
-    m.edges.push_back({i, i + 1});
+inline Vec3 V(int16_t x, int16_t y, int16_t z) {
+  return {x / kMeshScale, y / kMeshScale, z / kMeshScale};
 }
 
 // ---------------------------------------------------------------------------
-// Mesh B — live $00C39B52 (5 verts).  Likely a simple craft / debris shape.
+// Aircraft-like mesh from $00C39738
+// 8-fold symmetric XZ cross + vertical tip — typical of the cluster.
 // ---------------------------------------------------------------------------
-inline Mesh mesh_from_dump_B() {
+inline Mesh mesh_aircraft_39738() {
   Mesh m;
-  m.name = "dump_B_$00C39B52";
-  // xyz as extracted after FFFF FFFF / count=5
-  const int16_t raw[][3] = {
-    {  40, 0,  -40},
-    {   0, 0, -320},
-    { -40, 0,  -40},
-    {-320, 0,    0},
-    { -40, 0,   40},
-    // continuation candidates from following words (best-effort)
-    {   0, 0,  320},
-    {  40, 0,   40},
-    { 320, 0,    0},
+  m.name = "aircraft_$00C39738";
+  // Declared count=5 but stream continues to 10 usable verts
+  m.verts = {
+    V(  40,   0,  -40),  // 0 body
+    V(   0,   0, -500),  // 1 nose
+    V( -40,   0,  -40),  // 2 body
+    V(-500,   0,    0),  // 3 left wing
+    V( -40,   0,   40),  // 4 body
+    V(   0,   0,  500),  // 5 tail
+    V(  40,   0,   40),  // 6 body
+    V( 500,   0,    0),  // 7 right wing
+    V(  40, 400,  -40),  // 8 vertical / canopy
+    V(   0, 100,    0),  // 9 center-up
   };
-  for (auto& r : raw)
-    m.verts.push_back({r[0] / kMeshScale, r[1] / kMeshScale, r[2] / kMeshScale});
-  // Hand-authored edges for a crude aircraft-like silhouette in XZ
   m.edges = {
-    {1, 0}, {0, 2}, {2, 1},          // rear triangle
-    {3, 0}, {3, 2},                   // left wing
-    {5, 0}, {5, 6}, {6, 7}, {7, 5},  // right side
-    {1, 3}, {1, 5},                   // fuselage spans
+    // fuselage nose → tail
+    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
+    // wings
+    {3, 0}, {3, 2}, {3, 9},
+    {7, 0}, {7, 6}, {7, 9},
+    // body ring
+    {0, 2}, {2, 4}, {4, 6}, {6, 0},
+    // vertical
+    {8, 0}, {8, 9}, {8, 1},
   };
   return m;
 }
 
 // ---------------------------------------------------------------------------
-// Mesh A — live $00C3A58C (4 verts).  Larger extents.
+// Variant at $00C39800 (slightly different proportions)
+// ---------------------------------------------------------------------------
+inline Mesh mesh_aircraft_39800() {
+  Mesh m;
+  m.name = "aircraft_$00C39800";
+  m.verts = {
+    V( 100,   0, -120),
+    V(   0,   0, -437),
+    V(-100,   0, -120),
+    V(-525,   0,    0),
+    V(-100,   0,  120),
+    V(   0,   0,  437),
+    V( 100,   0,  120),
+    V( 525,   0,    0),
+    V( 100, 140, -120),
+    V(   0, 750,    0),
+  };
+  m.edges = {
+    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
+    {3, 0}, {3, 2}, {3, 9},
+    {7, 0}, {7, 6}, {7, 9},
+    {0, 2}, {2, 4}, {4, 6}, {6, 0},
+    {8, 0}, {8, 9}, {8, 1},
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Mesh B (table slot) $00C39B52/66 — same family, scale -320
+// ---------------------------------------------------------------------------
+inline Mesh mesh_from_dump_B() {
+  Mesh m;
+  m.name = "dump_B_$00C39B66";
+  m.verts = {
+    V(  40,   0,  -40),
+    V(   0,   0, -320),
+    V( -40,   0,  -40),
+    V(-320,   0,    0),
+    V( -40,   0,   40),
+    V(   0,   0,  320),
+    V(  40,   0,   40),
+    V( 320,   0,    0),
+    V(  40, 256,  -40),
+    V(   0, 100,    0),
+  };
+  m.edges = {
+    {1, 0}, {0, 9}, {9, 5}, {1, 2}, {2, 9}, {9, 4}, {4, 5},
+    {3, 0}, {3, 2}, {3, 9},
+    {7, 0}, {7, 6}, {7, 9},
+    {0, 2}, {2, 4}, {4, 6}, {6, 0},
+    {8, 0}, {8, 9},
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Mesh A $00C3A58C/A5A0 — larger extents (terrain / structure?)
 // ---------------------------------------------------------------------------
 inline Mesh mesh_from_dump_A() {
   Mesh m;
-  m.name = "dump_A_$00C3A58C";
-  const int16_t raw[][3] = {
-    { 2112,    0,  -896},
-    { 1152, 6764, -4192},
-    {-2080,    0, -2048},
-    {-3328, 3720,   480},
+  m.name = "dump_A_$00C3A5A0";
+  m.verts = {
+    V( 2112,    0,  -896),
+    V( 1152, 6764, -4192),
+    V(-2080,    0, -2048),
+    V(-3328, 3720,   480),
+    V(-1600,    0,  1280),
+    V( -288, 3630,  2688),
+    V( 1088,    0,  1568),
+    V( 2464, 5726,  1024),
   };
-  for (auto& r : raw)
-    m.verts.push_back({r[0] / kMeshScale, r[1] / kMeshScale, r[2] / kMeshScale});
-  edges_loop(m);
+  // Sequential ring + spokes
+  for (int i = 0; i < 8; ++i)
+    m.edges.push_back({i, (i + 1) % 8});
+  for (int i = 1; i < 8; ++i)
+    m.edges.push_back({0, i});
   return m;
 }
 

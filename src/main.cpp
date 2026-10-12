@@ -233,22 +233,22 @@ int main(int argc, char* argv[]) {
       }
       draw_world_line({0.f, 1.5f, 2.f}, {0.f, 1.5f, 32.f}, 13);
 
-      // Real mesh data extracted from dump ($00C39B52 / $00C3A58C)
-      static fa18::Mesh mesh_b = fa18::mesh_from_dump_B();
-      static fa18::Mesh mesh_a = fa18::mesh_from_dump_A();
+      // Real mesh data from dump cluster $00C39700–$00C3A600
+      static fa18::Mesh craft = fa18::mesh_aircraft_39738();
+      static fa18::Mesh craft2 = fa18::mesh_aircraft_39800();
       static bool mesh_logged = false;
       if (!mesh_logged) {
-        std::cout << "[mesh] " << mesh_b.name << " verts=" << mesh_b.verts.size()
-                  << " edges=" << mesh_b.edges.size() << "\n";
-        std::cout << "[mesh] " << mesh_a.name << " verts=" << mesh_a.verts.size()
-                  << " edges=" << mesh_a.edges.size() << "\n";
+        std::cout << "[mesh] " << craft.name << " verts=" << craft.verts.size()
+                  << " edges=" << craft.edges.size() << "\n";
+        std::cout << "[mesh] " << craft2.name << " verts=" << craft2.verts.size()
+                  << " edges=" << craft2.edges.size() << "\n";
         mesh_logged = true;
       }
-      // Place meshes ahead of the camera; orient with attitude
       fa18::Mat3Fixed orient =
           fa18::mat_from_angles_q14(0, att.angle[1] / 3, att.angle[2] / 2);
-      fa18::draw_mesh(ren, gfx, mesh_b, orient, {0.f, 0.f, 8.f}, 13);
-      fa18::draw_mesh(ren, gfx, mesh_a, orient, {4.f, -1.f, 14.f}, 9);
+      // Player craft ahead; second craft off to the side
+      fa18::draw_mesh(ren, gfx, craft, orient, {0.f, 0.f, 10.f}, 13);
+      fa18::draw_mesh(ren, gfx, craft2, orient, {5.f, -0.5f, 16.f}, 9);
 
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
