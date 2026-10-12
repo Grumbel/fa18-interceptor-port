@@ -5,38 +5,60 @@
 | Abs (load model) | Live | Role |
 |------------------|------|------|
 | `$5400` | `$00C4C4C8` | longword pointer table to mesh headers |
-| | `$00C4C4F4` | companion per-slot data |
+| | `$00C4C4F4` | companion records (stride 256) |
 
 In-flight slots point into the **model cluster** `$00C39700`–`$00C3A600`.
 
-### Slot selection (not object-type)
-
-Path-C inside `$c6` (`$00C25372`) indexes the table by a **LOD /
-proximity counter** `d5`, not by a static object-type field:
+### Slot selection (LOD / proximity, not object-type)
 
 ```
-cmpi.w  #10, d5          ; valid range 0..9
+; proximity gate — threshold word $00C446DE/$00C446E0 = 320
+; positions asr.l #8, then |Δ| per axis; reject if any |Δ| >= 320
+
+; LOD countdown path ($00C2548C)
+moveq   #8, d5
+loop:   … re-test proximity …
+        subq.w  #1, d5
+        bgt     loop
+
+; slot lookup ($00C25372)
+cmpi.w  #10, d5            ; valid 0..9
 bge     reject
-addq.w  #1, d5
-lea     $00C4C4C8, a0    ; mesh pointer table
-lea     $00C4C4F4, a1    ; companion table
+addq.w  #1, d5             ; path-C starts d5=-1 → slot 0
+lea     $00C4C4C8, a0      ; mesh pointer table
+lea     $00C4C4F4, a1      ; companion base
 move.w  d5, d0
-asl.w   #2, d0           ; ×4 longword index
-move.l  (0,a0,d0.w), d1  ; mesh header pointer (blt if empty)
+asl.w   #2, d0             ; ×4 → pointer index
+move.l  (0,a0,d0.w), d1    ; mesh header (blt if empty)
+move.l  d1, a0
+asl.w   #6, d0             ; d0 = d5×256
+adda.w  d0, a1             ; companion record
+addq.w  #2, a1
+; match object+0x30 / +0x32 against companion bytes ±1
 ```
 
-Object fields `+$10` / `+$26` are flags/type for behaviour, but the
-**mesh slot is distance-selected**.  Consecutive slots sharing the same
-pointer are LOD bands over identical geometry (companion words may
-still differ).
+Object `+$10` / `+$26` are behavioural flags; the **mesh slot is
+distance-selected**.
+
+### Companion records (stride 256)
+
+```
+record = $00C4C4F4 + slot×256 + 2
+```
+
+First two bytes are compared to `object+0x30` and `+0x32` with
+tolerance ±1; mismatch rejects the slot.  Rest of the record holds
+packed attribute / 2-D data (`FFFF` terminators visible).
 
 ### Observed live slots
 
-| Slot | Target | Band |
-|------|--------|------|
-| 0–2 | `$00C3A58C` (mesh A / structure) | near |
-| 3–8 | `$00C39B52` / `$00C39B66` (mesh B / aircraft ±320) | mid–far |
+| Slot | Mesh target | Band |
+|------|-------------|------|
+| 0–2 | `$00C3A58C` (structure A) | near |
+| 3–8 | `$00C39B52`/`$00C39B66` (aircraft B ±320) | mid–far |
 | 9+ | `$00000000` | empty |
+
+Proximity threshold: **320** after `asr.l #8` (`$00C446DE` / `$00C446E0`).
 
 ## Header layout
 
@@ -154,8 +176,9 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 - [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
       top-level high-byte taxonomy sketched, low-byte params still open
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
-- [ ] Exact mapping of distance thresholds → `d5` LOD band
-- [ ] Companion table `$00C4C4F4` per-slot semantics
+- [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
+- [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
+- [ ] Remaining companion-record bytes (attribute / 2-D payload)
 - [ ] Whether 2D hull pairs are used at runtime or only for tools
 - [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
 - [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
