@@ -60,16 +60,25 @@ packed attribute / 2-D data (`FFFF` terminators visible).
 
 Proximity threshold: **320** after `asr.l #8` (`$00C446DE` / `$00C446E0`).
 
-## Header layout
+## Cluster record layout
+
+Each mesh in `$00C39700`–`$00C3A600` is bounded by `$7FFF $7FFF` separators:
 
 ```
-[2D hull word-pairs…]     ; optional radar/silhouette hull
-FFFF FFFF                 ; terminator
+7FFF 7FFF                 ; record separator / end of previous
+tag0 tag1                 ; type tags (aircraft: 0100 0200; some 0100 0300)
+0000 × N                  ; reserved padding
+(x,y).w pairs…            ; 2-D top-down hull / radar silhouette
+FFFF FFFF                 ; end of hull
 word N                    ; declared vertex count (often under-states)
-(x,y,z).w × N+            ; signed local coords — stream continues past N
-                          ; until a display-list opcode
-display list…             ; words with high bits set ($40xx/$80xx/$C0xx)
+(x,y,z).w × N+            ; signed local coords — continues past N
+display list…             ; edge/poly commands ($40xx/$80xx/$C0xx)
+7FFF 7FFF                 ; end of record
 ```
+
+Aircraft hulls typically have **6 pairs** forming a closed top-down
+silhouette (nose / wings / tail).  Tags `0100 0200` mark the standard
+aircraft family; `0100 0300` appears on larger/long-nose variants.
 
 ### Vertex stream
 
@@ -179,17 +188,18 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
 - [ ] Remaining companion-record bytes (attribute / 2-D payload)
-- [ ] Whether 2D hull pairs are used at runtime or only for tools
+- [x] 2D hull captured (6-pair top-down silhouette); runtime consumer still open
+- [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
 - [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
+- [ ] Radar / map code path that consumes the 2D hull at runtime
 
 ## Port
 
 `src/mesh.hpp`:
 
-- `mesh_parse()` — generic header/vertex/DL extractor with opcode heuristic
+- `Mesh` holds verts, edges, **hull**, tags, raw display_list
+- `mesh_parse()` — full cluster record (7FFF / tags / hull / verts / DL)
 - `mesh_edges_from_dl()` — partial decoder (sub-list byte-offset indices)
-- `mesh_aircraft_39738/39800/398C6/39E00/39F66`
-- `mesh_from_dump_A/B`, `mesh_structure_3A4A8`
-- `draw_mesh()` — hand-authored edges (primary); DL decoder supplements
-- Each `Mesh` retains raw `display_list` for future decoder work
+- `mesh_aircraft_39738/39800/…` — include hull pairs + tags from dump
+- `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette

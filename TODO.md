@@ -152,6 +152,7 @@
 52. [x] DL two-level: offset table → sub-lists; byte-offset/6 vert indices; mesh_edges_from_dl()
 53. [x] $5400 slot = LOD counter d5 (0..9) from path-C; high-byte DL command taxonomy
 54. [x] Proximity threshold 320 (asr#8); LOD countdown d5=8..1; companion stride-256 records
+55. [x] Full cluster record layout (7FFF/tags/hull/verts/DL); Mesh.hull + draw_hull_2d()
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -204,8 +205,11 @@
 - [x] Proximity threshold 320 after asr#8 (`$00C446DE`/`$00C446E0`)
 - [x] LOD countdown path: moveq #8,d5 / subq / bgt
 - [x] Companion records: `$00C4C4F4 + slot×256 + 2`, match obj+0x30/+0x32 ±1
+- [x] Full cluster record: 7FFF sep, tags 0100/0200, 6-pair 2D hull, verts, DL
+- [x] Mesh.hull + draw_hull_2d(); mesh_parse handles full records
 - [ ] Top-level low-byte params (`$70`, `$22`/`$20`/`$BA`) exact meaning
 - [ ] Companion record payload beyond the first 2 match-bytes
+- [ ] Runtime radar/map path that consumes 2D hull
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -286,7 +290,8 @@
 - fa18-port-128.1-mesh-parse-more-aircraft-dc0339a.bundle (superseded)
 - fa18-port-129.1-dl-sublist-byteoffset-edges-dc0339a.bundle (superseded)
 - fa18-port-130.1-lod-slots-dl-taxonomy-dc0339a.bundle (superseded)
-- fa18-port-131.1-lod-threshold-companion-records-dc0339a.bundle (current tip)
+- fa18-port-131.1-lod-threshold-companion-records-dc0339a.bundle (superseded)
+- fa18-port-132.1-cluster-record-hull-2d-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

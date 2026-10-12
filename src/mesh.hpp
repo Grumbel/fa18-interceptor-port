@@ -13,11 +13,16 @@ namespace fa18 {
 // Model format recovered from in-flight dump cluster $00C39700–$00C3A600.
 // Pointer table $00C4C4C8 (abs $5400) references these headers.
 //
-//   [2D hull word-pairs…]  FFFF FFFF
+// Full cluster record:
+//   7FFF 7FFF              — record separator
+//   tag0 tag1              — type tags (aircraft: 0100 0200)
+//   0000 × N               — reserved / padding
+//   (x,y).w pairs…         — 2-D top-down hull / radar silhouette
+//   FFFF FFFF              — end of hull
 //   word N                 — declared vertex count (often under-states)
-//   (x,y,z).w × N+         — signed local coords; stream continues past N
-//                            until a display-list opcode
-//   display list…          — edge/poly commands (encoding still open)
+//   (x,y,z).w × N+         — signed local coords; continues past N
+//   display list…          — edge/poly commands
+//   7FFF 7FFF              — end of record / next separator
 //
 // Opcode heuristic (word w):
 //   0x4000–0x7FFF  → command (bit 14 set)
@@ -31,7 +36,10 @@ constexpr float kMeshScale = 64.f;
 struct Mesh {
   std::vector<Vec3> verts;
   std::vector<std::pair<int, int>> edges;
-  std::vector<uint16_t> display_list;  // raw opcodes (encoding open)
+  std::vector<std::pair<int16_t, int16_t>> hull;  // 2-D silhouette
+  std::vector<uint16_t> display_list;  // raw opcodes
+  uint16_t tag0 = 0;
+  uint16_t tag1 = 0;
   const char* name = "";
 };
 
@@ -50,23 +58,40 @@ inline bool is_mesh_opcode(uint16_t w) {
   return false;
 }
 
-// Parse a mesh header at the given big-endian word stream.
-// Skips optional 2-D hull up to FFFF FFFF, reads N, then vertices until
-// the first opcode word, then captures the following display-list words
-// up to a reasonable limit (or a second FFFF terminator).
+// Parse a mesh record from a big-endian word stream.
+// Accepts either a full cluster record (starting at 7FFF 7FFF) or a
+// mid-record pointer at the FFFF hull terminator / N field.
 inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
   Mesh m;
   m.name = name;
   size_t i = 0;
-  // Optional 2-D hull → FFFF FFFF
+
+  // Full record: 7FFF 7FFF tag0 tag1 …
+  if (i + 3 < count && words[i] == 0x7FFF && words[i + 1] == 0x7FFF) {
+    i += 2;
+    m.tag0 = words[i++];
+    m.tag1 = words[i++];
+    while (i < count && words[i] == 0)
+      ++i;
+  }
+
+  // 2-D hull pairs up to FFFF FFFF
   while (i + 1 < count) {
     if (words[i] == 0xFFFF && words[i + 1] == 0xFFFF) {
       i += 2;
       break;
     }
-    ++i;
+    // Skip leading 7FFF 7FFF if we started mid-stream
+    if (words[i] == 0x7FFF && words[i + 1] == 0x7FFF) {
+      i += 2;
+      continue;
+    }
+    m.hull.emplace_back(s16(words[i]), s16(words[i + 1]));
+    i += 2;
+    if (m.hull.size() > 64) break;
   }
   if (i >= count) return m;
+
   uint16_t N = words[i++];
   (void)N;  // declared count is only a lower bound
   while (i + 2 < count) {
@@ -78,13 +103,13 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
     i += 3;
     if (m.verts.size() > 64) break;
   }
-  // Capture display-list words
+  // Display-list until 7FFF end marker or limit
   while (i < count && m.display_list.size() < 128) {
     uint16_t w = words[i++];
     m.display_list.push_back(w);
-    // Soft stop on a lone FFFF that often terminates the record
-    if (w == 0xFFFF && !m.display_list.empty() &&
-        m.display_list.size() > 4)
+    if (w == 0x7FFF && m.display_list.size() > 4)
+      break;
+    if (w == 0xFFFF && m.display_list.size() > 4)
       break;
   }
   return m;
@@ -195,6 +220,12 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
 inline Mesh mesh_aircraft_39738() {
   Mesh m;
   m.name = "aircraft_$00C39738";
+  m.tag0 = 0x0100;
+  m.tag1 = 0x0200;
+  // Top-down 2-D hull (radar silhouette) from cluster record
+  m.hull = {
+    {800, 0}, {656, -296}, {296, -296}, {296, 656}, {-296, 296}, {-296, 296},
+  };
   m.verts = {
     V(  40,   0,  -40),  // 0 body
     V(   0,   0, -500),  // 1 nose
@@ -214,7 +245,7 @@ inline Mesh mesh_aircraft_39738() {
     {0, 2}, {2, 4}, {4, 6}, {6, 0},
     {8, 0}, {8, 9}, {8, 1},
   };
-  // Raw DL start (encoding open): 4070 4022 C016 4240 0022 C016 4380 0022 …
+  // Raw DL start: 4070 4022 C016 4240 0022 C016 4380 0022 …
   m.display_list = {
     0x4070, 0x4022, 0xC016, 0x4240, 0x0022, 0xC016, 0x4380, 0x0022,
     0xA244, 0x805C, 0xA23C, 0x0270, 0x02D6, 0x02E2, 0x0330, 0x035C,
@@ -228,6 +259,11 @@ inline Mesh mesh_aircraft_39738() {
 inline Mesh mesh_aircraft_39800() {
   Mesh m;
   m.name = "aircraft_$00C39800";
+  m.tag0 = 0x0100;
+  m.tag1 = 0x0200;
+  m.hull = {
+    {280, 0}, {396, -356}, {356, -376}, {376, 396}, {-356, 356}, {-376, 376},
+  };
   m.verts = {
     V( 100,   0, -120),
     V(   0,   0, -437),
@@ -454,6 +490,21 @@ inline void draw_mesh(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
       continue;
     if (!ok[a] || !ok[b]) continue;
     blitter_line_stub(ren, gfx, sx[a], sy[a], sx[b], sy[b]);
+  }
+}
+
+// Draw the 2-D top-down hull (radar silhouette) in screen space.
+// cx,cy = centre; scale maps raw hull coords → pixels.
+inline void draw_hull_2d(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
+                         int cx, int cy, float scale, int pen) {
+  if (mesh.hull.size() < 2) return;
+  gfx.pen = static_cast<uint16_t>(pen);
+  auto px = [&](int16_t x) { return cx + static_cast<int>(x * scale); };
+  auto py = [&](int16_t y) { return cy + static_cast<int>(y * scale); };
+  for (size_t i = 0; i < mesh.hull.size(); ++i) {
+    auto [x0, y0] = mesh.hull[i];
+    auto [x1, y1] = mesh.hull[(i + 1) % mesh.hull.size()];
+    blitter_line_stub(ren, gfx, px(x0), py(y0), px(x1), py(y1));
   }
 }
 
