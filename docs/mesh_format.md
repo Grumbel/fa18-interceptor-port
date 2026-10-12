@@ -106,6 +106,38 @@ asset-build parameter, or a state value for a path not active in the
 in-flight snapshot.
 
 
+
+### $35xxx/$36xxx streams: shared sublists via B000 pointers
+
+These pure-DL streams rarely embed vertices.  Instead they reference
+**shared edge sublists** with absolute CODE pointers:
+
+```
+… 00B0 0018 60xx B000 00C3 6430 …
+                      ^^^^ ^^^^ ^^^^
+                      marker  abs ptr → $00C36430
+```
+
+`$B000` is a high-word marker; the following long is an absolute address
+in the CODE dump.  Shared targets (examples):
+
+| Addr | Role |
+|------|------|
+| `$00C36430` | edge groups `806C`/`807C`/`8008` + raw indices |
+| `$00C36368` | `8054` edge chain |
+| `$00C36338` | `7FFF`-framed edge attribute blocks |
+| `$00C363E4` | similar edge groups |
+
+Indices in these sublists are **raw vertex numbers** (not ÷6), into the
+runtime-transformed pool (`$00C470C8`), not a static table next to the
+DL.  After `FFFF FFFF` many streams switch to 2-D outline records
+(`0030 0090 2402 …`) — silhouettes, not 3-D verts.
+
+Port implication: without the live vertex pool these streams cannot
+yet be turned into stand-alone meshes.  Cluster records remain the
+reliable source for static geometry.
+
+
 ### Instance-pool streams (`$00C43xxx`)
 
 Distant-LOD / simple objects use a different record shape than the
