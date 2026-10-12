@@ -852,3 +852,64 @@ scaling into the 57600-unit circle) turns into angle0/1/2.
 - [x] angle2 = yaw (R_z)
 - [ ] Live-trace which of `$4b0`/`$4b2`/other feeds which angle
 - [ ] Confirm stick polarity in-game
+
+## Attitude state → matrix orchestrator (partial)
+
+### Player / camera structure at `$00C44EBC`
+
+Indexed by `$00C44616` (0 in this dump).  World position lives at
+structure+`$14` (= `$00C44ED0`, matches known world X).
+
+| Struct off | Live address | In-flight | Role |
+|------------|--------------|-----------|------|
+| +`$66` | `$00C44F22` | `$6D78` | related |
+| +`$68` | `$00C44F24` | **`$08C0`** (2240) | **Euler-like angle** (~112° in 7200-circle) |
+| +`$6A` | `$00C44F26` | `$0058` | related |
+| +`$6C` | `$00C44F28` | `$295F` | related |
+
+### Path into orchestrator
+
+```
+lea     $00C44EBC, a0
+adda.w  $00C44616, a0
+move.w  $68(a0), d4          ; angle0 candidate → orchestrator D4
+; … similar for other angles …
+jsr     $00C2C4F4            ; wrapper → orchestrator $00C2C4B2
+```
+
+`$00C44662` is a working copy: `move.w $68(a1), $00C44662` at
+`$00C08AF6` / `$00C08DF6`.
+
+### `$4b0` / `$4b2` remain upstream
+
+Raw 8-bit axes at `$00C44818` / `$1A` are written by input paths
+(e.g. `$00C24260`, `$00C1071E`) and consumed by the control decoder
+(`$00C10754`).  One branch indexes a byte table at `$00C3BED8` into
+`$00C4459A`/`$9B`; physics at `$00C30Exx` then uses those as rate
+selectors.  **The integration from rate → structure+$68 is not yet
+fully traced** (register-relative stores, no absolute writes to
+`$00C44F24` found).
+
+### Working model for the port
+
+```
+stick $4b0/$4b2  (0–255)
+    → control decoder / rate tables
+    → attitude rates
+    → integrate into structure+$68/+…  (7200-circle units)
+    → orchestrator D4/D5/D6
+    → builder A/B → matrix $be6
+```
+
+Until the integrator is pinned, the C++ port continues to drive
+`mat_from_angles_q14(roll, pitch, yaw)` from keyboard/demo axes
+directly (already mapped: angle0=roll, angle1=pitch, angle2=yaw).
+
+### Status
+
+- [x] structure+$68 holds a 7200-circle attitude angle mid-flight
+- [x] orchestrator reads +$68 into D4
+- [x] `$00C44662` is a shadow copy of +$68
+- [x] `$4b0` writers identified (input + control paths)
+- [ ] Integrator that writes structure+$68 from rates
+- [ ] Which of +$68/+$6A/+$6C is roll vs pitch vs yaw
