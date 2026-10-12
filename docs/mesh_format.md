@@ -210,7 +210,7 @@ present.
 | `$00C39738` | 5 | **10** | aircraft cross ±500 |
 | `$00C39800` | 5 | **10** | aircraft cross ±437/525 |
 | `$00C398C6` | 4 | **8** | smaller craft |
-| `$00C39980` | 4 | **8** | variant (DL style differs) |
+| `$00C39980` | 4 | **8** | C0C0-style DL; dump-derived edges + pens |
 | `$00C39B66` | 5 | **10** | table-slot mesh B (±320) |
 | `$00C39E00` | 5 | **10** | Y≠0 body ring (banked?) |
 | `$00C39F66` | 5 | **11** | long nose ±2080 |

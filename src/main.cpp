@@ -237,6 +237,7 @@ int main(int argc, char* argv[]) {
       static fa18::Mesh craft  = fa18::mesh_aircraft_39738();
       static fa18::Mesh craft2 = fa18::mesh_aircraft_39800();
       static fa18::Mesh craft3 = fa18::mesh_aircraft_398C6();
+      static fa18::Mesh craft4 = fa18::mesh_aircraft_39980();
       static fa18::Mesh craftB = fa18::mesh_from_dump_B();
       static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
       static bool mesh_logged = false;
@@ -247,7 +248,8 @@ int main(int argc, char* argv[]) {
                     << " edges=" << m.edges.size()
                     << " dl=" << m.display_list.size() << "\n";
         };
-        logm(craft); logm(craft2); logm(craft3); logm(craftB); logm(craftE);
+        logm(craft); logm(craft2); logm(craft3); logm(craft4);
+        logm(craftB); logm(craftE);
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =
@@ -256,6 +258,7 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, craft,  orient, { 0.f,  0.f, 10.f}, 13);
       fa18::draw_mesh(ren, gfx, craft2, orient, { 5.f, -0.5f, 16.f},  9);
       fa18::draw_mesh(ren, gfx, craft3, orient, {-4.f,  0.f, 14.f}, 11);
+      fa18::draw_mesh(ren, gfx, craft4, orient, { 3.f,  0.5f, 20.f}, 10);
       fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
       fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
 

@@ -176,6 +176,7 @@
 76. [x] 39B66 (5 edges) + 3A4A8 (4-cycle) dump-derived edges
 77. [x] mesh_edges_from_dl: Axxx/80LL offset-table pattern (handles small offsets)
 78. [x] Link-graph DL: $80xx lo≥$30 = intra-DL offset; parser follows links
+79. [x] 39980 C0C0-style aircraft edges + pens; wired into Flight demo
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -259,6 +260,7 @@
 - [x] `$5ee` copies pen `$324`→`$326` then draws; pen set before the call
 - [x] mesh_edges_from_dl consumes/skips end-with-attrs trailing words
 - [x] Mesh.edge_pens parallel array; draw_mesh uses per-edge pen when present
+- [x] 39980 C0C0-style aircraft: dump-derived edges + edge_pens; demo slot
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -363,7 +365,8 @@
 - fa18-port-152.1-more-aircraft-dump-edges-dc0339a.bundle (superseded)
 - fa18-port-153.1-39B66-3A4A8-dump-edges-dc0339a.bundle (superseded)
 - fa18-port-154.1-offset-table-parser-axxx-dc0339a.bundle (superseded)
-- fa18-port-155.1-link-graph-dl-parser-dc0339a.bundle (current tip)
+- fa18-port-155.1-link-graph-dl-parser-dc0339a.bundle (superseded)
+- fa18-port-156.1-39980-c0c0-edges-pens-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -447,6 +447,43 @@ inline Mesh mesh_aircraft_398C6() {
 }
 
 // ---------------------------------------------------------------------------
+// Variant $00C39980 (N=4 → 8 verts; C0C0-style DL, no flat offset table)
+// ---------------------------------------------------------------------------
+inline Mesh mesh_aircraft_39980() {
+  Mesh m;
+  m.name = "aircraft_$00C39980";
+  m.verts = {
+    V( 150,   0, -150),  // 0
+    V(-234,   0, -234),  // 1
+    V(-150,   0,  150),  // 2
+    V(   0,   0,  234),  // 3
+    V( 150,   0,  150),  // 4
+    V( 234,   0,    0),  // 5
+    V( 150,  50, -150),  // 6
+    V(   0,1406,    0),  // 7 vertical
+  };
+  // Dump-derived edges from C00C/800C groups with valid indices < 8
+  // (some sub-lists reference indices ≥8 — skipped; likely another bank)
+  m.edges = {
+    {0, 1}, {1, 2}, {1, 3}, {1, 6},
+    {2, 3}, {2, 4}, {2, 6},
+    {3, 5}, {3, 6},
+    {6, 7},
+  };
+  m.edge_pens = {
+    2, 7, 2, 4,
+    4, 7, 6,
+    3, 3,
+    6,
+  };
+  m.display_list = {
+    0xC0C0, 0x0000, 0x0006, 0x000A, 0xC09C, 0x000D, 0x000A, 0x0008,
+    0x8088, 0x0000, 0x0001, 0xC00C, 0x0006, 0x0030, 0x0036, 0x8024,
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
 // Mesh B (table slot) $00C39B66 — same family, scale ±320
 // ---------------------------------------------------------------------------
 inline Mesh mesh_from_dump_B() {
