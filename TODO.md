@@ -85,13 +85,13 @@
 4. [x] Resolve jsr $59e → geometry/vertex helper at $00C25FAE
 5. [x] Path-B/C and accept path fully traced; success returns d0=1
 6. [x] Port $c6 motion step into C++ object loop (flight.hpp)
-7. [ ] Gate flags $18d/$17e and object+$26 bit meanings
+7. [x] Gate flags $18d/$17e: suppress object processing when nonzero
 8. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
 9. [ ] Resolve $5ee (still overlay-only)
 10. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 11. [ ] Action clear body (overlay past file end)
 12. [ ] $4202 full layout beyond clip bounds
-13. [ ] Disassemble live primary transform ($77d8)
+13. [ ] Disassemble live primary transform ($77d8) — entry + matrix abs confirmed
 14. [ ] Map remaining resident overlay hunks
 15. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
@@ -118,7 +118,8 @@
 - fa18-port-059.1-func-c6-helper-59e-paths-dc0339a.bundle (superseded)
 - fa18-port-060.1-func-c6-path-bc-decompile-dc0339a.bundle (superseded)
 - fa18-port-061.1-func-c6-motion-integrate-dc0339a.bundle (superseded)
-- fa18-port-062.1-port-c6-motion-step-cpp-dc0339a.bundle (current tip)
+- fa18-port-062.1-port-c6-motion-step-cpp-dc0339a.bundle (superseded)
+- fa18-port-063.1-gate-flags-18d-17e-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

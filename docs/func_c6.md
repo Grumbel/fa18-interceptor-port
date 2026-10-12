@@ -345,5 +345,32 @@ rts
 - [x] Path-B tail: damp velocity (×15/16), integrate into position X/Y/Z
 - [x] Accept path: same integrate using object+12 deltas; success returns d0=1
 - [x] **Core purpose identified: per-object motion/physics step**
-- [ ] Exact meaning of gate flags `$18d`/`$17e` and object+`$26` bits
+- [x] Gate flags `$18d`/`$17e`: suppress object processing when nonzero
+- [ ] Exact meaning of object+`$26` bits 4/5 beyond damping select
 - [x] Port `$c6` motion step into C++ (`object_motion_step` in flight.hpp)
+
+## Gate flags `$18d` / `$17e`
+
+Both are **byte flags that suppress object processing** when nonzero.
+
+| Flag | Static | Live | Role |
+|------|--------|------|------|
+| Gate A | `$18d` | `$00C444F5` | Secondary suppress; only *read* in primary + `$c6` (no on-disk writer found — possibly overlay-set or unused in flight) |
+| Gate B | `$17e` | `$00C444E6` | Global busy/block flag; set to 1 and cleared throughout the game (menus, transitions, loaders) |
+
+### Object-loop use (primary file `0x7630`, rt ~`$7330`)
+
+```asm
+move.l  a0, $c.L          ; current object
+tst.b   $18d.L
+bne.s   skip_object
+tst.b   $17e.L
+bne.s   skip_object
+move.w  40(a0), d0        ; state at +$28
+subq.w  #1, d0
+; … continue object processing …
+```
+
+`$c6` mirrors the same check at its prologue (`or.b` of both → early `rts` with d0=0).
+
+For the C++ port, `gate_a` / `gate_b` arguments to `object_motion_step` model these. In normal flight both stay 0.
