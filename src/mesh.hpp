@@ -660,6 +660,100 @@ inline Mesh mesh_from_instance_dump(const std::string& dump_path,
   return m;
 }
 
+
+// Load a LOD-table mesh (e.g. $00C3A47E / $00C3A576):
+//   count, pad, (count+1)×abs ptrs into vert array,
+//   hull pairs, FFFF FFFF, N, N×XYZ, optional DL with 800C edges.
+inline Mesh mesh_from_lod_dump(const std::string& dump_path,
+                               uint32_t live_addr, const char* name) {
+  Mesh empty;
+  empty.name = name;
+  if (live_addr < 0x00C00000)
+    return empty;
+  const uint32_t offset = live_addr - 0x00C00000;
+  std::ifstream in(dump_path, std::ios::binary);
+  if (!in)
+    return empty;
+  in.seekg(0, std::ios::end);
+  const auto file_size = static_cast<uint32_t>(in.tellg());
+  if (offset + 16 > file_size)
+    return empty;
+
+  auto read_be16 = [&](uint32_t off) -> uint16_t {
+    in.seekg(off, std::ios::beg);
+    uint8_t b[2];
+    in.read(reinterpret_cast<char*>(b), 2);
+    return static_cast<uint16_t>((b[0] << 8) | b[1]);
+  };
+
+  uint16_t count = read_be16(offset);
+  if (count == 0 || count > 16)
+    return empty;
+  // Skip pad (2 words), then count+1 long pointers
+  uint32_t o = offset + 2 + 4 + (count + 1) * 4;
+  Mesh m;
+  m.name = name;
+  m.tag0 = count;
+  // Hull pairs until FFFF FFFF
+  while (o + 4 <= file_size) {
+    uint16_t a = read_be16(o), b = read_be16(o + 2);
+    if (a == 0xFFFF && b == 0xFFFF) {
+      o += 4;
+      break;
+    }
+    m.hull.emplace_back(static_cast<int16_t>(a), static_cast<int16_t>(b));
+    o += 4;
+    if (m.hull.size() > 32) break;
+  }
+  if (o + 2 > file_size)
+    return empty;
+  uint16_t N = read_be16(o);
+  o += 2;
+  if (N == 0 || N > 64)
+    return empty;
+  for (uint16_t i = 0; i < N && o + 6 <= file_size; ++i) {
+    int16_t x = static_cast<int16_t>(read_be16(o));
+    int16_t y = static_cast<int16_t>(read_be16(o + 2));
+    int16_t z = static_cast<int16_t>(read_be16(o + 4));
+    m.verts.push_back(V(x, y, z));
+    o += 6;
+  }
+  // Scan remaining words for 800C edge groups (÷6 or raw indices)
+  for (uint32_t scan = o; scan + 4 <= file_size && scan < o + 128; scan += 2) {
+    uint16_t w = read_be16(scan);
+    if (w == 0x7FFF) break;
+    if (w == 0x800C || w == 0xC00C) {
+      std::vector<int> idxs;
+      uint32_t k = scan + 2;
+      while (k + 2 <= file_size) {
+        uint16_t v = read_be16(k);
+        if (v < 0x200 && (v % 6) == 0) {
+          int idx = v / 6;
+          if (idx < static_cast<int>(m.verts.size()))
+            idxs.push_back(idx);
+          k += 2;
+        } else if (v < m.verts.size()) {
+          idxs.push_back(static_cast<int>(v));
+          k += 2;
+        } else {
+          break;
+        }
+      }
+      for (size_t a = 0; a + 1 < idxs.size(); ++a)
+        m.edges.emplace_back(idxs[a], idxs[a + 1]);
+      scan = k - 2;
+    }
+  }
+  if (m.edges.empty() && m.verts.size() >= 2) {
+    for (size_t i = 0; i < m.verts.size(); ++i)
+      m.edges.emplace_back(static_cast<int>(i),
+                           static_cast<int>((i + 1) % m.verts.size()));
+  }
+  sanitize_mesh_edges(m);
+  normalize_mesh_scale(m);
+  return m;
+}
+
 // Load scene/drawable list records from the inflight CODE dump.
 // live_base is kSceneListA ($00C4D6E2) or kSceneListB ($00C4DD72).
 // Stops at flag==0xFFFF or after max_records.
