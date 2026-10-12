@@ -477,3 +477,60 @@ second library pointer (Intuition/Graphics or game-private).
 - [x] Clear 64-byte free matches wrapper allocation
 - [ ] Identify library at `$00C06AA0` and the three LVO functions
 - [ ] Layout of the 64-byte action object beyond +0/+4/+8/+12/+16
+
+## Library base `$00C06AA0` = **dos.library**
+
+```asm
+; early init $00C0CBB2
+lea     $00C06AC0, a1      ; "dos.library"
+moveq   #0, d0             ; any version
+jsr     -$228(a6)          ; OpenLibrary
+move.l  d0, $00C06AA0      ; DosBase
+```
+
+Name string at `$00C06AC0`: `"dos.library"`.  Nearby strings also
+name `graphics.library`, `intuition.library`, and `df0:pix/…` paths.
+
+`$00C06A9C` holds ExecBase (saved from abs `$4` at `$00C0CA24`).
+
+### Init helpers = dos.library LVOs
+
+| Helper | LVO | dos.library function |
+|--------|-----|----------------------|
+| `$00C5265C` | `-$54` (−84) | **Lock** |
+| `$00C52678` | `-$5A` (−90) | **UnLock** |
+| `$00C5268C` | `-$66` (−102) | **Examine** |
+
+Action create therefore performs a **Lock → Examine → UnLock** sequence
+on a filesystem object (mission/script/asset path derived from the
+caller argument).  The 272-byte workspace holds the FileInfoBlock and
+related scratch during Examine.
+
+## 64-byte action object layout (from live table)
+
+Sampled from `$00C06460` slots mid-flight:
+
+| Off | Size | Typical values | Role |
+|-----|------|----------------|------|
+| +0 | .l | `$000578A8`, `$0000B3E8`, … | code / handler pointer (or hunk offset) |
+| +4 | .l | `$00003392`, `$800015CC`, … | flags/size; **bit 31** gates sub-block free |
+| +8 | .w/.l | `$0166`, `$0202`, `$0188` | type / mode (create sets `$01660000`) |
+| +12 | .w/.l | `$003F`, `$0016`, `$0008` | parameter (create sets `$003F0000`) |
+| +16 | .l | `$FFFFFFFF` or `$00000001` | state / refcount (create sets 1; title slots −1) |
+| +20..+44 | | 0 | unused / reserved |
+| +48 | .l | `$00C4Fxxx` or 0 | secondary pointer (optional sub-object) |
+| +52 | .l | size-ish | secondary size when present |
+
+Clear logic matches: if `object+4` bit 31 is clear, FreeMem the
+secondary block (`object+0` as ptr in the sub-free path is actually the
+code field — the sub-free path uses a different interpretation when
+bit 31 is clear, reading size from +4 and pointer from a parallel
+object).  Main free always releases the 64-byte block itself.
+
+### Status
+
+- [x] `$00C06AA0` = DosBase (dos.library)
+- [x] Init helpers = Lock / UnLock / Examine
+- [x] 64-byte object field map from live samples
+- [ ] Exact meaning of +0 handler addresses (chip offsets vs CODE)
+- [ ] Which filesystem paths create locks for which slots
