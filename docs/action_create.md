@@ -534,3 +534,64 @@ object).  Main free always releases the 64-byte block itself.
 - [x] 64-byte object field map from live samples
 - [ ] Exact meaning of +0 handler addresses (chip offsets vs CODE)
 - [ ] Which filesystem paths create locks for which slots
+
+## Action invoke dispatcher (`$00C16684`)
+
+Does **not** call `object+0` as a function pointer.  Flow:
+
+```asm
+; d0 = slot index from 8(a6)
+asl.l   #2, d0
+lea     $00C06460, a0
+adda.l  d0, a0
+tst.l   (a0)
+beq     empty
+
+move.l  12(a6), -(sp)
+bsr     $00C16660              ; side-table clear helper
+; …
+move.l  (a0), a1               ; action object
+move.l  16(a6), d2
+asl.l   #1, d2
+move.l  d2, $0C(a1)            ; object+12 = arg<<1
+
+; copy object ptr into side table $00C07488[arg]
+move.l  12(a6), d1
+asl.l   #2, d1
+lea     $00C07488, a0
+move.l  object, (a0,d1)
+
+move.l  12(a6), -(sp)
+jsr     $00C4EBD8              ; central invoke
+```
+
+### Central invoke family
+
+| Addr | Behaviour |
+|------|-----------|
+| `$00C4EBD8` | `object = $00C07478[idx]`; write `object+$14` → `$DFF09C` (INTREQ) |
+| `$00C4EBF0` | load object from `$00C07478[idx]`; `jsr` through a computed vector involving object+8/+12 |
+| `$00C16660` | clear `$00C07488[idx]`, then tail-call `$00C4EBD8` |
+
+### Side tables
+
+| Base | Role |
+|------|------|
+| `$00C06460` | primary action object pointers (64-byte objects) |
+| `$00C07478` | invoke-index → object (used by `$00C4EBD8`) |
+| `$00C07488` | secondary index → object (written by dispatcher) |
+
+### Revised object+0 meaning
+
+`object+0` holds a large numeric field (`$000578A8`, `$0000B3E8`, …) —
+likely a **resource ID, chip offset, or packed size**, not a callable
+entry point.  Dispatch goes through the side tables + `$00C4EBD8`
+family instead.
+
+### Status
+
+- [x] Dispatcher flow decoded (no jsr through +0)
+- [x] Side tables `$00C07478` / `$00C07488`
+- [x] `$00C4EBD8` writes INTREQ from object+$14
+- [ ] Full `$00C4EBF0` vector call semantics
+- [ ] Meaning of object+0 numeric field

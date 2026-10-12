@@ -10,10 +10,14 @@
 namespace fa18 {
 
 struct ActionSlot {
-  std::function<void()> code;  // (slot+0) – callable
-  uint32_t field_8  = 0;       // set to $01660000 on create
-  uint32_t field_c  = 0;       // set to $003f0000 on create
-  uint32_t field_10 = 0;       // set to 1 on create
+  // +0: resource id / chip offset (NOT a function pointer).
+  // Dispatch is via side tables $00C07478/$00C07488 + $00C4EBD8.
+  uint32_t field_0  = 0;
+  uint32_t field_4  = 0;       // flags; bit 31 gates sub-block free
+  uint32_t field_8  = 0;       // type/mode ($01660000 on create)
+  uint32_t field_c  = 0;       // param ($003f0000 on create; also arg<<1)
+  uint32_t field_10 = 0;       // state/refcount (1 on create)
+  uint32_t field_14 = 0;       // written to INTREQ by $00C4EBD8
   uint32_t field_20 = 0;
   bool     active   = false;
 };
@@ -35,7 +39,8 @@ public:
     s.field_c  = 0x003f0000;
     s.field_10 = 1;
     s.field_20 = 0;
-    s.code     = nullptr;
+    s.field_0  = 0;
+    s.field_4  = 0;
     std::cout << "[action] create slot " << index << "\n";
   }
 
@@ -50,13 +55,16 @@ public:
     slots_[kSlotProceed].field_10 = 0xffffffff;
   }
 
-  // Dispatcher (file 0x9f7c): invoke if slot non-empty
-  void invoke(int index) {
+  // Dispatcher $00C16684: side tables + $00C4EBD8 (not jsr through +0).
+  void invoke(int index, uint32_t arg = 0) {
     if (index < 0 || index >= kActionTableSize) return;
     auto& s = slots_[index];
     if (!s.active) return;
-    std::cout << "[action] invoke slot " << index << "\n";
-    if (s.code) s.code();
+    s.field_c = arg << 1;  // object+12 = arg<<1
+    std::cout << "[action] invoke slot " << index
+              << " arg=" << arg << " field0=$" << std::hex << s.field_0
+              << std::dec << "\n";
+    // Real work is $00C4EBD8 family (INTREQ / vector call).
   }
 
   // Mirrors clear body at live $00C4F3FE (docs/action_create.md):
