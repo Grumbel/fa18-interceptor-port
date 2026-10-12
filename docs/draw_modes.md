@@ -611,3 +611,103 @@ body for certain modes — that path needs an active-draw dump to confirm.
 - [x] Edge list `$00C4ACC8`, ×8 coordinate scale
 - [ ] Full DDA slope/interpolation math (helper `$00C23318`)
 - [ ] Remaining modes outside DDA region (`$0c`–`$0e`, `$0f`–`$26`, …)
+
+## DDA slope helper `$00C23318` / span twin `$00C2340A`
+
+Two near-identical routines implement **fixed-point edge interpolation**
+(Bresenham-style with `muls`/`divs` and remainder rounding).
+
+### `$00C23318` — primary edge step
+
+```asm
+movem.w d0-d2, -(sp)          ; save
+movem.w (a3), d0-d2           ; load current edge state from a3 scratch
+tst.b   1(a4)
+bne.s   not_first
+; first-edge path: seed from a2+offsets, mark a4+1
+bra     tail
+
+not_first:
+; sign-normalise so primary delta is positive
+neg.w   d1 / d4               ; conditional on comparisons
+; …
+sub.w   d4, d1                ; Δ primary
+neg.w   d2
+add.w   d5, d2
+sub.w   d1, d2                ; Δ secondary (denominator)
+beq     degenerate
+
+add.w   d4, d5
+muls.w  d5, d1                ; numerator
+move.w  d2, d6
+bge.s   *+4
+neg.w   d6
+asr.w   #1, d6                ; |denom|/2  (rounding threshold)
+divs.w  d2, d1                ; quotient in low, remainder in high
+swap    d1
+; remainder rounding: if |rem| > |denom|/2 → adjust quotient ±1
+swap    d1
+add.w   d4, d1                ; apply step
+
+; same pattern for the orthogonal component (d0 / d3):
+sub.w   d3, d0
+muls.w  d5, d0
+divs.w  d2, d0
+; … identical remainder rounding …
+add.w   d3, d0
+
+movem.w d0-d2, (a3)           ; store updated edge state
+bsr     $00C2340A             ; twin span step
+addq.b  #1, 5(a4)             ; edge counter
+```
+
+### Rounding rule
+
+After `divs`, the remainder (high word post-`swap`) is compared against
+half the absolute denominator (`asr #1`).  If `|rem| > |denom|/2` the
+quotient is nudged by ±1 according to the remainder’s sign.  This is
+symmetric nearest-integer rounding for the slope step.
+
+### `$00C2340A` — orthogonal twin
+
+Same structure with register roles swapped (X-major ↔ Y-major).  The
+pair covers all octants: the primary helper picks the dominant axis,
+the twin advances the other.
+
+### Registers on entry (from parent DDA body)
+
+| Reg | Role after ×8 scale |
+|-----|---------------------|
+| d0, d1, d2 | current vertex components |
+| d3, d4, d5 | previous / edge-delta components |
+| a2 | scratch `$00C4D652` |
+| a3 | edge-state `$00C4D648` |
+| a4 | flags/counters `$00C4D5AC` |
+
+### Port mapping
+
+```cpp
+// Symmetric-rounded fixed-point edge step (one axis)
+int16_t dda_step(int16_t cur, int16_t delta_num, int16_t delta_den) {
+    if (delta_den == 0) return cur;
+    int32_t prod = int32_t(delta_num) * /* run length or paired delta */;
+    int16_t q = prod / delta_den;
+    int16_t r = prod % delta_den;
+    int16_t half = abs(delta_den) / 2;
+    if (abs(r) > half)
+        q += (r > 0) ? 1 : -1;
+    return cur + q;
+}
+```
+
+Exact register-to-axis assignment (which of d0/d1 is X vs Y) follows
+the parent’s vertex load order from `$00C4ACC8` and is the next
+refinement target.
+
+### Status
+
+- [x] `$00C23318` slope math decoded (muls/divs + half-denom rounding)
+- [x] `$00C2340A` confirmed orthogonal twin
+- [x] Degenerate-delta and first-edge seed paths identified
+- [ ] Exact X/Y register assignment from edge-list format
+- [ ] C++ port of full edge-list walker

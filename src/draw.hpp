@@ -2,6 +2,7 @@
 #include <SDL.h>
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include "display.hpp"
 #include "gfx_state.hpp"
 
@@ -62,6 +63,27 @@ inline bool span_setup(int& x0, int& x1, int limit, int& dx) {
     return false;
   // Bitplane scale ×40 and BLTCON bit-mask setup omitted (SDL backend)
   return true;
+}
+
+// DDA edge step with symmetric remainder rounding (live $00C23318).
+// After muls/divs the remainder is compared to |denom|/2; if larger the
+// quotient is nudged ±1.  See docs/draw_modes.md.
+inline int16_t dda_rounded_div(int32_t numer, int16_t denom) {
+  if (denom == 0) return 0;
+  int16_t q = static_cast<int16_t>(numer / denom);
+  int16_t r = static_cast<int16_t>(numer % denom);
+  int16_t half = static_cast<int16_t>(std::abs(static_cast<int>(denom)) / 2);
+  if (std::abs(static_cast<int>(r)) > half)
+    q = static_cast<int16_t>(q + (r > 0 ? 1 : -1));
+  return q;
+}
+
+// One axis of the $00C23318 / $00C2340A pair: advance cur by rounded
+// (delta_num * scale) / delta_den.
+inline int16_t dda_axis_step(int16_t cur, int16_t delta_num,
+                             int16_t delta_den, int16_t scale) {
+  return static_cast<int16_t>(
+      cur + dda_rounded_div(int32_t(delta_num) * scale, delta_den));
 }
 
 // Mode $1b line path (hunk 35 entry + BLTCON0 $09f0 setup).

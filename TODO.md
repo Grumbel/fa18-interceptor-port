@@ -102,6 +102,7 @@
 20. [x] Wire walker_draw demo into main loop
 21. [x] DDA modes $01/$03–$0a/$1f = pure setters; shared body $00C231F8
 21b. [x] Modes $0f–$12/$26 also pure setters; real bodies need live $12 dump
+21c. [x] DDA slope math $00C23318/$00C2340A (muls/divs + half-denom rounding)
 22. [x] Action create body at $00C4F010 decoded; clear partial
 23. [x] Full action clear body at $00C4F3FE; table base $00C06460
 23b. [x] Create 272=temp workspace, permanent object=64 (matches clear)
@@ -160,7 +161,8 @@
 - fa18-port-083.1-pointer-table-16e1e-writer-dc0339a.bundle (superseded)
 - fa18-port-084.1-dda-shared-body-dc0339a.bundle (superseded)
 - fa18-port-085.1-create-size-split-dc0339a.bundle (superseded)
-- fa18-port-086.1-dosbase-action-layout-dc0339a.bundle (current tip)
+- fa18-port-086.1-dosbase-action-layout-dc0339a.bundle (superseded)
+- fa18-port-087.1-dda-slope-math-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
