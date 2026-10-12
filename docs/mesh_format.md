@@ -337,7 +337,11 @@ distance-selected detail.  Examples: `$00C3A47E`, `$00C3A576`.
 
 **`PP` / `$70`**: meaning still open.  Tags do not correlate with PP.
 Immediates `$70`/`$BA`/`$20` in code are range bounds / radar scroll,
-not DL parameter loads.
+not DL parameter loads.  Same values on the ADF (static, not patched).
+
+Walker threshold `(w & $3FFF) / 8` vs d1 (`$00C44878` ≈ 361): all
+observed PP values pass (`$BA/8 = 23 ≪ 361`).  For `$4xxx` this walker
+only tests **bit 14** (skip-next); the low byte is not consumed here.
 
 ### Geometry walker command classification (`$00C1D9AC` / `$00C08232`)
 
@@ -377,7 +381,9 @@ with command+param encoding, but the low-byte consumer is not this path.
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
-- [~] Attribute word: hi/4 = colour candidate; **unconfirmed** as pen source
+- [~] Attribute word: hi/4 = colour candidate; **unconfirmed** as pen source.
+      `$100B` appears 12× in 3D cluster, **0×** in instance pool (instances use
+      simpler edge encoding without these attrs).
 - [x] Pen set from **separate draw-command stream** (`move.w (a2)+, $00C4468C`);
       `$5ee` copies pen → `$326` then draws.  Mesh edge attrs not in this path.
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`

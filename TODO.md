@@ -169,6 +169,7 @@
 69. [x] Pen from separate a2 stream (not mesh attrs); $5ee copies pen then draws
 70. [x] Object→drawable table $00C21000; 19 instances; 3977A/39E42/etc mapped
 71. [x] LOD tables ($00C3A47E/$00C3A576): count+ptrs+hull+mesh; $00C1D8A0 trampoline
+72. [x] PP on ADF (static); walker uses only bit14 of $4xxx; $100B attrs cluster-only
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -242,7 +243,8 @@
 - [x] Companion transform: `asl.l d7` scale, add d2/d4 translate, `andi #$3FFF`
 - [~] Attr word: hi/4 = colour candidate (0..7), lo = style; `$100B` most common
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-      (walker treats `$4xxx` as skip-next; low-byte consumer not located)
+      (ADF-static; walker tests only bit14 of `$4xxx`; low-byte consumer not located)
+- [x] `$100B` attrs are 3D-cluster-only (12×); instance pool uses simpler edges (0×)
 - [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
 - [~] Attr hi/4 → colour: wired into Mesh.edge_pens; **unconfirmed** — pen comes from
       a separate a2 draw-command stream (`move.w (a2)+, pen`), not mesh edge attrs
@@ -346,7 +348,8 @@
 - fa18-port-145.1-walker-cmd-classification-dc0339a.bundle (superseded)
 - fa18-port-146.1-pen-from-draw-stream-dc0339a.bundle (superseded)
 - fa18-port-147.1-object-drawable-table-dc0339a.bundle (superseded)
-- fa18-port-148.1-lod-tables-trampoline-dc0339a.bundle (current tip)
+- fa18-port-148.1-lod-tables-trampoline-dc0339a.bundle (superseded)
+- fa18-port-149.1-pp-static-attrs-cluster-only-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
