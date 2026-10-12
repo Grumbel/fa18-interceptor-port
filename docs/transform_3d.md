@@ -1342,5 +1342,45 @@ curves → raw rates +$50/+$52/+$54
 
 - [x] Servo-like nature of `$00C2C418` region documented
 - [x] +`$66` adjusted by computed correction (not raw rate2)
-- [ ] True rate→angle integration site (if separate)
+- [ ] True continuous rate→angle integration site (if separate from servo)
 - [ ] Source of target angles d5/d6 entering the servo
+- [x] Discrete yaw step path at `$00C2BF60` (see below)
+
+## Discrete yaw angle step `$00C2BF60`
+
+Separate from the continuous servo.  Gated by mode byte +`$62` and a
+flag at `$00C444E6`.
+
+```asm
+; $00C2BF60
+move.b  $62(a1), d0
+andi.b  #$F0, d0
+cmpi.b  #$30, d0
+bne     skip
+tst.w   $4C(a1)
+ble     skip
+tst.b   $00C444E6
+bne     skip
+movem.w $3E(a1), d2-d4     ; scratch loads
+move.l  #2000, d5          ; step size = 2000 (7200-circle units)
+; …
+move.w  $6A(a1), d6        ; current yaw
+cmpi.w  #$3840, d6         ; clamp window
+; add or sub d5 depending on direction flag
+move.w  d6, $6A(a1)        ; store updated yaw
+move.w  $66(a1), d0        ; load roll/pitch for follow-on call
+move.w  $68(a1), d1
+jsr     $00C10F52          ; post-update helper
+```
+
+This is a **fixed-step** yaw adjuster (≈100° in 7200-circle units per
+firing), not frame-by-frame rate integration.  Continuous stick response
+still flows through the servo path; the missing link remains how filtered
+rates become the servo’s target angles (d5/d6).
+
+### C++ port note
+
+`PlayerAttitude::integrate_attitude` in `flight.hpp` continues to use
+the simple `angle += rate / scale` model, which is a reasonable
+approximation of the combined filter+servo behaviour until the exact
+target-angle source is recovered from a live trace.

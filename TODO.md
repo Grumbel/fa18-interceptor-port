@@ -139,6 +139,7 @@
 39. [x] LOFCSR cprlist $00C01338 → start=$A400; InitVPort/MakeVPort/LoadView chain
 40. [x] Alt register-script $540E8 = 32-colour variant; C++ palette + audio queue API
 41. [x] Wire Amiga palette into SDL Flight clear/lines (draw_line_pal / clear_pal)
+42. [x] Discrete yaw step at $00C2BF60 (fixed ±2000); continuous rate→angle still open
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -155,7 +156,7 @@
 
 
 ## Needs live dump / dynamic evidence
-- [ ] rate → angle true integration site (static search found none)
+- [ ] continuous rate → angle path (servo targets d5/d6; discrete step found at $00C2BF60)
 - [ ] d5/d6 target angle source into servo
 - [ ] JOY accumulators → desired-attitude / matrix weights
 - [ ] Chip-RAM sample PCM capture during audio playback
@@ -237,7 +238,8 @@
 - fa18-port-115.1-live-copper-bplcon0-dc0339a.bundle (superseded)
 - fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (superseded)
 - fa18-port-117.1-palette-cpp-audio-queue-dc0339a.bundle (superseded)
-- fa18-port-118.1-sdl-palette-flight-dc0339a.bundle (current tip)
+- fa18-port-118.1-sdl-palette-flight-dc0339a.bundle (superseded)
+- fa18-port-119.1-discrete-yaw-step-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
