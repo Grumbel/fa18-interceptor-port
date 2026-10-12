@@ -21,7 +21,9 @@ target_link_libraries(fa18 PRIVATE ${SDL2_LIBRARIES})
 
 add_custom_command(TARGET fa18 POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:fa18>/assets)
+    ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:fa18>/assets
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/dumps $<TARGET_FILE_DIR:fa18>/dumps)
 
 # Install rules for Nix / packaging
 include(GNUInstallDirs)

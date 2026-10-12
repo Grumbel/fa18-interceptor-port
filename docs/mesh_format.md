@@ -537,9 +537,13 @@ draw path).  The actual PP consumer remains open.
 
 `src/mesh.hpp`:
 
-- `Mesh` holds verts, edges, **hull**, tags, raw display_list
+- `Mesh` holds verts, edges, **hull**, tags, raw display_list, edge_pens
 - `mesh_parse()` — full cluster record (7FFF / tags / hull / verts / DL)
 - `mesh_edges_from_dl()` — offset-table (`Axxx 80LL Axxx`) + link-graph
   (`$80xx` lo≥$30) + inline `$800C` edge decoder; attr_hi/4 pens
-- `mesh_aircraft_39738/39800/…` — include hull pairs + tags from dump
+- `mesh_from_words()` — parse + auto edges
+- `mesh_from_dump_file()` — load record from inflight CODE dump by live addr
+- `mesh_aircraft_39738/39800/…` — hand-authored with dump-derived edges
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
+
+Dumps are copied next to the binary at build time (`dumps/inflight/…`).

@@ -241,16 +241,21 @@ int main(int argc, char* argv[]) {
       static fa18::Mesh craftB = fa18::mesh_from_dump_B();
       static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
       static fa18::Mesh structA = fa18::mesh_structure_3A4A8();
+      // Auto-parsed from in-flight CODE dump (7FFF-header at $00C39710)
+      static fa18::Mesh craftDump = fa18::mesh_from_dump_file(
+          "dumps/inflight/fa18_inflight_code.bin", 0x00C39710, 256,
+          "dump_auto_$00C39710");
       static bool mesh_logged = false;
       if (!mesh_logged) {
         auto logm = [](const fa18::Mesh& m) {
           std::cout << "[mesh] " << m.name
                     << " verts=" << m.verts.size()
                     << " edges=" << m.edges.size()
+                    << " hull=" << m.hull.size()
                     << " dl=" << m.display_list.size() << "\n";
         };
         logm(craft); logm(craft2); logm(craft3); logm(craft4);
-        logm(craftB); logm(craftE); logm(structA);
+        logm(craftB); logm(craftE); logm(structA); logm(craftDump);
         mesh_logged = true;
       }
       fa18::Mat3Fixed orient =
@@ -263,10 +268,14 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
       fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
       fa18::draw_mesh(ren, gfx, structA, orient, { 6.f,  0.f, 22.f},  8);
+      if (!craftDump.edges.empty())
+        fa18::draw_mesh(ren, gfx, craftDump, orient, {-6.f, 0.5f, 15.f}, 14);
 
       // 2-D hull radar silhouette (top-left, from mesh.hull)
       fa18::draw_hull_2d(ren, gfx, craft, 40, 40, 0.04f, 13);
       fa18::draw_hull_2d(ren, gfx, craft2, 90, 40, 0.04f, 9);
+      if (!craftDump.hull.empty())
+        fa18::draw_hull_2d(ren, gfx, craftDump, 140, 40, 0.04f, 14);
 
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
