@@ -150,12 +150,17 @@ Distant-LOD / simple objects use a different record shape than the
 aircraft cluster:
 
 ```
-+0   .w  header (e.g. $0800, $0500, $04D0)
-+2   .l  $FFFF FFFF separator
-+6   .l  pointer to body
-+A   .w  $7FFF
-+C   …   pad / opcode ($4064)
-body: .w N, then N × (x,y,z) int16 triples
+Variant A (FFFF-separated):
+  +0   .w  header (e.g. $0800, $0500)
+  +2   .l  $FFFF FFFF separator
+  +6   .l  pointer to body
+  body: .w N, then N × (x,y,z) int16 triples
+
+Variant B (dual-pointer, e.g. $04D0 / $0C00):
+  +0   .w  header
+  +2   .l  ptr1 (LOD / secondary record)
+  +6   .l  ptr2 (body → N + XYZ)
+  +A   …   inline edge cmds (800C / raw indices)
 ```
 
 Example: `$00C4335E` has N=5 coarse verts (multiples of 64–256).  Edge

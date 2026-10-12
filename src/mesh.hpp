@@ -557,18 +557,44 @@ inline Mesh mesh_from_instance_dump(const std::string& dump_path,
            (uint32_t(b[2]) << 8) | uint32_t(b[3]);
   };
 
-  // Find FFFF FFFF within first 8 words, then body ptr
+  // Header variants:
+  //   A) [hdr] FFFF FFFF body_ptr …
+  //   B) $04D0/$0C00 dual-ptr: [hdr] ptr1 ptr2 …  (ptr2 → N+verts)
+  //   C) bare body at live_addr (N + verts)
   uint32_t body_live = 0;
-  for (uint32_t i = 0; i < 16; i += 2) {
-    if (offset + i + 8 > file_size) break;
-    uint16_t w0 = read_be16(offset + i);
-    uint16_t w1 = read_be16(offset + i + 2);
-    if (w0 == 0xFFFF && w1 == 0xFFFF) {
-      body_live = read_be32(offset + i + 4);
-      break;
+  const uint16_t hdr0 = read_be16(offset);
+  // Variant B: dual absolute pointers after a small header word
+  if (hdr0 == 0x04D0 || hdr0 == 0x0C00 || hdr0 == 0x09D0 || hdr0 == 0x0A00) {
+    if (offset + 10 <= file_size) {
+      uint32_t p1 = read_be32(offset + 2);
+      uint32_t p2 = read_be32(offset + 6);
+      // Prefer p2 if it looks like a body (small N), else p1
+      auto looks_like_body = [&](uint32_t p) -> bool {
+        if (p < 0x00C00000) return false;
+        uint32_t o = p - 0x00C00000;
+        if (o + 2 > file_size) return false;
+        uint16_t n = read_be16(o);
+        return n >= 1 && n <= 64;
+      };
+      if (looks_like_body(p2))
+        body_live = p2;
+      else if (looks_like_body(p1))
+        body_live = p1;
     }
   }
-  // If no separator, treat live_addr itself as body (N + verts)
+  // Variant A: FFFF FFFF then body ptr
+  if (!body_live) {
+    for (uint32_t i = 0; i < 16; i += 2) {
+      if (offset + i + 8 > file_size) break;
+      uint16_t w0 = read_be16(offset + i);
+      uint16_t w1 = read_be16(offset + i + 2);
+      if (w0 == 0xFFFF && w1 == 0xFFFF) {
+        body_live = read_be32(offset + i + 4);
+        break;
+      }
+    }
+  }
+  // Variant C: bare body
   if (!body_live)
     body_live = live_addr;
   if (body_live < 0x00C00000)
