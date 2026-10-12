@@ -297,7 +297,12 @@ Runtime instance pool — **fixed stride 106 bytes (`$6A`)**:
 ```
 
 Self-contained drawable: internal ptrs always land at fixed offsets.
-Edge section matches static DL encoding; +78 holds projected coords.
+Edge section matches static DL encoding; +78 holds coordinate pairs
+(N + fixed-point templates, not screen pixels).
+
+**Static, not runtime-built:** pool is identical in preflight and
+inflight dumps — pre-built compact mesh templates (LOD / 2-D stand-ins),
+not per-frame expansions of the 3-D cluster meshes.
 
 Table at `$00C21400` maps slots → static DL starts or these instances,
 interleaved with handler `$00C08232` (geometry walker: `link a6,#-152`,
@@ -311,8 +316,9 @@ Tags (`0100 0200` / `0100 0300`) do not correlate with PP.
 
 - [~] Display-list edge encoding + offset base + `80LL` end-offset known;
       `PP`/`$70` still open
-- [x] `Axxx` → runtime instance pool (stride `$6A`, tag `$04D0`, ptrs at +46/+78)
+- [x] `Axxx` → instance pool (stride `$6A`, tag `$04D0`, ptrs at +46/+78)
 - [x] Handler `$00C08232` = geometry walker (same `link a6,#-152` as `$00C1D96C`)
+- [x] Instance pool is **static** (preflight ≡ inflight); not runtime-expanded
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
