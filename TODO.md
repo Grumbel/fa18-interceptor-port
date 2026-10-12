@@ -158,6 +158,7 @@
 58. [x] Offset-table base = DL start (byte offsets); mesh_edges_from_dl() fixed
 59. [x] Top-level DL: 4070/40PP/C016 pattern; 80LL = end-of-DL offset; Axxx reloc pointers
 60. [x] Companion runtime-written ($00C1CD88); edge cmds 800C begin / 8000 end / 8018+attrs
+61. [x] $5400 pointers = hull starts; $00C1CD38 transforms hull → companion
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -219,10 +220,10 @@
 - [~] `Axxx`: DL+Axxx → fixed `$00C439BE` (relocated ptr / shared table)
 - [x] Companion runtime-written at `$00C1CD88` (projected hull / attrs from a0)
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
+- [x] `$5400` pointers = **hull starts**; `$00C1CD38` is the hull→companion transform
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-- [ ] Attribute word field breakdown (`$1007`, `$0C07`, …)
-- [ ] Companion coordinate space
-- [ ] Runtime consumer of mesh 2-D hull pairs
+- [ ] Attribute word field breakdown (hi often ×4; `$100B` most common)
+- [ ] Companion coordinate space (asr/mask at `$00C1CD60`–`$76`)
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -309,7 +310,8 @@
 - fa18-port-134.1-dl-sublist-refine-radar-correct-dc0339a.bundle (superseded)
 - fa18-port-135.1-offset-table-dl-base-dc0339a.bundle (superseded)
 - fa18-port-136.1-toplevel-dl-pattern-80ll-dc0339a.bundle (superseded)
-- fa18-port-137.1-companion-runtime-edge-attrs-dc0339a.bundle (current tip)
+- fa18-port-137.1-companion-runtime-edge-attrs-dc0339a.bundle (superseded)
+- fa18-port-138.1-slot-ptrs-are-hull-starts-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

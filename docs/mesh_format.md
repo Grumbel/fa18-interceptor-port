@@ -4,10 +4,18 @@
 
 | Abs (load model) | Live | Role |
 |------------------|------|------|
-| `$5400` | `$00C4C4C8` | longword pointer table to mesh headers |
+| `$5400` | `$00C4C4C8` | longword pointer table to **2-D hull starts** |
 | | `$00C4C4F4` | companion records (stride 256) |
 
 In-flight slots point into the **model cluster** `$00C39700`–`$00C3A600`.
+Pointers land on the **hull pairs**, not the `FFFF`/`N` vertex header:
+
+```
+slot → (x,y).w pairs…  FFFF FFFF  N  (x,y,z).w…  display list…
+```
+
+`$00C1CD38` reads the mesh pointer as hull start, transforms coordinates,
+and writes projected pairs into the companion record (`$00C1CD88`).
 
 ### Slot selection (LOD / proximity, not object-type)
 
@@ -63,11 +71,11 @@ still open.
 
 ### Observed live slots
 
-| Slot | Mesh target | Band |
-|------|-------------|------|
-| 0–2 | `$00C3A58C` (structure A) | near |
-| 3–8 | `$00C39B52`/`$00C39B66` (aircraft B ±320) | mid–far |
-| 9+ | `$00000000` | empty |
+| Slot | Hull start | FFFF/verts | Band |
+|------|------------|------------|------|
+| 0–2 | `$00C3A58C` (structure, 5 pairs, N=4) | `$00C3A5A0` | near |
+| 3–8 | `$00C39B52` (aircraft, 5 pairs, N=5) | `$00C39B66` | mid–far |
+| 9+ | `$00000000` | — | empty |
 
 Proximity threshold: **320** after `asr.l #8` (`$00C446DE` / `$00C446E0`).
 
@@ -270,14 +278,14 @@ Low-12 as pure DL-relative offsets land in neighbouring records.
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
 - [x] Companion records runtime-written at `$00C1CD88`; match-bytes + 2-D pairs
-- [x] 2D hull captured in Mesh; runtime consumer of hull pairs still open
+- [x] `$5400` pointers = **hull starts**; `$00C1CD38` transforms hull → companion
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
-- [ ] Attribute word field breakdown (`$1007`, `$0C07`, …)
+- [ ] Attribute word field breakdown (hi byte often multiple of 4; `$100B` most common)
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-- [ ] Companion coordinate space / how hull projects into companion pairs
+- [ ] Companion coordinate space (transform details in `$00C1CD60`–`$00C1CD76`)
 
 ## Port
 
