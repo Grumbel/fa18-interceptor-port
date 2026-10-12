@@ -70,32 +70,38 @@
 - [x] dump_offset = 0xA08 + runtime_r; formulas + tool tools/map_ram_dumps.py
 - [x] Confirm dump taken pre-flight (vectors $12/$5ee/$c6 still zero)
 - [x] Document mapping in docs/ram_dump_map.md
+- [x] In-flight dumps (airborne + rockets); all dumps tracked under dumps/{preflight,inflight}/
+- [x] Full symbol remap: static $xxxx → live $00Cxxxxx (docs/live_symbols.md)
+- [x] Confirmed game state lives in Slow RAM $00C00000, not Chip low mem
+- [x] Live $c6 → $00C03D46; $12 → RTS stub; matrix/world pos live in-flight
 
 
 ## Next Steps
 1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
-2. [ ] Resolve $12/$5ee targets – need a dump with active objects (current dump has them zero)
-3. [ ] Live $c6 target (same – requires active-object dump)
-4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+2. [ ] Disassemble live $c6 target ($00C03D46) and $be target ($00C01550)
+3. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
+4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
 5. [ ] Action clear body (overlay past file end)
 6. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
-7. [ ] Disassemble live primary CODE (transform / matrix builders) from fa18_code.bin using the new map
-8. [ ] Map remaining resident overlay hunks once a fuller snapshot is available
+7. [ ] Disassemble live primary CODE (transform / matrix builders) from inflight dump
+8. [ ] Map remaining resident overlay hunks
 9. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
-- Object pool: base $642, stride $40 (64), max 20, count $b8f
-- Matrix writer in runtime CODE; two builders share table + asr#14
+- Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
+- Matrix live at $00C44F4E (Q2.14); world X/Y/Z at $00C44ED0/$ED4/$ED8
+- Current object ptr $00C16D6C → $00C44E2A
 - Angle circle = 7200; table 900 words / 1800 bytes for 0–90°
 - Object+0x22/0x24 hold per-object sin/cos
 - Perspective: (x*160)/z+160, (y*90)/z+90
-- Runtime vectors $12/$5ee still zero while no objects active
-- **This dump:** primary CODE at $00C06A70; secondary abs base $00C0CA08; many overlays not resident
+- All static abs <$2000 are relocatable into $00Cxxxxx Slow RAM
+- $12 holds RTS stub when no draw mode active; real bodies are overlay/transient
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
 - fa18-port-053.1-matrix-writer-dynamic-trace-dc0339a.bundle (superseded)
-- fa18-port-055.1-ram-dump-map-dc0339a.bundle (current tip)
+- fa18-port-055.1-ram-dump-map-dc0339a.bundle (superseded)
+- fa18-port-056.1-live-symbols-inflight-dumps-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

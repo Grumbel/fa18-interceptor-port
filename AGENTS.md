@@ -27,6 +27,14 @@ Reverse engineer the Amiga game F/A-18 Interceptor (1988, Electronic Arts / Inte
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is a clean-room / RE educational port.
 
+## Emulator
+- **FS-UAE** is the primary emulator for live dumps and tracing.
+- Enable console debugger: `console_debugger = 1` in the .fs-uae config
+  (launch from a terminal). Enter with **F12+D**.
+- Key commands: `dm` (memory map), `m addr [lines]`, `S file addr length`.
+- Game CODE/DATA live in **Slow RAM at $00C00000** (not Chip low mem).
+  See docs/live_symbols.md for the relocated address map.
+
 ## Continuity
 See TODO.md for current status. Deliver as git bundles only.
 

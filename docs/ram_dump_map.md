@@ -1,3 +1,8 @@
+> **Superseded in part by [live_symbols.md](live_symbols.md).**
+> The pre-flight analysis below is kept for history.  All game state
+> lives in Slow RAM ($00C00000+); Chip low-mem dumps are only useful
+> for Exec/exception vectors and bitplane data.
+
 # RAM Dump Map (session dumps)
 
 Four memory snapshots accompany this work line:
