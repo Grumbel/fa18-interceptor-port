@@ -65,21 +65,23 @@
 - [x] Full hunk inventory: 68 CODE; confirmed no static $12/$5ee stores in any hunk
 - [x] Port: apply_view_masked ($3fffff), ObjectList, state=2 after draw_object_fp
 - [x] Port: $4b0-style axes + ObjectList flight demo (arrows → Euler Q14)
+- [x] Map session RAM dumps (fa18_{low,code,data,stack}.bin) to ADF binary
+- [x] Primary CODE relocation base for this dump: live = $00C06A70 + runtime_r
+- [x] dump_offset = 0xA08 + runtime_r; formulas + tool tools/map_ram_dumps.py
+- [x] Confirm dump taken pre-flight (vectors $12/$5ee/$c6 still zero)
+- [x] Document mapping in docs/ram_dump_map.md
 
 
 ## Next Steps
-1. [x] Builder A + B are sequential (orchestrator 00C2C4B2); A1 advances +$92 between them
-2. [x] Exact element formulas for builder A and B (9-element 3×3 each)
-3. [x] Helper 00C2D14E = dual sincos; full Euler angle → D0..D5 map
-4. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
-5. [x] Transform reads global $be6 matrix (live 00C44F4E); second matrix role still open
-5. [ ] Resolve $12/$5ee targets (overlay-only; no static stores in primary)
-6. [x] Post-transform 0x784c → $c6; geometry walker/perspective/$5ee path documented (live $c6 still open)
-7. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-8. [x] Object +$22/+$24 sin/cos, +$26 type; dual angle scales documented
-9. [ ] Action clear body (overlay past file end)
-10. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
-11. [x] Wire C++ mat_from_angles_q14 + builder_A/B (Q2.14, 7200-circle)
+1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
+2. [ ] Resolve $12/$5ee targets – need a dump with active objects (current dump has them zero)
+3. [ ] Live $c6 target (same – requires active-object dump)
+4. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+5. [ ] Action clear body (overlay past file end)
+6. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
+7. [ ] Disassemble live primary CODE (transform / matrix builders) from fa18_code.bin using the new map
+8. [ ] Map remaining resident overlay hunks once a fuller snapshot is available
+9. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: base $642, stride $40 (64), max 20, count $b8f
@@ -88,11 +90,12 @@
 - Object+0x22/0x24 hold per-object sin/cos
 - Perspective: (x*160)/z+160, (y*90)/z+90
 - Runtime vectors $12/$5ee still zero while no objects active
+- **This dump:** primary CODE at $00C06A70; secondary abs base $00C0CA08; many overlays not resident
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
 - fa18-port-053.1-matrix-writer-dynamic-trace-dc0339a.bundle (superseded)
-- (next: 054.x – angle-system-trig-helper)
+- fa18-port-055.1-ram-dump-map-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
