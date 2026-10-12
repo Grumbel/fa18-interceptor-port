@@ -101,7 +101,7 @@
 20. [x] Wire walker_draw demo into main loop
 21. [ ] Remaining mode bodies ($03–$0a, $0f–$26 beyond setters)
 22. [x] Action create body at $00C4F010 decoded; clear partial
-23. [ ] Full action clear body (+$3EE past on-disk image end)
+23. [x] Full action clear body at $00C4F3FE; table base $00C06460
 24. [x] Runtime vectors $1a6/$22c → action hunk offsets
 25. [x] $12 draw dispatcher → live $00C062C2 (rts stub in this dump)
 26. [ ] Capture dump during active draw to see if $12 is repatched
@@ -151,7 +151,8 @@
 - fa18-port-078.1-be-c6-numeric-scales-dc0339a.bundle (superseded)
 - fa18-port-079.1-struct-display-ctx-dc0339a.bundle (superseded)
 - fa18-port-080.1-pointer-table-writers-dc0339a.bundle (superseded)
-- fa18-port-081.1-copper-bitplane-00C055F8-dc0339a.bundle (current tip)
+- fa18-port-081.1-copper-bitplane-00C055F8-dc0339a.bundle (superseded)
+- fa18-port-082.1-action-clear-body-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

@@ -325,3 +325,89 @@ moveq  #35, d0
 move.l d0, -(sp)
 jsr    $22c.L              ; → $00C4F23C
 ```
+
+## Clear body (live `$00C4F3FE`, offset +`$3EE`)
+
+Previously past the truncated on-disk image; fully present in the
+in-flight Slow-RAM dump.
+
+```asm
+; $00C4F3FE
+link    a6, #0
+movem.l d5, -(sp)              ; 48E7 0020
+move.l  8(a6), d0              ; index
+asl.l   #2, d0
+move.l  d0, a0
+adda.l  #$00C06460, a0         ; action table base
+tst.l   (a0)
+beq.s   done                   ; empty slot
+
+; optional sub-block free when bit 31 of object+4 is clear
+move.l  d0, a0
+adda.l  #$00C06460, a0
+move.l  (a0), a1               ; object ptr
+move.l  4(a1), d1
+andi.l  #$80000000, d1
+bne.s   free_main              ; high bit set → skip sub free
+move.l  d0, a0
+adda.l  #$00C06460, a0
+move.l  (a0), a1
+move.l  d0, a0
+adda.l  #$00C06460, a0
+move.l  (a0), a2
+move.l  4(a2), -(sp)           ; size from object+4
+move.l  (a1), -(sp)            ; pointer from object+0
+jsr     $00C52728              ; FreeMem wrapper
+addq.l  #8, sp
+
+free_main:
+move.l  8(a6), d0
+asl.l   #2, d0
+move.l  d0, a0
+adda.l  #$00C06460, a0
+moveq   #64, d0                ; size = 64
+move.l  d0, -(sp)
+move.l  (a0), -(sp)            ; object pointer
+jsr     $00C52728              ; FreeMem
+addq.l  #8, sp
+
+move.l  8(a6), d0
+asl.l   #2, d0
+move.l  d0, a0
+adda.l  #$00C06460, a0
+clr.l   (a0)                   ; clear table slot
+
+done:
+movem.l (sp)+, d5
+unlk    a6
+rts
+```
+
+### Key findings
+
+| Item | Value |
+|------|-------|
+| Clear entry | **`$00C4F3FE`** |
+| Action table base (live) | **`$00C06460`** |
+| FreeMem wrapper | `$00C52728` (Exec `- $D2`) |
+| AllocMem wrapper | `$00C52710` (Exec `- $C6`) |
+| Main free size | 64 bytes |
+| Sub-block free | when `object+4` bit 31 clear; size = `object+4`, ptr = `object+0` |
+
+Create allocates 272 bytes (`$110`); clear frees a 64-byte primary object
+and optionally a secondary block whose size is stored in `object+4`.
+The extra bytes from create are likely the secondary allocation or
+alignment padding handled by the init helper (`$00C5265C` / `$3ED` arg).
+
+### Action table snapshot (in-flight)
+
+`$00C06460` holds an array of longword pointers (many non-null).  Slots
+that were created during init remain populated mid-flight.
+
+### Status
+
+- [x] Clear body fully recovered from live dump
+- [x] Action table live base `$00C06460`
+- [x] FreeMem / AllocMem wrappers identified
+- [ ] Exact meaning of the 272-byte create vs 64-byte free split
+- [ ] Secondary allocation layout (object+0 / +4)

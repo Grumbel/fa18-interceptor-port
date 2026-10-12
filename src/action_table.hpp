@@ -4,8 +4,8 @@
 #include <functional>
 #include <iostream>
 
-// Mirrors the action table at absolute base 0 recovered from the Amiga binary.
-// See docs/action_create.md and docs/keyboard.md.
+// Mirrors the action table (static base 0 → live $00C06460).
+// Create $00C4F010 / clear $00C4F3FE. See docs/action_create.md.
 
 namespace fa18 {
 
@@ -59,6 +59,9 @@ public:
     if (s.code) s.code();
   }
 
+  // Mirrors clear body at live $00C4F3FE (docs/action_create.md):
+  // index×4 into table base $00C06460, FreeMem object (+ optional sub-block),
+  // then clr.l slot.
   void clear(int index) {
     if (index < 0 || index >= kActionTableSize) return;
     slots_[index] = ActionSlot{};
