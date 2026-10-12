@@ -419,3 +419,48 @@ Likely double/triple buffering or separate UI vs 3D playfields.
 - [x] Three plane banks identified
 - [ ] Which bank is front vs back during flight
 - [ ] Copper/BPL write from active descriptor
+
+## View / ViewPort chain
+
+### View at `$00C16D70`
+
+| Off | Value | Role |
+|-----|-------|------|
+| +0 | `$00C16D82` | ViewPort* |
+| +4 | `$00C01338` | LOFCSN (copper / colormap related) |
+| +8 | 0 | SHFCSN |
+| +C | `$002C` / `$0081` | DyOffset / DxOffset |
+
+Passed to **MakeVPort** (`$00C52B10` → Gfx LVO −$DE) from `$00C0CEB4` and `$00C14CCE`.
+
+### ViewPort region `$00C16D82`
+
+| Off | Value | Role |
+|-----|-------|------|
+| +0 | 0 | Next |
+| +4 | `$00C05EB8` | ColorMap* (candidate) |
+| +8 | `$00C01550` | RasInfo* / extra (struct_A!) |
+
+**InitVPort** (`$00C52B68` → Gfx LVO −$192) is called with `pea $00C16D82` during display init.
+
+### Plane clear via OwnBlitter (`$00C2F228`)
+
+```asm
+lea     $00DFF000, a0
+; table of plane-ptr addresses: $00C1965C … $00C1964C
+jsr     OwnBlitter          ; $00C52B24 → LVO −$E4
+move.w  #$09F0, BLTCON0
+; … BLTAFWM/ALWM = $FFFF, modules, BLTSIZE from height 200
+; walks plane pointer table and blitter-clears each plane
+```
+
+Not the copper emitter — it is a **full-frame bitplane clear** using the active display descriptor.
+
+### Status
+
+- [x] View `$00C16D70` → ViewPort `$00C16D82`
+- [x] InitVPort + MakeVPort call sites
+- [x] Plane-clear via OwnBlitter at `$00C2F228`
+- [ ] ColorMap object at `$00C05EB8` contents
+- [ ] Copper list pointers (LOFCSN) confirmed
+- [ ] True copper/BPL emitter still open

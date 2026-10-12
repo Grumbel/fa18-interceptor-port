@@ -129,6 +129,7 @@
 31f. [x] object+0 = fib_Size; create body is file-size probe
 32. [x] 5-plane 320×200 buffer $00C19648; palette mirror $00C19600
 32b. [x] Plane-install $00C15494; BitMap ptr $00C19634; 3 plane banks
+32c. [x] View $00C16D70 + ViewPort $00C16D82; InitVPort/MakeVPort; plane-clear
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -154,7 +155,7 @@
 
 ## Static-analyzable remaining
 - [ ] Register-script emitter (walk `$00C055F8` → custom)
-- [~] Display buffers + plane-install done; ViewPort/RasInfo map open
+- [x] View/ViewPort + plane-clear done; ColorMap/copper list open
 - [ ] Bootstrap writer of `$00C01550` pointer table (may be static data)
 - [ ] Sample-block queue sites from game events
 
@@ -215,7 +216,8 @@
 - fa18-port-106.1-servo-not-integrator-dc0339a.bundle (superseded)
 - fa18-port-107.1-todo-handoff-cleanup-dc0339a.bundle (superseded)
 - fa18-port-108.1-display-buffers-5plane-dc0339a.bundle (superseded)
-- fa18-port-109.1-plane-install-banks-dc0339a.bundle (current tip)
+- fa18-port-109.1-plane-install-banks-dc0339a.bundle (superseded)
+- fa18-port-110.1-view-viewport-plane-clear-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
