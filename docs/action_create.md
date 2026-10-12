@@ -171,3 +171,88 @@ bsr    $4bf98              ; secondary init
 
 The overlay exports thin wrappers that take indices on the stack and
 call the real create/clear bodies.
+
+## Live resolution (in-flight dump)
+
+| Item | Value |
+|------|-------|
+| Hunk file | `0x4BF14` (header claims 1180 B; only 772 B present in image) |
+| Live base | **`$00C4F010`** |
+| Create entry | `$00C4F010` (+$00) |
+| Gate/check | `$00C4F094` (+$84) – `tst.l $E` |
+| Pair wrapper | `$00C4F1B6` (+$1A6) – `bsr` create |
+
+### Create body (+$00) — live helpers
+
+```asm
+link    a6, #-16
+clr.l   -8(a6)
+move.l  #$00010000, -(sp)     ; MEMF_CLEAR | MEMF_PUBLIC
+move.l  #$00000110, -(sp)     ; size = 272 bytes
+jsr     $00C52710             ; AllocMem (via ExecBase)
+addq.l  #8, sp
+move.l  d0, -12(a6)
+beq.s   fail
+addq.l  #4, d0
+andi.l  #$FFFFFFFC, d0        ; align
+move.l  #$3ED, -(sp)
+move.l  8(a6), -(sp)          ; caller arg
+jsr     $00C5265C             ; init helper
+…
+jsr     $00C5268C             ; secondary init
+…
+jsr     $00C52678             ; library call (jsr -$5A(a6))
+move.l  #$110, -(sp)
+move.l  -12(a6), -(sp)
+jsr     $00C52728             ; FreeMem (temp buffer)
+move.l  -8(a6), d0            ; return object ptr
+unlk    a6
+rts
+```
+
+Helpers at `$00C526xx` / `$00C527xx` are thin Amiga library stubs
+(ExecBase at `$00C06A9C`/`$00C06AA0`).
+
+### Slot init fields (confirmed live path +$E6)
+
+After allocating the slot record:
+
+| Offset | Value | Notes |
+|--------|-------|-------|
+| +8 | `$01660000` | |
+| +12 | `$003F0000` | |
+| +16 | `1` | |
+| +32 | `0` (clr.l) | |
+
+### Clear-on-recreate (+$96 path)
+
+```asm
+move.l  12(a6), d0          ; index
+asl.l   #2, d0
+lea     0(a0,d0.l), a0      ; table base 0
+tst.l   (a0)
+beq.s   empty
+move.l  12(a6), -(sp)
+bsr.w   clear_body          ; target +$3EE — PAST end of on-disk image
+…
+; alloc new, init fields, or on failure:
+move.l  #$40, d0            ; FreeMem size
+move.l  (a0), -(sp)
+jsr     FreeMem             ; $00C52728
+suba.l  a1, a1
+move.l  a1, (a0)            ; null the table slot
+```
+
+The full clear body at +$3EE is **beyond the 772 bytes present in the
+ADF image** (hunk header claims 1180).  It is either truncated in this
+extract or supplied by a subsequent hunk not glued in the file dump.
+The FreeMem + null-slot sequence above is the visible portion of clear.
+
+### Status
+
+- [x] Live base `$00C4F010`
+- [x] Create body decoded; AllocMem size `$110`, helpers identified
+- [x] Slot field init values confirmed
+- [x] Clear-on-recreate path; FreeMem + null slot
+- [ ] Full clear body (+$3EE) – missing from on-disk image
+- [ ] Runtime targets of `$1a6` / `$22c` create vectors
