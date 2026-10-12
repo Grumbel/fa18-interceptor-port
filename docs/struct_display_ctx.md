@@ -319,3 +319,55 @@ writes `custom[reg & $0FFF] = value`.
 - [x] `$00C055F8` register script decoded (palette + DIW/DDF/BPL)
 - [ ] Emitter that walks the script into custom regs
 - [ ] View/VPort structures passed to MakeVPort
+
+## Display buffers at `$00C19638` family
+
+Initialized during GfxBase open path (`$00C0CE36`):
+
+```asm
+pea     $00C19638            ; buffer descriptor
+pea     $00C195F4            ; related
+pea     df0:pix/splsh        ; splash IFF path
+bsr     load_picture_helper
+move.l  d0, $00C19634        ; store result
+```
+
+### Buffer descriptor layout (mid-flight)
+
+| Off | `$00C19638` | `$00C19648` | Role |
+|-----|-------------|-------------|------|
+| +00 | `$00012B98` | flags `$0502` | |
+| +04 | 320 | `$0100` | width / flags |
+| +06 | 200 | 0 | height |
+| +08 | 0 | `$00000A0B` | |
+| +0C | — | 320 | width |
+| +0E | — | 200 | height |
+| +10 | — | **`$00012BC0`** | bitplane 0 |
+| +14 | — | `$00014B00` | bitplane 1 |
+| +18 | — | `$00016A40` | bitplane 2 |
+| +1C | — | `$00018980` | bitplane 3 |
+| +20 | — | `$0001A8C0` | bitplane 4 |
+
+5 bitplanes → 32 colors, matching the 16-entry palette in the
+register script (plus EHB/extra).  Plane addresses are Chip RAM
+(`$0001xxxx`), stride 320×200/8 = 8000 bytes ≈ `$1F40`; spacing
+`$1F40` matches (`$12BC0 + $1F40 = $14B00`, etc.).
+
+### Palette mirror at `$00C19600`
+
+12-bit color words identical to the `$00C055F8` register-script
+palette (COLOR00–15).  Likely the source fed into LoadRGB4 or the
+script emitter.
+
+### Related `$00C16D9A`
+
+Another 320×200 size pair near the struct_A pointer table — candidate
+ViewPort.DWidth/DHeight or RasInfo geometry.
+
+### Status
+
+- [x] 5-plane 320×200 display buffer at `$00C19648`
+- [x] Splash path loads into `$00C19638` family
+- [x] Palette mirror at `$00C19600`
+- [ ] Full BitMap/ViewPort/RasInfo struct field map
+- [ ] Double-buffer flip path
