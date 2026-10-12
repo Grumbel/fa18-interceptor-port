@@ -98,16 +98,33 @@ Dual-pointer load (`$00C1B7C4`): `move.l (a1)+,a2` (handler),
 `move.l (a1)+,a0`, `move.l (a1)+,$4476E`, `move.l (a1)+,$44772`, then
 `jsr (a2)`.
 
-**Selection path (partial):**
+**Selection path:**
 
-1. `$00C1B6D4` / `$00C1B6DC`: `lea $00C4D6E2` or `$00C4DD72`, a0
-   (two alternate drawable-pointer tables).
-2. `move.w $00C446E2, d0` / `adda.w d0, a0` — index into the table.
-3. Loop: `move.l (a0)+, a1` — each entry is a pointer to a drawable
-   record (handler + stream ptrs).
-4. `cmpi.l #$00C1D8A0, (a1)` — accept records whose first long is the
-   walker trampoline (or continue scanning).
-5. Dual-pointer load + `jsr (a2)`.
+1. `$00C1B6D4` / `$00C1B6DC`: `lea $00C4D6E2` or `$00C4DD72`, a0 —
+   two **scene/drawable lists**.
+2. `move.w $00C446E2, d0` / `adda.w d0, a0` — byte index into the list.
+3. Record layout (stride **`$18`**):
+   ```
+   +0  .w  flag (stored to $00C44593; low 4 bits → $00C447F0)
+   +2  .l  pointer into object→drawable dispatch table ($00C21000+)
+   +6  …   extra words (position/state — not fully decoded)
+   ```
+4. `move.l (dispatch_ptr), a1`-equivalent: the dispatch slot holds
+   `handler, stream, stream, stream` (LOD variants).
+5. `cmpi.l #$00C1D8A0, (handler)` — prefer walker-trampoline records.
+6. Dual-pointer load + `jsr (a2)`.
+
+Example scene-list entries (`$00C4D6E2`):
+
+| flag | dispatch slot | handler | stream |
+|------|---------------|---------|--------|
+| `$2D03` | `$00C21064` | `$00C1D8A0` | `$00C39690` |
+| `$4602` | `$00C21258` | `$00C1D96C` | `$00C3A330` |
+| `$3E02` | `$00C211B8` | `$00C1D8A0` | `$00C367C8` |
+| `$5202` | `$00C21348` | `$00C08224` | `$00C4334A` |
+
+Alt list `$00C4DD72` mostly targets handler `$00C08232` (geometry walker
+sibling) with instance-pool streams (`$00C43xxx`).
 
 **Pre-walker setup handlers** (from the drawable map):
 
