@@ -58,10 +58,22 @@ int main(int argc, char* argv[]) {
   IlbmImage frnt5, inst5;
   SDL_Texture* tex_frnt = nullptr;
   SDL_Texture* tex_inst = nullptr;
-  if (frnt5.load("assets/pix/frnt5"))
+  if (frnt5.load("assets/pix/frnt5")) {
     tex_frnt = frnt5.to_texture(ren);
-  if (inst5.load("assets/pix/inst5"))
+    std::cout << "[ilbm] frnt5 " << frnt5.width << "x" << frnt5.height
+              << " planes=" << frnt5.planes
+              << " colors=" << frnt5.palette.size() << "\n";
+  } else {
+    std::cerr << "[ilbm] failed to load frnt5\n";
+  }
+  if (inst5.load("assets/pix/inst5")) {
     tex_inst = inst5.to_texture(ren);
+    std::cout << "[ilbm] inst5 " << inst5.width << "x" << inst5.height
+              << " planes=" << inst5.planes
+              << " colors=" << inst5.palette.size() << "\n";
+  } else {
+    std::cerr << "[ilbm] failed to load inst5\n";
+  }
 
   auto colour_for = [](GameState s) -> SDL_Color {
     switch (s) {
@@ -131,11 +143,8 @@ int main(int argc, char* argv[]) {
     }
     if (game.state() == GameState::Exit) running = false;
 
-    if (game.state() == GameState::Flight ||
-        game.state() == GameState::Qualification) {
-      // Clear with recovered flight palette COLOR00 (black)
-      fa18::clear_pal(ren, 0);
-    } else {
+    if (game.state() != GameState::Flight &&
+        game.state() != GameState::Qualification) {
       SDL_Color c = colour_for(game.state());
       SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
       SDL_RenderClear(ren);
@@ -158,6 +167,27 @@ int main(int argc, char* argv[]) {
       fa18::integrate_attitude(att);
       fa18::auto_center_rates(att, 32);
 
+      // Sky / ground fill from pitch (7200-circle; ~20 units/degree)
+      // horizon_y shifts with pitch so the band moves on the screen.
+      {
+        int horizon_y = fa18::PLAYFIELD_CY + att.angle[1] / 20;
+        if (horizon_y < 0) horizon_y = 0;
+        if (horizon_y > fa18::PLAYFIELD_H) horizon_y = fa18::PLAYFIELD_H;
+        // COLOR06 ≈ sky blue-ish, COLOR09 ≈ ground brown in recovered palette
+        uint32_t sky = fa18::amiga_to_rgb24(fa18::kPaletteAmiga[6]);
+        uint32_t gnd = fa18::amiga_to_rgb24(fa18::kPaletteAmiga[9]);
+        SDL_SetRenderDrawColor(ren,
+            (sky >> 16) & 0xFF, (sky >> 8) & 0xFF, sky & 0xFF, 255);
+        SDL_Rect sky_rc{0, 0, fa18::WINDOW_W, horizon_y * fa18::SCALE};
+        SDL_RenderFillRect(ren, &sky_rc);
+        SDL_SetRenderDrawColor(ren,
+            (gnd >> 16) & 0xFF, (gnd >> 8) & 0xFF, gnd & 0xFF, 255);
+        SDL_Rect gnd_rc{0, horizon_y * fa18::SCALE,
+                        fa18::WINDOW_W,
+                        (fa18::PLAYFIELD_H - horizon_y) * fa18::SCALE};
+        SDL_RenderFillRect(ren, &gnd_rc);
+      }
+
       fa18::Mat3Fixed view =
           fa18::mat_from_angles_q14(att.angle[0], att.angle[1], att.angle[2]);
 
@@ -178,7 +208,7 @@ int main(int argc, char* argv[]) {
         fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, col);
       };
 
-      // Horizon — COLOR05
+      // Horizon line — COLOR05
       draw_world_line({-20.f, 0.f, 8.f}, {20.f, 0.f, 8.f}, 5);
 
       // Runway: edges + markers + centerline

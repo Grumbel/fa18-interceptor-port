@@ -143,6 +143,7 @@
 43. [x] C++ servo_attitude + discrete_yaw_step; live-dump handoff notes in TODO
 44. [x] Fix ILBM row-interleave (panel corruption); attitude-driven runway view
 45. [x] Flight axes from held keys (release → centre 128); ILBM decode smoke-ok
+46. [x] Sky/ground fill from pitch; ILBM load diagnostics
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -256,7 +257,8 @@
 - fa18-port-119.1-discrete-yaw-step-dc0339a.bundle (superseded)
 - fa18-port-120.1-servo-cpp-dump-handoff-dc0339a.bundle (superseded)
 - fa18-port-121.1-ilbm-fix-runway-view-dc0339a.bundle (superseded)
-- fa18-port-122.1-axis-hold-center-dc0339a.bundle (current tip)
+- fa18-port-122.1-axis-hold-center-dc0339a.bundle (superseded)
+- fa18-port-123.1-sky-ground-ilbm-log-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
