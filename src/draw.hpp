@@ -138,16 +138,16 @@ inline void dda_edge_list(SDL_Renderer* ren, const EdgeList& el,
 
 // Mode $1b line path (hunk 35 entry + BLTCON0 $09f0 setup).
 // Calls $5ee-style span_setup for horizontal rejection, then draws.
+// Colour from gfx.pen (Amiga palette index, COLOR00–15).
 inline void blitter_line_stub(SDL_Renderer* ren, GfxState& gfx,
                               int x0, int y0, int x1, int y1) {
   dispatch_draw(gfx, DrawMode::Line);
-  // Horizontal span fast-path mirrors $5ee when y0 == y1
   if (y0 == y1) {
     int dx = 0;
     if (!span_setup(x0, x1, PLAYFIELD_W - 1, dx))
       return;
   }
-  draw_line(ren, x0, y0, x1, y1);
+  draw_line_pal(ren, x0, y0, x1, y1, static_cast<int>(gfx.pen));
 }
 
 // Mode $1b wrapper (file 0x28274): force line mode and dispatch.

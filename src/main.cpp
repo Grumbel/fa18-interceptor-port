@@ -243,7 +243,13 @@ int main(int argc, char* argv[]) {
           fa18::mat_from_angles_q14(0, att.angle[1] / 2, att.angle[2]);
       list.objects[1].orient_fp =
           fa18::mat_from_angles_q14(0, 0, -att.angle[2]);
-      list.draw_all_fp(ren, gfx);
+      list.motion_step_all();
+      // Draw each object with a distinct recovered palette pen ($324)
+      static const uint16_t pens[] = {13, 9};  // COLOR13 gray, COLOR09 amber
+      for (int i = 0; i < list.count; ++i) {
+        gfx.pen = pens[i % 2];
+        fa18::draw_object_fp(ren, gfx, list.objects[i]);
+      }
 
       // HUD crosshair — COLOR13
       fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
