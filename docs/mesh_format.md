@@ -312,11 +312,28 @@ types to drawables:
 | Target class | Examples | Role |
 |--------------|----------|------|
 | 3-D cluster DL | `$00C3977A`, `$00C39842`, `$00C398FC`, `$00C39E42`, `$00C39BA8`, `$00C3A4DE` | Full mesh DLs |
+| LOD table | `$00C3A47E`, `$00C3A576` | Hierarchical LOD (below) |
 | Instance pool | `$00C43772`…`$00C43FCC` (**19 entries**) | Compact templates |
-| Walker/handler | `$00C1D8A0`, `$00C1D96C`, `$00C08232` | Geometry walkers |
+| Walker/handler | `$00C1D8A0` → `$00C1D96C`, `$00C08232` | Geometry walkers |
 
-Most instances use ptr offsets +46/+78; a few use +64/+104.
-Handler `$00C08232` = `link a6,#-152` walker (same frame as `$00C1D96C`).
+`$00C1D8A0` is a trampoline (`bra.w $00C1D96C`).  Most instances use
+ptr offsets +46/+78; a few use +64/+104.
+
+### LOD tables (hierarchical)
+
+Some dispatch entries point to LOD headers, not flat DLs:
+
+```
+0003                 ; level count (ptrs = count+1)
+0000 0000            ; flags / padding
+ptr0 ptr1 ptr2 ptr3  ; absolute ptrs into mesh body
+(x,y).w pairs…       ; 2-D hull
+FFFF FFFF
+N  (x,y,z)…  DL…    ; full mesh follows
+```
+
+Sub-pointers land mid-record (vert groups or partial DLs) for
+distance-selected detail.  Examples: `$00C3A47E`, `$00C3A576`.
 
 **`PP` / `$70`**: meaning still open.  Tags do not correlate with PP.
 Immediates `$70`/`$BA`/`$20` in code are range bounds / radar scroll,
@@ -348,7 +365,9 @@ with command+param encoding, but the low-byte consumer is not this path.
 - [x] `Axxx` → instance pool (stride `$6A`, tag `$04D0`, ptrs at +46/+78)
 - [x] Handler `$00C08232` = geometry walker (same `link a6,#-152` as `$00C1D96C`)
 - [x] Instance pool is **static** (preflight ≡ inflight); 19 entries
-- [x] Object→drawable table `$00C21000`–`$00C21500` (3D DLs / instances / walkers)
+- [x] Object→drawable table `$00C21000`–`$00C21500` (3D DLs / LOD tables / instances / walkers)
+- [x] LOD table format: count + ptrs into mesh body + hull + FFFF/N/verts/DL
+- [x] `$00C1D8A0` = trampoline to `$00C1D96C`
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1

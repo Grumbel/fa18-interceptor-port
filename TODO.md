@@ -168,6 +168,7 @@
 68. [x] Walker cmd class: bit15=edge, bit14=$4xxx skip-next, low14/8=threshold
 69. [x] Pen from separate a2 stream (not mesh attrs); $5ee copies pen then draws
 70. [x] Object→drawable table $00C21000; 19 instances; 3977A/39E42/etc mapped
+71. [x] LOD tables ($00C3A47E/$00C3A576): count+ptrs+hull+mesh; $00C1D8A0 trampoline
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -231,8 +232,10 @@
 - [x] Slot table `$00C21400` → static DLs or instance-pool entries
 - [x] Handler `$00C08232` = geometry walker (`link a6,#-152`, same as `$00C1D96C`)
 - [x] Instance pool **static** (preflight ≡ inflight); **19 entries**
-- [x] Object→drawable table `$00C21000`–`$00C21500`: 3D DLs / instances / walkers
+- [x] Object→drawable table `$00C21000`–`$00C21500`: 3D DLs / LOD tables / instances / walkers
 - [x] 3D DL examples: `$00C3977A` (39738), `$00C39842`, `$00C398FC`, `$00C39E42`
+- [x] LOD table: count + ptrs into mesh body + hull + FFFF/N/verts/DL
+- [x] `$00C1D8A0` = trampoline (`bra.w $00C1D96C`)
 - [x] Companion runtime-written at `$00C1CD88` (projected hull / attrs from a0)
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
 - [x] `$5400` pointers = **hull starts**; `$00C1CD38` is the hull→companion transform
@@ -342,7 +345,8 @@
 - fa18-port-144.1-instance-pool-is-static-dc0339a.bundle (superseded)
 - fa18-port-145.1-walker-cmd-classification-dc0339a.bundle (superseded)
 - fa18-port-146.1-pen-from-draw-stream-dc0339a.bundle (superseded)
-- fa18-port-147.1-object-drawable-table-dc0339a.bundle (current tip)
+- fa18-port-147.1-object-drawable-table-dc0339a.bundle (superseded)
+- fa18-port-148.1-lod-tables-trampoline-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
