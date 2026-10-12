@@ -239,9 +239,13 @@ Related intermediates:
 
 - [x] Writer of `$00C16E1E` found: copy from `$00C16D8A` at `$00C14C74`
 - [x] `$00C16D8A` filled by indexed table load at `$00C14CC4`
-- [ ] Bootstrap origin of the first `$00C01550` address in the table
-      (no absolute `lea #$00C01550` in resident CODE — likely BSS
-      fixed address or early AllocMem not yet traced)
+- [x] Bootstrap origin of `$00C01550`: **static data** in the loaded image.
+      The only occurrences of the longword `$00C01550` in the dump are the
+      pointer-table slots themselves (`$00C16D8A`, `$00C16E1E`, `$00C7FF3C`).
+      No code immediate `move.l #$00C01550,…` and no AllocMem for this block.
+      struct_A (including its embedded script pointer at `+$0C`) is part of
+      the resident DATA/BSS image; runtime only *copies* the pointer among
+      ViewPort / pointer-table slots.
 
 ## Library bases (display / OS)
 
@@ -461,7 +465,7 @@ Not the copper emitter — it is a **full-frame bitplane clear** using the activ
 - [x] View `$00C16D70` → ViewPort `$00C16D82`
 - [x] InitVPort + MakeVPort call sites
 - [x] Plane-clear via OwnBlitter at `$00C2F228`
-- [ ] ColorMap object at `$00C05EB8` contents
+- [x] ColorMap `$00C05EB8` + ColorTable `$00C069F8` (matches script palette)
 - [ ] Copper list pointers (LOFCSN) confirmed
 - [ ] True copper/BPL emitter still open
 
@@ -527,20 +531,27 @@ Plane addresses are consistent with the primary 320×200 bank
 the list may be a partial / mode-specific template, or the high plane
 count is set elsewhere (MakeVPort / copper rebuild).
 
-### ColorMap candidate `$00C05EB8`
+### ColorMap `$00C05EB8` (confirmed)
 
-| Off | Value | Role (hypothesised) |
-|-----|-------|---------------------|
-| +0 | `$00000020` | Type/Count = 32 |
-| +4 | `$00C069F8` | ColorTable* |
+| Off | Value | Role |
+|-----|-------|------|
+| +0 | `$00000020` | Count = 32 (or Type\|Count) |
+| +4 | `$00C069F8` | **ColorTable*** |
 | +8 | 0 | |
-| +C… | mixed ptrs / code | region continues into live code |
+| +C… | mixed | continues into other live data |
+
+**ColorTable at `$00C069F8`** holds exactly the same 16 RGB values as the
+register-script COLOR00–15 entries (`$0000 $0800 $0888 … $0333`), then
+zeros for the remaining slots.  Palette is therefore shared between the
+manual register-script and the OS ColorMap object used by MakeVPort.
 
 ### Status
 
 - [x] Script format decoded (6-byte reg/value/pad)
 - [x] Full palette + display-window + 4 plane-pointer entries listed
 - [x] Plane PT values match primary bank `$00012BC0`…
+- [x] ColorMap confirmed; ColorTable matches script palette
+- [x] struct_A / `$00C01550` is static image data (not runtime-allocated)
 - [ ] Walker / emitter that consumes the script (no static `lea $00C055F8`
       found; may be reached via struct_A pointer indirection or Gfx
       LoadView path)
