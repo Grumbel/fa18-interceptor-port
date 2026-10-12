@@ -127,6 +127,32 @@ inline void auto_center_rates(PlayerAttitude& att, int16_t strength = 144) {
   }
 }
 
+// JOY0DAT stick path (docs/transform_3d.md).
+// Raw bytes from $DFF00A → accumulators $00C44AE (X) / $00C44B0 (Y).
+struct JoyAxes {
+  int16_t raw_x = 0;    // $00C1975E
+  int16_t raw_y = 0;    // $00C19760
+  int16_t accum_x = 0;  // $00C44AE
+  int16_t accum_y = 0;  // $00C44B0
+};
+
+inline void joy_update(JoyAxes& joy, uint16_t joy0dat) {
+  int16_t x = static_cast<int16_t>(joy0dat & 0xFF);
+  int16_t y = static_cast<int16_t>((joy0dat >> 8) & 0xFF);
+  int16_t dx = static_cast<int16_t>(x - joy.raw_x);
+  int16_t dy = static_cast<int16_t>(y - joy.raw_y);
+  // Clamp deltas to ±0x7F
+  if (dx < -0x7F) dx = -0x7F;
+  if (dx >  0x7F) dx =  0x7F;
+  if (dy < -0x7F) dy = -0x7F;
+  if (dy >  0x7F) dy =  0x7F;
+  joy.accum_x = static_cast<int16_t>(joy.accum_x + dx);
+  joy.accum_y = static_cast<int16_t>(joy.accum_y + dy);
+  joy.raw_x = x;
+  joy.raw_y = y;
+}
+
+
 // $c6 motion step: proximity cull + optional ×15/16 damp + position integrate.
 // Returns true (d0=1) on success / object processed.
 // See docs/func_c6.md for the full path-B / accept-path analysis.

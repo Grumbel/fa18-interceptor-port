@@ -1199,3 +1199,56 @@ JOY axes are now located.  Link from `$00C44AE`/`$44B0` into the three rate writ
 - [x] JOY0DAT → raw X/Y → accumulators `$00C44AE`/`$44B0`
 - [x] `$4b0` path distinguished as non-JOY (throttle-like)
 - [ ] Accumulator → rate writer link
+
+## Rate computation is orientation-derived
+
+Rate writer prologue at `$00C2B630` does **not** read JOY accumulators
+or `$4b0`.  Instead:
+
+```asm
+move.w  $96(a1), d0          ; matrix / attitude block
+move.w  $9C(a1), d1
+move.w  $A2(a1), d4
+muls    d5, d0
+muls    d6, d1
+muls    d7, d4
+; sum → magnitude in d3 (after swap → table index 0..10)
+; sign from d2
+; curve table lookup → raw rate
+```
+
+So the stick-curve tables scale a **projected orientation error** (or
+body-axis component), not a raw stick deflection.  JOY axes likely
+steer a **desired attitude** target that the matrix projection is
+measured against, or modulate the d5/d6/d7 weights.
+
+### Rate-writer exclusivity (confirmed)
+
+At `$00C2B54A` (mode nibble `$10` path):
+
+```asm
+move.w  d3, $54(a1)          ; rate2 only
+clr.w   $52(a1)
+clr.w   $50(a1)
+```
+
+Each curve path writes exactly one of +`$50`/+`$52`/+`$54` and clears
+the other two — three exclusive axis channels.
+
+### Updated stick→rate model
+
+```
+JOY0DAT → $44AE/$44B0 (accumulators)
+                ↓
+        desired-attitude or weight (not yet found)
+                ↓
+matrix × weights → magnitude → curve table → raw rate
+                ↓
+filter → integrate → angles
+```
+
+### Status
+
+- [x] Rate magnitude from matrix projection, not direct stick
+- [x] Exclusive one-of-three rate write confirmed in mode-$10 path
+- [ ] Desired-attitude / weight source from JOY accumulators

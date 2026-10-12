@@ -116,7 +116,8 @@
 29. [x] Integrator $00C2C418: +$68-=d5, +$6A-=d6; clamps in 7200-circle units
 29b. [x] Rates +$50..+$5A; filter $00C2C1F0; stick curve →+$50
 29c. [x] Three rate writers ($50/$52/$54); curves by $62 mode
-29d. [~] JOY0DAT→$44AE/$44B0 located; rate link + R/P/Y still open
+29d. [~] JOY→accum; rates from matrix projection not direct stick; R/P/Y open
+29g. [x] C++ JoyAxes + joy_update from JOY0DAT
 29e. [x] C++ PlayerAttitude + filter_rates + integrate_attitude
 29f. [x] Rate auto-center $00C2C476; input var map $4b0/$4b2/$448A0
 30. [x] GfxBase $00C16E22; IntuitionBase $00C16D60; reg script $00C055F8
@@ -188,7 +189,8 @@
 - fa18-port-098.1-audio-control-api-dc0339a.bundle (superseded)
 - fa18-port-099.1-sample-block-play-dc0339a.bundle (superseded)
 - fa18-port-100.1-audio-int-server-dc0339a.bundle (superseded)
-- fa18-port-101.1-joy0dat-stick-path-dc0339a.bundle (current tip)
+- fa18-port-101.1-joy0dat-stick-path-dc0339a.bundle (superseded)
+- fa18-port-102.1-rate-matrix-projection-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
