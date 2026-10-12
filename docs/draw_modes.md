@@ -398,3 +398,79 @@ Mode setters that only `jsr $12` and `rts` (like `$1b`) currently
 do nothing.  Modes that `bra` into a local body after the stub call
 (like `$01`) still run their algorithm.  Mode `$16` skips `$12`
 entirely and branches straight to the walker.
+
+## Walker → perspective → `$5ee` call chain
+
+```
+walker $00C2D9A2 (file 0x2844E)
+  │
+  ├─ clip test vs $4202+6 / +$a
+  │
+  ├─ bsr 0x286CA  edge_interpolate_A
+  │    movem.w 6(a1), d0-d2
+  │    muls / divs perspective
+  │    bra 0x2878A  (accept/reject)
+  │
+  └─ bsr 0x286F8  edge_interpolate_B  (symmetric / alternate octant)
+       same muls/divs pattern
+       bra store path
+            │
+            ▼
+       0x2867A..0x28696  store + $5ee
+         move.w d3, (a0)+        ; sx → $3000 buffer
+         move.w d4, (a0)+        ; sy
+         subq.w #1, -2(a6)       ; edge count--
+         beq.s  done
+         movem.w $3000, d0-d3    ; reload pair
+         jsr    $5ee.L           ; → live $00C2E5D6 span helper
+         unlk   a6
+         moveq  #1, d0           ; success
+         rts
+```
+
+### Perspective constants (file `0x28660`)
+
+```
+divs.w  d5, d4
+addi.w  #$005A, d4        ; +90  (screen Y centre)
+blt.s   reject
+cmpi.w  #$00B4, d4        ; 180  (screen height bound?)
+bge.s   reject
+subi.w  #$013F, d3        ; -319 (near 320 screen width)
+neg.w   d3
+subi.w  #$00B3, d4        ; -179
+neg.w   d4
+move.w  d3, (a0)+         ; store sx
+move.w  d4, (a0)+         ; store sy
+```
+
+Screen-space bias uses **90** and **180** (vertical) and **~$13F**
+(≈319, horizontal).  Matches the 320×200-class playfield with a
+centred projection.
+
+### Edge interpolate core (file `0x286CA`)
+
+```
+movem.l d0-d7, -(sp)
+movem.w 6(a1), d0-d2      ; from $4202 descriptor
+; delta setup …
+muls.w  d0, d4
+divs.w  d3, d4            ; perspective divide
+muls.w  d0, d6
+divs.w  d3, d6
+bra.w   accept_test
+```
+
+Two octant variants (`0x286CA` / `0x286F8`) share the same divide
+pattern; the walker selects based on vertex order and clip signs.
+
+### Status
+
+- [x] Walker entry live `$00C2D9A2`
+- [x] Clip against `$4202` bounds
+- [x] Edge interpolate with perspective muls/divs
+- [x] Screen bias constants 90 / 180 / ~319
+- [x] Store to `$3000` vertex buffer
+- [x] `jsr $5ee` for span output
+- [ ] Exact fixed-point format of pre-perspective coords
+- [ ] Port walker+perspective into C++ draw path
