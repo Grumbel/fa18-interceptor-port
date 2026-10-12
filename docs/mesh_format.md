@@ -57,17 +57,27 @@ record = $00C4C4F4 + slot×256 + 2
 First two bytes are compared to `object+0x30` and `+0x32` with
 tolerance ±1; mismatch rejects the slot.
 
-**Runtime-populated:** `$00C1CD88` writes into companion records
-(copies word streams from `a0` — likely projected hull / attributes).
-Structure of a live record:
+**Runtime-populated** by `$00C1CD38`–`$00C1CD88`:
 
 ```
-[2 match bytes] [word pairs …] FFFF FFFF [more word pairs …]
+; d2/d3/d4 = translation, d7 = scale shift (0..15)
+andi.w  #$F, d7
+asl.l   d7, d2 / d3 / d4     ; scale
+andi.w  #$3FFF, d2 / d4      ; 14-bit mask
+; per coordinate:
+move.w  (a0)+, d6
+add.w   d2, d6               ; translate (d4 for other axis)
+move.w  d6, (a1)+            ; write into companion
 ```
 
-Pre-FFFF pairs look like 2-D coordinates (large fixed-point); post-FFFF
-holds additional attribute / coordinate data.  Exact coordinate space
-still open.
+Live record layout:
+
+```
+[2 match bytes] [translated pairs …] FFFF FFFF [more pairs …]
+```
+
+Companion stores **scaled+translated** 2-D coordinates derived from the
+mesh hull, not raw copies.
 
 ### Observed live slots
 
@@ -232,8 +242,14 @@ C00C 0006 0030 0036 8024 …   ; polyline variant
 | `$C00C` | polyline / alternate edge class (same vert encoding) |
 
 `$800C` is typically followed by 2–3 vert indices (line or triangle).
-The end-with-attrs forms (`$18`/`$1E`/`$24`/`$2A`) carry a packed
-attribute word — colour/style candidate; exact field breakdown open.
+End-with-attrs forms carry a packed attribute word:
+
+| Field | Observation |
+|-------|-------------|
+| hi byte | often multiple of 4 (0,4,8,12,16,24,28); `hi/4` ∈ 0..7 — **colour index** candidate |
+| lo byte | common values 3,7,8,10,11,13 — **style / flags** candidate |
+| `$100B` | most frequent (colour 4, style 11) |
+| `$FC00` | special (appears with `$8024`) |
 
 `mesh_edges_from_dl()` uses DL-start as the offset base.
 
@@ -283,9 +299,9 @@ Low-12 as pure DL-relative offsets land in neighbouring records.
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
-- [ ] Attribute word field breakdown (hi byte often multiple of 4; `$100B` most common)
+- [~] Attribute word: hi/4 = colour candidate, lo = style/flags; not confirmed in draw path
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-- [ ] Companion coordinate space (transform details in `$00C1CD60`–`$00C1CD76`)
+- [x] Companion transform: scale (asl d7) + translate (d2/d4) + 14-bit mask
 
 ## Port
 
