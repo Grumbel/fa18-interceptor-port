@@ -10,9 +10,9 @@
 namespace fa18 {
 
 struct ActionSlot {
-  // +0: resource id / chip offset (NOT a function pointer).
-  // Dispatch is via side tables $00C07478/$00C07488 + $00C4EBD8.
-  uint32_t field_0  = 0;
+  // +0: asset file size (fib_Size from Examine). NOT a function pointer.
+  // Dispatch via side tables + $00C4EBD8.
+  uint32_t field_0  = 0;       // file size in bytes
   uint32_t field_4  = 0;       // flags; bit 31 gates sub-block free
   uint32_t field_8  = 0;       // type/mode ($01660000 on create)
   uint32_t field_c  = 0;       // param ($003f0000 on create; also arg<<1)

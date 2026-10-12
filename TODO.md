@@ -126,6 +126,7 @@
 31c. [x] Audio control API $00C4EBxx; DMACON/INTREQ bits; C++ AudioSystem
 31d. [x] Sample block format; play $00C4ED00; PER/VOL helper
 31e. [x] SetIntVector/AddIntServer; server $00C4ED80; interrupt-driven
+31f. [x] object+0 = fib_Size; create body is file-size probe
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -190,7 +191,8 @@
 - fa18-port-099.1-sample-block-play-dc0339a.bundle (superseded)
 - fa18-port-100.1-audio-int-server-dc0339a.bundle (superseded)
 - fa18-port-101.1-joy0dat-stick-path-dc0339a.bundle (superseded)
-- fa18-port-102.1-rate-matrix-projection-dc0339a.bundle (current tip)
+- fa18-port-102.1-rate-matrix-projection-dc0339a.bundle (superseded)
+- fa18-port-103.1-object0-filesize-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

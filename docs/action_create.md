@@ -665,3 +665,47 @@ variant `$00C4EC52` does `jsr (ExecBase-168)` with a1=`$00C07560`.
 - [x] Action invoke can trigger audio via shared index arg
 - [ ] Exact Exec LVO −162 / −168 identity
 - [ ] Full audio descriptor field meanings
+
+## object+0 = asset file size
+
+Create body `$00C4F010` is a **file-size probe**:
+
+```asm
+AllocMem(0x110)              ; temp workspace
+Lock(path, ACCESS_READ)
+Examine(lock, fib)
+move.l  fib+$7C, d0          ; fib_Size
+UnLock(lock)
+FreeMem(temp)
+rts                          ; returns file size in d0
+```
+
+The permanent 64-byte object is allocated by wrapper `$00C4F0D0`
+(`AllocMem(0x40)`), which sets:
+
+| Off | Value | Source |
+|-----|-------|--------|
+| +0 | **file size** | from `$00C4F010` return / later fill |
+| +4 | caller arg | 8(a6) |
+| +8 | `$01660000` | type default |
+| +C | `$003F0000` | param default |
+| +10 | 1 | state |
+| +20 | 0 | cleared |
+
+Live examples:
+
+| Object | +0 (size) | +4 (flags) | +8 (type) |
+|--------|----------:|------------|-----------|
+| `$00C01450` | `$B3E8` (46 KB) | `$35FA` | `$0202` |
+| `$00C01490` | `$B758` (47 KB) | `$8000328A` | `$0204` |
+| `$00C05450` | `$578A8` (350 KB) | `$3392` | `$0202` |
+| `$00C05490` | `$578A8` (350 KB) | `$800015CC` | `$0204` |
+
+Bit 31 of +4 marks a sub-block that clear must FreeMem.  Sizes match
+on-disk assets (pix/text/config and larger mission data).
+
+### Status
+
+- [x] object+0 = fib_Size from Examine
+- [x] Create body is file-size probe; wrapper allocates 64-byte object
+- [x] Live sizes correlate with game asset scale
