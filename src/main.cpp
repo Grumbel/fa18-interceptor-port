@@ -99,25 +99,27 @@ int main(int argc, char* argv[]) {
         else if (e.key.keysym.sym == SDLK_BACKSPACE)
           input.key_code = 8;
         input.input_enabled = true;
-        // Flight axes ($4b0/$4b2 style, 0–255 centred at 128)
-        if (game.state() == GameState::Flight) {
-          auto clamp8 = [](int v) {
-            return static_cast<uint8_t>(v < 0 ? 0 : v > 255 ? 255 : v);
-          };
-          const int step = 8;
-          switch (e.key.keysym.sym) {
-            case SDLK_UP:    input.axis_0 = clamp8(int(input.axis_0) - step); break;
-            case SDLK_DOWN:  input.axis_0 = clamp8(int(input.axis_0) + step); break;
-            case SDLK_LEFT:  input.axis_1 = clamp8(int(input.axis_1) - step); break;
-            case SDLK_RIGHT: input.axis_1 = clamp8(int(input.axis_1) + step); break;
-            case SDLK_a:     input.axis_1 = clamp8(int(input.axis_1) - step); break;
-            case SDLK_d:     input.axis_1 = clamp8(int(input.axis_1) + step); break;
-            default: break;
-          }
-        }
         // Mode 2 ≈ $64c title/proceed path
         input.input_mode = 2;
       }
+    }
+
+    // Flight axes from held keys (0–255, centre 128). Release → centre.
+    // Stand-in for JOY0DAT path; continuous hold matches stick better than steps.
+    if (game.state() == GameState::Flight ||
+        game.state() == GameState::Qualification) {
+      const Uint8* kb = SDL_GetKeyboardState(nullptr);
+      int pitch = 128, yaw = 128;
+      if (kb[SDL_SCANCODE_UP] || kb[SDL_SCANCODE_W])    pitch -= 80;
+      if (kb[SDL_SCANCODE_DOWN] || kb[SDL_SCANCODE_S])  pitch += 80;
+      if (kb[SDL_SCANCODE_LEFT] || kb[SDL_SCANCODE_A])  yaw -= 80;
+      if (kb[SDL_SCANCODE_RIGHT] || kb[SDL_SCANCODE_D]) yaw += 80;
+      if (pitch < 0) pitch = 0;
+      if (pitch > 255) pitch = 255;
+      if (yaw < 0) yaw = 0;
+      if (yaw > 255) yaw = 255;
+      input.axis_0 = static_cast<uint8_t>(pitch);
+      input.axis_1 = static_cast<uint8_t>(yaw);
     }
 
     // Drive transitions from recovered keyboard path ($155 / $206 / $207)
