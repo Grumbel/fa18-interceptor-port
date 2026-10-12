@@ -180,38 +180,39 @@ present.
 Port: `kMeshScale = 64` so raw coords fit the runway world units.
 Transform path multiplies by 64 again for Q2.14 matrix input.
 
-## Radar scope consumer (2-D hull)
+## Radar scope pair-walker (not mesh hull)
 
-Live code at **`$00C2FF10`** walks word-pairs from `a2` until `$FFFF`:
+**Correction:** `$00C2FF10` walks a **fixed overlay** at `$00C4D454`
+(screen-relative pairs with bit15 flags, e.g. `$809E,$00A6`), **not**
+mesh 2-D hulls.  Centre `(158,167)`, X clip 319, plotters `$00C2E14C` /
+`$00C2E162` are real radar-scope primitives, but the data source is the
+reticule/marker list.
+
+The runtime consumer of mesh hull pairs remains **open**.
+
+## Display-list sub-lists (refined)
+
+Top-level DL ends with a short **offset table** (e.g. `0270 02D6 02E2
+0330 035C`) then trailing data / `7FFF`.
+
+Sub-list bodies hold the edge commands:
 
 ```
-moveq   #10, d2              ; max pairs
-loop:
-  move.w  (a2)+, d0
-  bge.s   normal             ; high bit clear → normal pair
-  cmpi.w  #$FFFF, d0
-  beq.s   done
-  bclr    #15, d0            ; flagged pair: clear sign, keep magnitude
-  move.w  (a2)+, d1          ; Y
-  jsr     $00C2E162          ; plot flagged
-  bra.s   next
-normal:
-  move.w  (a2)+, d1
-  jsr     $00C2E14C          ; plot normal
-next:
-  dbf     d2, loop
+800C 0006 0024 002A 8000 …   ; triangle verts 1,6,7 (byte-off÷6)
+800C 000C 0012 001E 8018 …   ; triangle verts 2,3,5
+C00C 0006 0030 0036 8024 …   ; polyline variant
 ```
 
-Plot centre (before the loop): screen `(158,167)` + runtime scroll
-(`$00C446C0` / `$00C44610`).  Clip: X against `$013F` (319).
+| Cmd | Role |
+|-----|------|
+| `$800C` | begin edge/poly; following words = byte-offsets (÷6 → vert) until next `$8xxx` |
+| `$8000` | end of current edge group |
+| `$8018`/`$8024`/`$802A`/`$801E` | edge group; flags in low byte |
+| `$C00C` | polyline / alternate edge class |
 
-`$00C2E162` takes low 4 bits of the (flag-stripped) X as a sub-index;
-`$00C2E14C` is the standard pair plotter.  Both ultimately mark pixels
-relative to the radar centre — this is the **in-cockpit radar scope**
-drawing the top-down mesh hull.
-
-A related path at `$00C29AA2` also walks to `$FFFF` and can issue
-draw-mode `$20` via `jsr $12` (blitter line dispatcher).
+Offset-table base address is still open (values can land in neighbouring
+records if added to the mesh FFFF).  Edge encoding (byte-offset ÷ 6) is
+solid.
 
 ## Open
 
@@ -221,11 +222,12 @@ draw-mode `$20` via `jsr $12` (blitter line dispatcher).
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
 - [ ] Remaining companion-record bytes (attribute / 2-D payload)
-- [x] 2D hull captured; **radar scope consumer at `$00C2FF10` identified**
+- [x] 2D hull captured in Mesh; runtime consumer of hull pairs still open
 - [x] Full cluster record layout (`7FFF` separators, tags, hull, verts, DL)
-- [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
+- [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
+- [ ] Offset-table base address (how `0270` etc. resolve to sub-lists)
+- [ ] Full face/poly strip interpretation (cmd low-byte flags)
 - [ ] Meaning of repeated group parameter (`$0022` / `$0020` / `$00BA`)
-- [ ] Radar range scale / how hull coords map to scope pixels
 
 ## Port
 
@@ -236,4 +238,3 @@ draw-mode `$20` via `jsr $12` (blitter line dispatcher).
 - `mesh_edges_from_dl()` — partial decoder (sub-list byte-offset indices)
 - `mesh_aircraft_39738/39800/…` — include hull pairs + tags from dump
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
-  (radar-scope style; original consumer at `$00C2FF10`)
