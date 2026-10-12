@@ -101,7 +101,8 @@ inline void filter_rates(PlayerAttitude& att, const int16_t new_delta[3]) {
   }
 }
 
-// Integrator ($00C2C418): angle0 -= rate0, angle1 -= rate1.
+// Approximate free integrator for the port.
+// Live $00C2C418 is a servo (target−angle); true rate→angle site still open.
 inline void integrate_attitude(PlayerAttitude& att) {
   att.angle[0] = static_cast<int16_t>(att.angle[0] - att.rate[0]);
   att.angle[1] = static_cast<int16_t>(att.angle[1] - att.rate[1]);

@@ -113,7 +113,7 @@
 26. [ ] Capture dump during active draw to see if $12 is repatched
 27. [x] Live transform matrix/out addresses confirmed
 28. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
-29. [x] Integrator $00C2C418: +$68-=d5, +$6A-=d6; clamps in 7200-circle units
+29. [~] $00C2C418 is servo (target−angle error), not rate integrator — see 29d
 29b. [x] Rates +$50..+$5A; filter $00C2C1F0; stick curve →+$50
 29c. [x] Three rate writers ($50/$52/$54); curves by $62 mode
 29d. [~] +$66/68/6A Euler; $00C2C418 is servo not simple rate-int; rate→angle open
@@ -140,6 +140,21 @@
 - Perspective: (x*160)/z+160, (y*90)/z+90
 - All static abs <$2000 are relocatable into $00Cxxxxx Slow RAM
 - $12 holds RTS stub when no draw mode active; real bodies are overlay/transient
+
+
+## Needs live dump / dynamic evidence
+- [ ] rate → angle true integration site (static search found none)
+- [ ] d5/d6 target angle source into servo
+- [ ] JOY accumulators → desired-attitude / matrix weights
+- [ ] Chip-RAM sample PCM capture during audio playback
+- [ ] `$12` draw-mode body while active (currently RTS stub)
+- [ ] One-axis stick hold to label roll vs pitch polarity
+
+## Static-analyzable remaining
+- [ ] Register-script emitter (walk `$00C055F8` → custom)
+- [ ] View/VPort structures for MakeVPort
+- [ ] Bootstrap writer of `$00C01550` pointer table (may be static data)
+- [ ] Sample-block queue sites from game events
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -195,7 +210,8 @@
 - fa18-port-103.1-object0-filesize-dc0339a.bundle (superseded)
 - fa18-port-104.1-roll-pitch-labels-dc0339a.bundle (superseded)
 - fa18-port-105.1-angle66-matrix-path-dc0339a.bundle (superseded)
-- fa18-port-106.1-servo-not-integrator-dc0339a.bundle (current tip)
+- fa18-port-106.1-servo-not-integrator-dc0339a.bundle (superseded)
+- fa18-port-107.1-todo-handoff-cleanup-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
