@@ -40,23 +40,45 @@ matching wing/tail tips past `N` until the first opcode word.
 | `$8000`–`$DFFF` | opcode (bit 15, not a small negative) |
 | `$E000`–`$FFFF` | coordinate (small negative, \|v\| < 8192) |
 
-### Display-list observations
+### Display-list structure (partial decode)
 
 Common aircraft pattern (e.g. `$00C39738`):
 
 ```
-4070 4022 C016 4240 0022 C016 4380 0022 A244 805C A23C …
+4070 4022 C016 4240 0022 C016 4380 0022 A244 805C A23C
+0270 02D6 02E2 0330 035C          ← offset table (byte offs from mesh base)
+8368 …
+… 2-D silhouette coords …
+7FFF 7FFF                         ← end marker
 ```
 
-- `$40xx` / `$42xx` / `$43xx` / `$A2xx` appear as command words
-- `$C016` recurs frequently — candidate “end-poly / close / state”
-- `$80xx` words interleave later in the list
-- Exact edge-index encoding **still open**.  The port keeps the raw
-  `display_list` vector and uses hand-authored edges for drawing.
+**Two-level encoding:**
 
-Some models (e.g. `$00C39B66`, `$00C39980`) start the list with low
-words or a different command mix (`C0C0`, `414A`, …); may be alternate
-encoding or residual hull data.
+1. **Top level** — `$40xx` / `$C016` / `$A2xx` state commands (LOD, colour,
+   or draw-mode; exact meaning still open).  Followed by a short table of
+   **byte offsets** relative to the mesh header.
+
+2. **Sub-lists** at those offsets:
+   ```
+   800C 0006 0024 002A FFFF
+   ```
+   - `$8xxx` / `$Cxxx` = command word (`$800C` seen with 3 trailing indices)
+   - Following words `< $100` that are multiples of **6** are vertex
+     indices encoded as **byte offsets** (stride 6 = 3 × int16 per vert)
+   - `$FFFF` terminates the sub-list
+
+   Example: `0006 0024 002A` → indices 1, 6, 7.
+
+3. **Trailing 2-D coords** — radar / silhouette hull (same format as the
+   optional pre-header hull).
+
+`mesh_edges_from_dl()` in the port implements this partial decoder and
+recovers a useful subset of edges.  Hand-authored edges remain the
+primary draw path until top-level `$40xx`/`$C016` is fully understood.
+
+Some models (e.g. `$00C39B66`, `$00C39980`) use a different top-level mix
+(`C0C0`, `414A`, …); the sub-list format still applies where offsets are
+present.
 
 ## Model cluster catalogue
 
@@ -94,10 +116,11 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 
 ## Open
 
-- [ ] Display-list opcode → edge index encoding
+- [~] Display-list → edge encoding: **sub-list byte-offset/6 decoded**;
+      top-level `$40xx`/`$C016` state commands still open
 - [ ] Object type → `$5400` slot mapping
 - [ ] Whether 2D hull pairs are used at runtime or only for tools
-- [ ] Full face/poly strip interpretation
+- [ ] Full face/poly strip interpretation (cmd word low-nibble = count?)
 - [ ] Meaning of the frequent `$C016` command word
 
 ## Port
@@ -105,7 +128,8 @@ Transform path multiplies by 64 again for Q2.14 matrix input.
 `src/mesh.hpp`:
 
 - `mesh_parse()` — generic header/vertex/DL extractor with opcode heuristic
+- `mesh_edges_from_dl()` — partial decoder (sub-list byte-offset indices)
 - `mesh_aircraft_39738/39800/398C6/39E00/39F66`
 - `mesh_from_dump_A/B`, `mesh_structure_3A4A8`
-- `draw_mesh()` — hand-authored edges (DL encoding still open)
+- `draw_mesh()` — hand-authored edges (primary); DL decoder supplements
 - Each `Mesh` retains raw `display_list` for future decoder work

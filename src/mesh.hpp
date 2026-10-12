@@ -91,6 +91,104 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
 }
 
 // ---------------------------------------------------------------------------
+// Partial display-list → edge decoder
+//
+// Two-level structure observed in aircraft models:
+//
+//   Top level:  40xx / C016 state commands, then a short offset table
+//               (words in ~$0100–$07FF) relative to the mesh header base.
+//
+//   Sub-lists at those offsets:
+//     8xxx command word
+//     zero or more vertex indices encoded as **byte offsets**
+//       (index × 6, since each vertex is 3 × int16)
+//     FFFF terminator (optional)
+//
+//   Example:  800C 0006 0024 002A  →  cmd, verts 1, 6, 7
+//
+// Top-level 40xx/C016 encoding and full coverage remain open; this
+// recovers a useful subset of edges to supplement hand-authored ones.
+// ---------------------------------------------------------------------------
+inline std::vector<std::pair<int, int>>
+mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
+                   size_t nverts, uint32_t /*mesh_base_addr*/ = 0) {
+  std::vector<std::pair<int, int>> edges;
+  if (!mesh_words || mesh_word_count < 4 || nverts == 0)
+    return edges;
+
+  // Locate DL start (same logic as mesh_parse)
+  size_t i = 0;
+  while (i + 1 < mesh_word_count) {
+    if (mesh_words[i] == 0xFFFF && mesh_words[i + 1] == 0xFFFF) {
+      i += 2;
+      break;
+    }
+    ++i;
+  }
+  if (i >= mesh_word_count) return edges;
+  ++i;  // skip N
+  while (i + 2 < mesh_word_count) {
+    if (is_mesh_opcode(mesh_words[i]) ||
+        is_mesh_opcode(mesh_words[i + 1]) ||
+        is_mesh_opcode(mesh_words[i + 2]))
+      break;
+    i += 3;
+  }
+
+  // Scan DL for offset-table entries and walk each sub-list
+  for (size_t j = i; j < mesh_word_count && j < i + 80; ++j) {
+    uint16_t off = mesh_words[j];
+    if (off < 0x100 || off >= 0x800) continue;
+    // Offset is in bytes from the mesh header start (word 0)
+    size_t sub = off / 2;  // convert byte offset → word index
+    if (sub >= mesh_word_count) continue;
+
+    size_t k = sub;
+    while (k < mesh_word_count && k < sub + 30) {
+      uint16_t w = mesh_words[k];
+      if (w == 0xFFFF) break;
+      if (w >= 0x8000 && w < 0xE000) {
+        // Command — collect following byte-offset indices
+        ++k;
+        std::vector<int> idxs;
+        while (k < mesh_word_count) {
+          uint16_t v = mesh_words[k];
+          if (v < 0x100 && (v % 6) == 0) {
+            int idx = v / 6;
+            if (idx >= 0 && static_cast<size_t>(idx) < nverts)
+              idxs.push_back(idx);
+            ++k;
+          } else {
+            break;
+          }
+        }
+        for (size_t e = 1; e < idxs.size(); ++e)
+          edges.emplace_back(idxs[e - 1], idxs[e]);
+        if (idxs.size() >= 3)
+          edges.emplace_back(idxs.back(), idxs.front());  // close poly
+      } else {
+        ++k;
+      }
+    }
+  }
+
+  // Deduplicate
+  std::vector<std::pair<int, int>> uniq;
+  for (auto [a, b] : edges) {
+    if (a == b) continue;
+    bool found = false;
+    for (auto [c, d] : uniq) {
+      if ((a == c && b == d) || (a == d && b == c)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) uniq.emplace_back(a, b);
+  }
+  return uniq;
+}
+
+// ---------------------------------------------------------------------------
 // Aircraft-like mesh from $00C39738
 // 8-fold symmetric XZ cross + vertical tip — typical of the cluster.
 // ---------------------------------------------------------------------------
