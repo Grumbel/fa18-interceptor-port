@@ -871,6 +871,29 @@ inline Mesh mesh_structure_3A980() {
   return m;
 }
 
+
+// ---------------------------------------------------------------------------
+// Instance-pool LOD mesh from $00C4335E (N=5, coarse verts).
+// Format differs from cluster 7FFF records: N then XYZ triples, no hull.
+// ---------------------------------------------------------------------------
+inline Mesh mesh_instance_4335E() {
+  Mesh m;
+  m.name = "instance_$00C4335E";
+  m.verts = {
+    V(   0,   0,    0),  // 0
+    V( 640, -896, -448),  // 1
+    V(-512, -512,  448),  // 2
+    V(-256,  512,  384),  // 3
+    V(1280,    0,    0),  // 4  (FFFF terminator absorbed)
+  };
+  // Coarse star / cross for distant LOD
+  m.edges = {
+    {0,1},{0,2},{0,3},{0,4},
+    {1,2},{2,3},{3,4},{4,1},
+  };
+  return m;
+}
+
 inline void draw_mesh(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
                       const Mat3Fixed& orient, const Vec3& pos, int pen) {
   gfx.pen = static_cast<uint16_t>(pen);

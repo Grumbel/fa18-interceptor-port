@@ -245,6 +245,7 @@ int main(int argc, char* argv[]) {
       static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
       static fa18::Mesh structA = fa18::mesh_structure_3A4A8();
       static fa18::Mesh structB = fa18::mesh_structure_3A980();
+      static fa18::Mesh instA = fa18::mesh_instance_4335E();
       // Auto-parsed from in-flight CODE dump (7FFF-header at $00C39710)
       static fa18::Mesh craftDump = fa18::mesh_from_dump_file(
           "dumps/inflight/fa18_inflight_code.bin", 0x00C39710, 256,
@@ -266,7 +267,7 @@ int main(int argc, char* argv[]) {
                     << " dl=" << m.display_list.size() << "\n";
         };
         logm(craft); logm(craft2); logm(craft3); logm(craft4);
-        logm(craftB); logm(craftE); logm(structA); logm(structB); logm(craftDump);
+        logm(craftB); logm(craftE); logm(structA); logm(structB); logm(instA); logm(craftDump);
         const char* dump = "dumps/inflight/fa18_inflight_code.bin";
         auto scenes = fa18::scene_list_from_dump(dump, fa18::kSceneListA, 16);
         std::cout << "[scene] list A entries=" << scenes.size() << "\n";
@@ -311,6 +312,7 @@ int main(int argc, char* argv[]) {
       fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
       fa18::draw_mesh(ren, gfx, structA, orient, { 6.f,  0.f, 22.f},  8);
       fa18::draw_mesh(ren, gfx, structB, orient, {-5.f, -0.5f, 24.f}, 12);
+      fa18::draw_mesh(ren, gfx, instA, orient, {8.f, 0.f, 20.f}, 10);
       if (!craftDump.edges.empty())
         fa18::draw_mesh(ren, gfx, craftDump, orient, {-6.f, 0.5f, 15.f}, 14);
       for (size_t i = 0; i < sceneMeshes.size() && i < 6; ++i) {

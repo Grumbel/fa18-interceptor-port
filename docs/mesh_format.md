@@ -79,6 +79,25 @@ consumes the low byte of `$40PP`.  It is most likely an offline /
 asset-build parameter, or a state value for a path not active in the
 in-flight snapshot.
 
+
+### Instance-pool streams (`$00C43xxx`)
+
+Distant-LOD / simple objects use a different record shape than the
+aircraft cluster:
+
+```
++0   .w  header (e.g. $0800, $0500, $04D0)
++2   .l  $FFFF FFFF separator
++6   .l  pointer to body
++A   .w  $7FFF
++C   …   pad / opcode ($4064)
+body: .w N, then N × (x,y,z) int16 triples
+```
+
+Example: `$00C4335E` has N=5 coarse verts (multiples of 64–256).  Edge
+cmds use small raw vertex indices (not always byte-offset/6).  Ported as
+`mesh_instance_4335E()`.
+
 ### Drawable map (`$00C20B94`)
 
 Table of drawable descriptors used when selecting the stream for the
