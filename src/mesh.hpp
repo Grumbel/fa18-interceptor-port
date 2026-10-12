@@ -424,6 +424,52 @@ inline Mesh mesh_from_dump_file(const std::string& dump_path,
   return mesh_from_words(words.data(), words.size(), name);
 }
 
+// Load scene/drawable list records from the inflight CODE dump.
+// live_base is kSceneListA ($00C4D6E2) or kSceneListB ($00C4DD72).
+// Stops at flag==0xFFFF or after max_records.
+inline std::vector<SceneDrawableRecord>
+scene_list_from_dump(const std::string& dump_path, uint32_t live_base,
+                     size_t max_records = 64) {
+  std::vector<SceneDrawableRecord> out;
+  if (live_base < 0x00C00000)
+    return out;
+  const uint32_t offset = live_base - 0x00C00000;
+  std::ifstream in(dump_path, std::ios::binary);
+  if (!in)
+    return out;
+  in.seekg(0, std::ios::end);
+  const auto file_size = static_cast<uint32_t>(in.tellg());
+  for (size_t n = 0; n < max_records; ++n) {
+    const uint32_t off = offset + static_cast<uint32_t>(n * kSceneStride);
+    if (off + kSceneStride > file_size)
+      break;
+    uint8_t raw[0x18];
+    in.seekg(off, std::ios::beg);
+    in.read(reinterpret_cast<char*>(raw), 0x18);
+    if (!in)
+      break;
+    auto be16 = [&](size_t i) -> uint16_t {
+      return static_cast<uint16_t>((raw[i] << 8) | raw[i + 1]);
+    };
+    auto be32 = [&](size_t i) -> uint32_t {
+      return (uint32_t(raw[i]) << 24) | (uint32_t(raw[i + 1]) << 16) |
+             (uint32_t(raw[i + 2]) << 8) | uint32_t(raw[i + 3]);
+    };
+    SceneDrawableRecord r;
+    r.flag = be16(0);
+    if (r.flag == 0xFFFF)
+      break;
+    r.dispatch_ptr = be32(2);
+    r.coord_a = static_cast<int16_t>(be16(6));
+    r.coord_b = static_cast<int16_t>(be16(0xA));
+    r.param = be16(0xC);
+    r.type_tag = be16(0xE);
+    r.lod_echo = be16(0x12);
+    out.push_back(r);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Aircraft-like mesh from $00C39738
 // 8-fold symmetric XZ cross + vertical tip — typical of the cluster.

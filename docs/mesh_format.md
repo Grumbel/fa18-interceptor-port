@@ -649,6 +649,7 @@ draw path).  The actual PP consumer remains open.
   (`$80xx` lo≥$30) + inline `$800C` edge decoder; attr_hi/4 pens
 - `mesh_from_words()` — parse + auto edges
 - `mesh_from_dump_file()` — load record from inflight CODE dump by live addr
+- `SceneDrawableRecord` / `scene_list_from_dump()` — scene list A/B loader
 - `mesh_aircraft_39738/39800/…` — hand-authored with dump-derived edges
 - `draw_mesh()` — 3D wireframe; `draw_hull_2d()` — top-down silhouette
 
