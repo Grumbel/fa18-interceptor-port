@@ -46,13 +46,37 @@ inline void dispatch_draw(GfxState& gfx, DrawMode mode) {
   // Runtime $12 dispatcher would switch on mode here.
 }
 
+// $5ee span helper (docs/func_5ee.md): normalise endpoint order, reject
+// zero-length / out-of-limit spans.  Returns false if the span should be
+// skipped.  On success, x0 <= x1 and dx is the inclusive pixel count - 1.
+inline bool span_setup(int& x0, int& x1, int limit, int& dx) {
+  if (x0 == x1)
+    return false;  // zero-length
+  if (x1 < x0)
+    std::swap(x0, x1);  // path_lo → path_hi order
+  // Original: addq #1, start; cmp limit; bgt skip
+  if (x0 + 1 > limit)
+    return false;
+  dx = x1 - x0 - 1;
+  if (dx < 0)
+    return false;
+  // Bitplane scale ×40 and BLTCON bit-mask setup omitted (SDL backend)
+  return true;
+}
+
 // Mode $1b line path (hunk 35 entry + BLTCON0 $09f0 setup).
+// Calls $5ee-style span_setup for horizontal rejection, then draws.
 inline void blitter_line_stub(SDL_Renderer* ren, GfxState& gfx,
                               int x0, int y0, int x1, int y1) {
   dispatch_draw(gfx, DrawMode::Line);
+  // Horizontal span fast-path mirrors $5ee when y0 == y1
+  if (y0 == y1) {
+    int dx = 0;
+    if (!span_setup(x0, x1, PLAYFIELD_W - 1, dx))
+      return;
+  }
   draw_line(ren, x0, y0, x1, y1);
 }
-
 
 // Mode $1b wrapper (file 0x28274): force line mode and dispatch.
 inline void mode_1b_line(GfxState& gs) {

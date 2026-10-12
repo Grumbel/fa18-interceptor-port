@@ -89,7 +89,7 @@
 8. [x] Vector-slot $be/$c6 are data context ptrs (not code); install via table $151a
 9. [ ] Field-level meaning of $be/$c6 context blocks; dump with install overlay
 10. [x] Resolve $5ee → edge/span helper at $00C2E5D6 (hunk 0x28B4C+$5EE)
-11. [ ] Full $5ee path_lo + draw-tail; port into blitter_line_stub
+11. [x] Full $5ee path_hi/lo/tail decompiled; span_setup in draw.hpp
 12. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 13. [ ] Action clear body (overlay past file end)
 14. [ ] $4202 full layout beyond clip bounds
@@ -123,7 +123,8 @@
 - fa18-port-062.1-port-c6-motion-step-cpp-dc0339a.bundle (superseded)
 - fa18-port-063.1-gate-flags-18d-17e-dc0339a.bundle (superseded)
 - fa18-port-064.1-vector-slots-be-c6-data-dc0339a.bundle (superseded)
-- fa18-port-065.1-func-5ee-edge-span-dc0339a.bundle (current tip)
+- fa18-port-065.1-func-5ee-edge-span-dc0339a.bundle (superseded)
+- fa18-port-066.1-span-setup-cpp-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
