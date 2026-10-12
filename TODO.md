@@ -130,6 +130,7 @@
 32. [x] 5-plane 320×200 buffer $00C19648; palette mirror $00C19600
 32b. [x] Plane-install $00C15494; BitMap ptr $00C19634; 3 plane banks
 32c. [x] View $00C16D70 + ViewPort $00C16D82; InitVPort/MakeVPort; plane-clear
+33. [x] Fix kAngleCircle redefinition (keep sole definition in transform.hpp)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -217,7 +218,8 @@
 - fa18-port-107.1-todo-handoff-cleanup-dc0339a.bundle (superseded)
 - fa18-port-108.1-display-buffers-5plane-dc0339a.bundle (superseded)
 - fa18-port-109.1-plane-install-banks-dc0339a.bundle (superseded)
-- fa18-port-110.1-view-viewport-plane-clear-dc0339a.bundle (current tip)
+- fa18-port-110.1-view-viewport-plane-clear-dc0339a.bundle (superseded)
+- fa18-port-111.1-fix-kAngleCircle-redef-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

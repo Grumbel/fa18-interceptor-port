@@ -55,9 +55,7 @@ struct ViewDesc {
 };
 
 // Player attitude state at live $00C44EBC (docs/transform_3d.md).
-// Angles in 7200-circle units (7200 = 360°).
-constexpr int kAngleCircle = 7200;
-
+// Angles in 7200-circle units (7200 = 360°); kAngleCircle lives in transform.hpp.
 struct PlayerAttitude {
   // Raw rates from curves (+$50/+$52/+$54) — roll/pitch/yaw
   int16_t raw_rate[3] = {};
