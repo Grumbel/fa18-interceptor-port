@@ -1154,3 +1154,48 @@ still needs a controlled one-axis dump to pin identity.**
 - [x] Rate auto-center at `$00C2C476` with global `$00C07384`
 - [x] Input variable map ($4b0, $4b2, $448A0, $44604)
 - [ ] Stick↔rate axis identity (blocked on dynamic evidence)
+
+## Joystick input (JOY0DAT)
+
+Hardware read at `$00C15C88`:
+
+```asm
+move.w  JOY0DAT, d0          ; $DFF00A
+move.w  d0, d1
+andi.w  #$FF, d0             ; X (left/right)
+asr.w   #8, d1
+andi.w  #$FF, d1             ; Y (up/down)
+move.w  d0, $00C1975E        ; prev/raw X
+move.w  d1, $00C19760        ; prev/raw Y
+```
+
+Delta path `$00C15CF0`:
+
+1. Compute delta vs previous `$00C1975E`/`$60`
+2. Clamp each axis to ±`$7F`
+3. Accumulate into **`$00C44AE`** (X) and **`$00C44B0`** (Y)
+4. Apply soft limits from `$00C06CE4`/`$E6`/`$E8`/`$EA`
+5. Store back current raw to `$00C1975E`/`$60`
+
+| Addr | Role | Mid-flight |
+|------|------|----------:|
+| `$00C1975E` | JOY raw X | `$0023` |
+| `$00C19760` | JOY raw Y | `$0025` |
+| `$00C44AE` | JOY X accumulator | `$0001` |
+| `$00C44B0` | JOY Y accumulator | `$8080` |
+
+`$00C44AE` is also folded into `$00C44856` (abs) by `$00C30710` before a call to `$00C24560`.
+
+### Relation to earlier `$4b0`/`$4b2`
+
+`$00C44818` (`$4b0`) and `$00C4481A` (`$4b2`) are a **different** input path (written by `$00C24260`, consumed as throttle-like by `$00C11198` into `$00C44804`/`$08`).  Not the JOY0DAT stick.
+
+### Stick → rate status
+
+JOY axes are now located.  Link from `$00C44AE`/`$44B0` into the three rate writers (`+$50/+$52/+$54`) still needs a cross-ref (no absolute read of these in the `$00C2Bxxx` region — may pass through intermediate structure fields or registers).
+
+### Status
+
+- [x] JOY0DAT → raw X/Y → accumulators `$00C44AE`/`$44B0`
+- [x] `$4b0` path distinguished as non-JOY (throttle-like)
+- [ ] Accumulator → rate writer link
