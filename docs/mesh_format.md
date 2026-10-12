@@ -96,8 +96,30 @@ with `$00000000` separators.  Representative entries:
 
 Dual-pointer load (`$00C1B7C4`): `move.l (a1)+,a2` (handler),
 `move.l (a1)+,a0`, `move.l (a1)+,$4476E`, `move.l (a1)+,$44772`, then
-`jsr (a2)`.  Indexing into this map from object type is not yet fully
-traced.
+`jsr (a2)`.
+
+**Selection path (partial):**
+
+1. `$00C1B6D4` / `$00C1B6DC`: `lea $00C4D6E2` or `$00C4DD72`, a0
+   (two alternate drawable-pointer tables).
+2. `move.w $00C446E2, d0` / `adda.w d0, a0` — index into the table.
+3. Loop: `move.l (a0)+, a1` — each entry is a pointer to a drawable
+   record (handler + stream ptrs).
+4. `cmpi.l #$00C1D8A0, (a1)` — accept records whose first long is the
+   walker trampoline (or continue scanning).
+5. Dual-pointer load + `jsr (a2)`.
+
+**Pre-walker setup handlers** (from the drawable map):
+
+| Addr | Role |
+|------|------|
+| `$00C1D8A4` | Walker trampoline (`bra` → `$00C1D96C`) |
+| `$00C21618` | Object-flag setup (`$00C44EBC` checks) then `jmp $00C1D8A4` |
+| `$00C21672` | Similar setup; lea `$00C3B518` stream |
+
+`$00C21618` tests object/instance flags and may write `$000F` into a
+field before falling through to the walker — a LOD/visibility gate
+rather than a geometry transform.
 
 Cluster catalogue (7FFF-separated records `$00C39710`–`$00C3A980`):
 

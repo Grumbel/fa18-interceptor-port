@@ -363,6 +363,9 @@ inline Mesh mesh_from_words(const uint16_t* words, size_t count,
 // Returns an empty mesh on I/O or range errors.  Prefer hand-authored
 // constructors when the auto edge decoder's window is too short for
 // shared sub-lists; use this to bootstrap new models from the dump.
+// max_words: hard cap.  When the first two words are 7FFF 7FFF (cluster
+// record header), the loader also stops at the next 7FFF 7FFF so the
+// window covers one full record without swallowing the neighbour.
 inline Mesh mesh_from_dump_file(const std::string& dump_path,
                                 uint32_t live_addr, size_t max_words,
                                 const char* name) {
@@ -389,6 +392,15 @@ inline Mesh mesh_from_dump_file(const std::string& dump_path,
   // Dump is big-endian Amiga words; swap on little-endian hosts.
   for (auto& w : words)
     w = static_cast<uint16_t>((w >> 8) | (w << 8));
+  // Trim to next 7FFF 7FFF record boundary when we started on one.
+  if (words.size() >= 4 && words[0] == 0x7FFF && words[1] == 0x7FFF) {
+    for (size_t i = 2; i + 1 < words.size(); ++i) {
+      if (words[i] == 0x7FFF && words[i + 1] == 0x7FFF) {
+        words.resize(i);
+        break;
+      }
+    }
+  }
   return mesh_from_words(words.data(), words.size(), name);
 }
 
