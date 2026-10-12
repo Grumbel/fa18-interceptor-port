@@ -308,9 +308,28 @@ Table at `$00C21400` maps slots → static DL starts or these instances,
 interleaved with handler `$00C08232` (geometry walker: `link a6,#-152`,
 walks `(a2)+` — same frame size as `$00C1D96C`).
 
-**`PP` / `$70`**: meaning still open (pen, scale, or render flags).
-Tags (`0100 0200` / `0100 0300`) do not correlate with PP.
-`move.w #$70` at `$00C2F4A2` is radar scroll, not DL.
+**`PP` / `$70`**: meaning still open.  Tags do not correlate with PP.
+Immediates `$70`/`$BA`/`$20` in code are range bounds / radar scroll,
+not DL parameter loads.
+
+### Geometry walker command classification (`$00C1D9AC` / `$00C08232`)
+
+```
+move.w  (a2)+, d0
+blt     high_bit          ; bit15 → $8xxx/$Axxx/$Cxxx edge cmds
+move.w  d0, d2
+andi.w  #$3FFF, d0
+asr.w   #3, d0            ; (word & $3FFF) / 8
+cmp.w   d1, d0            ; threshold filter
+bgt     skip_entry
+andi.w  #$4000, d2        ; bit14?
+beq     plain_offset      ; clear → add word to a2 (in-list jump)
+addq.w  #2, a2            ; set ($4xxx) → skip next word
+bra     loop
+```
+
+`$4xxx` is recognized (bit 14) and skips the following word — consistent
+with command+param encoding, but the low-byte consumer is not this path.
 
 ## Open
 

@@ -165,6 +165,7 @@
 65. [x] Axxx → runtime mesh-instance pool ($00C43700+); slot table at $00C21400
 66. [x] Instance stride $6A; tag $04D0; ptrs +46/+78; handler $00C08232 = geom walker
 67. [x] Instance pool static (preflight ≡ inflight); pre-built templates not runtime expand
+68. [x] Walker cmd class: bit15=edge, bit14=$4xxx skip-next, low14/8=threshold
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -234,7 +235,8 @@
 - [x] Companion transform: `asl.l d7` scale, add d2/d4 translate, `andi #$3FFF`
 - [~] Attr word: hi/4 = colour candidate (0..7), lo = style; `$100B` most common
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
-      (`move.w #$70` at `$00C2F4A2` is radar scroll, not DL)
+      (walker treats `$4xxx` as skip-next; low-byte consumer not located)
+- [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
 - [~] Attr hi/4 → colour: wired into Mesh.edge_pens + draw_mesh; not confirmed vs original
 - [x] mesh_edges_from_dl consumes/skips end-with-attrs trailing words
 - [x] Mesh.edge_pens parallel array; draw_mesh uses per-edge pen when present
@@ -331,7 +333,8 @@
 - fa18-port-141.1-edge-pens-from-attr-dc0339a.bundle (superseded)
 - fa18-port-142.1-axxx-runtime-instances-dc0339a.bundle (superseded)
 - fa18-port-143.1-instance-stride-handler-dc0339a.bundle (superseded)
-- fa18-port-144.1-instance-pool-is-static-dc0339a.bundle (current tip)
+- fa18-port-144.1-instance-pool-is-static-dc0339a.bundle (superseded)
+- fa18-port-145.1-walker-cmd-classification-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
