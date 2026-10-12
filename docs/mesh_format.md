@@ -69,6 +69,40 @@ step; edge-attr semantics beyond residual style/flags hypothesis.
 - Therefore PP is consumed during the (still unlocated) expansion /
   setup that produces the `$00C37Dxx` stream from the raw cluster DL.
 
+### Command jump table (`$00C1E840`)
+
+A second classification path (sites `$00C0838E`, `$00C1E468`, …) dispatches
+via a **longword jump table** at `$00C1E840`, indexed by
+`(cmd & $3FFF)` as a **byte offset**:
+
+```
+move.w  (a2)+, d0
+… bit15 / $FFFF checks …
+move.w  d0, d1
+andi.w  #$4000, d1        ; count 4xxx cmds
+andi.w  #$3FFF, d0
+lea     $00C1E840, a0
+move.l  (0,a0,d0.w), a0   ; handler
+jsr     (a0)
+```
+
+Selected handlers (aligned low bytes only):
+
+| cmd lo | Handler | Role (hypothesis) |
+|--------|---------|-------------------|
+| `$00`  | `$00C1E978` | end-group / rts |
+| `$0C`  | `$00C1EBB4` | begin edges → edge-list `$00C4ACC8` |
+| `$18`  | `$00C1F23C` | end + attrs |
+| `$20`  | `$00C201E2` | setup + pen from a2 |
+| `$70`  | `$00C0C264` | **nop** (`moveq #0; rts`) |
+| `$B0`  | `$00C20786` | setup variant |
+
+`$4070` therefore resolves to a **no-op stub**.  Unaligned PP values
+(`$22`, `$BA`) are not valid jump-table indices; they only appear as
+parameter words skipped by the primary walker, never as dispatch keys.
+This reinforces that PP is meaningful only to the expansion/setup stage,
+not to either of the two runtime walk/dispatch paths.
+
 ## Pointer table / LOD slots
 
 | Abs (load model) | Live | Role |
