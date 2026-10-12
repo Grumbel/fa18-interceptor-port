@@ -347,9 +347,12 @@ with command+param encoding, but the low-byte consumer is not this path.
 - [~] `$00C2FF10` is radar scope but consumes fixed overlay, not mesh hull
 - [x] Offset-table base = DL start; `80LL` = end-of-DL byte offset
 - [x] Edge cmds: `$800C` begin+verts, `$8000` end, `$8018`/`$1E`/`$24`/`$2A` end+attrs
-- [~] Attribute word: hi/4 = colour candidate, lo = style/flags; not confirmed in draw path
+- [~] Attribute word: hi/4 = colour candidate; **unconfirmed** as pen source
+- [x] Pen set from **separate draw-command stream** (`move.w (a2)+, $00C4468C`);
+      `$5ee` copies pen → `$326` then draws.  Mesh edge attrs not in this path.
 - [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
 - [x] Companion transform: scale (asl d7) + translate (d2/d4) + 14-bit mask
+- [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
 
 ## Port
 
