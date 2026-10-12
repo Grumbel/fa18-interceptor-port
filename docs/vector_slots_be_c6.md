@@ -86,3 +86,60 @@ resident, or cross-refs from draw-mode bodies that load `($be)` /
 - [x] Structure snapshots captured from in-flight dump
 - [ ] Field-level meaning of context blocks
 - [ ] Capture dump with install overlay resident for full table decode
+
+## Correction (bundle 078) — relocatable data vars, not pointer slots
+
+Live reloc of the install overlay shows:
+
+```
+file 0x125F6  move.l d6, $be.L  →  live: move.l d6, $00C44426
+file 0x12664  move.l d6, $c6.L  →  live: move.l d6, $00C4442E
+```
+
+| Symbol | Live address | In-flight value | Role |
+|--------|--------------|-----------------|------|
+| **`$be`** | **`$00C44426`** | `$00002000` (8192) | Mode-selected scale / offset |
+| **`$c6`** (data) | **`$00C4442E`** | `$00002000` (8192) | Sibling scale / offset |
+
+These match table `$151a` entries (0, ±4096, ±8192, ±12288) after the
+install’s ×4 scaling path.  They are **numeric parameters**, not
+pointers to context blocks.
+
+### Consumer (same overlay, file `0x1286E`)
+
+```asm
+move.l  $be, d0          ; → $00C44426
+asr.l   #6, d0
+move.w  d0, (a0)+        ; scaled word into buffer
+move.w  $c2, d0          ; neighbour var
+asr.l   #3, d0
+move.w  d0, (a0)+
+move.l  $c6, d0          ; → $00C4442E
+asr.l   #6, d0
+move.w  d0, (a0)+
+```
+
+Used as **fixed-point constants** (÷64) when building a parameter
+buffer, not dereferenced as addresses.
+
+### What about `$00C01550` / `$00C03D46`?
+
+Those structures exist and were previously mis-attributed as `$be`/`$c6`
+targets via an incorrect chip-RAM slot reading.  They remain
+unidentified data blocks; they are **not** written by the `$be`/`$c6`
+install path.
+
+### Relation to `$c6` motion function
+
+Unchanged: static `jsr $c6.L` in the **primary** hunk still relocates
+to the motion function at `$00C25206` (offset `$C6` in hunk
+`0x1EA04`).  Same static absolute number, different hunk reloc →
+different live address.  Classic Amiga overlay gotcha.
+
+### Status
+
+- [x] Install writes relocated data vars `$00C44426` / `$00C4442E`
+- [x] Values are table-selected integers (`$2000` this session)
+- [x] Consumer uses them as ÷64 scaled constants
+- [x] Distinguished from `$c6` motion function (different hunk reloc)
+- [x] Prior “context block pointer” interpretation retracted

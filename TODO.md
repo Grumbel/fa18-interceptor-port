@@ -86,8 +86,8 @@
 5. [x] Path-B/C and accept path fully traced; success returns d0=1
 6. [x] Port $c6 motion step into C++ object loop (flight.hpp)
 7. [x] Gate flags $18d/$17e: suppress object processing when nonzero
-8. [x] Vector-slot $be/$c6 are data context ptrs (not code); install via table $151a
-9. [ ] Field-level meaning of $be/$c6 context blocks
+8. [x] $be/$c6 install vars are numeric scales at $00C44426/$2E (not ptrs)
+9. [ ] Identify structures previously misread as $be/$c6 targets
 10. [x] Resolve $5ee → edge/span helper at $00C2E5D6
 11. [x] Full $5ee path_hi/lo/tail; span_setup in draw.hpp
 12. [x] Live $4202 mapped to $00C4B2CA
@@ -145,7 +145,8 @@
 - fa18-port-074.1-walker-cpp-port-dc0339a.bundle (superseded)
 - fa18-port-075.1-walker-demo-main-dc0339a.bundle (superseded)
 - fa18-port-076.1-4202-xyz-perspective-dc0339a.bundle (superseded)
-- fa18-port-077.1-euler-yaw-pitch-roll-dc0339a.bundle (current tip)
+- fa18-port-077.1-euler-yaw-pitch-roll-dc0339a.bundle (superseded)
+- fa18-port-078.1-be-c6-numeric-scales-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
