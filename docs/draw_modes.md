@@ -711,3 +711,82 @@ refinement target.
 - [x] Degenerate-delta and first-edge seed paths identified
 - [ ] Exact X/Y register assignment from edge-list format
 - [ ] C++ port of full edge-list walker
+
+## Edge list format at `$00C4ACC8`
+
+```
++0  .w  header (always 0 in observed writers)
++2  .w  vertex count N  (DDA requires N ≥ 3)
++4  N × 3 words:  (c0, c1, c2) per vertex
+```
+
+### Writers
+
+| Site | Behaviour |
+|------|-----------|
+| `$00C1F642` | `move.l #$00000004, (a0)+` — hard-coded 4-vertex seed |
+| `$00C084BE` | count from `(a2)+`, then copy triplets from a source stream via a3=`$00C470C8` scratch |
+| `$00C08516` / `$00C08562` | same family as `$00C084BE` |
+
+### In-flight sample
+
+```
+header=0  count=4
+  ( 3798,  -865, -2314)
+  ( 3822,  -860, -2326)
+  ( 2422,  -305, -4049)
+  ( 4014, -1600,  -130)
+  …
+```
+
+Values are signed 16-bit, magnitude thousands — **view-space or
+pre-perspective coordinates**, not screen pixels.  The DDA body then
+applies `asl.l #3` (×8) before slope math.
+
+### Component assignment
+
+Parent loads `movem.w (a0)+, d0-d2` → **d0=c0, d1=c1, d2=c2**.
+The slope helper treats (d0,d3) and (d1,d4) as the two interpolated
+axes with d2/d5 as the third (depth or parameter).  Given the
+perspective pipeline uses X/Y with Z for divide, the natural mapping
+is:
+
+| Reg after load | Likely | Evidence |
+|----------------|--------|----------|
+| d0 | X | first in stream; orthogonal twin adjusts it with d3 |
+| d1 | Y | second; primary helper’s dominant axis in one octant |
+| d2 | Z / param | third; used as denominator side in slope setup |
+
+Exact screen-axis binding still depends on which octant path the sign
+tests select; for the C++ port, treat the stream as **XYZ view-space
+triplets** and run ×8 → DDA → optional perspective.
+
+### Port sketch
+
+```cpp
+struct EdgeVertex { int16_t x, y, z; };
+
+struct EdgeList {
+  int16_t header = 0;
+  std::vector<EdgeVertex> verts;  // size N ≥ 3
+};
+
+// Filled by geometry path; consumed by dda_edge_list() at $00C231F8
+void dda_edge_list(const EdgeList& el) {
+  if (el.verts.size() < 3) return;
+  for (size_t i = 1; i < el.verts.size(); ++i) {
+    auto a = el.verts[i-1], b = el.verts[i];
+    // ×8 scale
+    a.x*=8; a.y*=8; a.z*=8; b.x*=8; b.y*=8; b.z*=8;
+    // dda_axis_step along dominant axis …
+  }
+}
+```
+
+### Status
+
+- [x] Edge list header + count + 3-word vertices
+- [x] Writers at `$00C084BE` family and `$00C1F642`
+- [x] In-flight sample recovered
+- [x] d0/d1/d2 ← c0/c1/c2; XYZ hypothesis
+- [ ] Confirm XYZ vs screen-space with a known primitive (runway/cube)

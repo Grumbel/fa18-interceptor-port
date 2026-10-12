@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <vector>
 #include "display.hpp"
 #include "gfx_state.hpp"
 
@@ -84,6 +85,36 @@ inline int16_t dda_axis_step(int16_t cur, int16_t delta_num,
                              int16_t delta_den, int16_t scale) {
   return static_cast<int16_t>(
       cur + dda_rounded_div(int32_t(delta_num) * scale, delta_den));
+}
+
+// Edge list at live $00C4ACC8 (docs/draw_modes.md):
+//   header.w, count.w, count × (x,y,z).w  — view-space, ×8 in DDA body.
+struct EdgeVertex {
+  int16_t x = 0, y = 0, z = 0;
+};
+
+struct EdgeList {
+  int16_t header = 0;
+  std::vector<EdgeVertex> verts;
+};
+
+// Shared DDA body $00C231F8: walk consecutive vertex pairs.
+// Full octant/sign logic still simplified — draws polyline for now.
+inline void dda_edge_list(SDL_Renderer* ren, const EdgeList& el,
+                          Uint8 r = 180, Uint8 g = 220, Uint8 b = 255) {
+  if (el.verts.size() < 2) return;
+  for (size_t i = 1; i < el.verts.size(); ++i) {
+    int x0 = el.verts[i - 1].x / 8;  // undo ×8 for SDL preview
+    int y0 = el.verts[i - 1].y / 8;
+    int x1 = el.verts[i].x / 8;
+    int y1 = el.verts[i].y / 8;
+    // Centre view-space origin roughly on playfield mid
+    x0 = x0 / 16 + PLAYFIELD_W / 2;
+    y0 = y0 / 16 + PLAYFIELD_H / 2;
+    x1 = x1 / 16 + PLAYFIELD_W / 2;
+    y1 = y1 / 16 + PLAYFIELD_H / 2;
+    draw_line(ren, x0, y0, x1, y1, r, g, b);
+  }
 }
 
 // Mode $1b line path (hunk 35 entry + BLTCON0 $09f0 setup).
