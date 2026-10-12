@@ -10,18 +10,15 @@ $00C21000 dispatch table ──► 3D cluster DL  ($00C39700+)   ← raw form wi
     │                        LOD table       (count+ptrs+hull+mesh)
     │                        Instance pool   ($00C43700+, stride $6A)
     │                        Walker trampoline ($00C1D8A0 → $00C1D96C)
+    │                        Drawable map     ($00C20B94+)  ← alternate DLs
     │
     ▼
 LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
     │
     ├─► Hull → companion ($00C1CD38 transform, stride 256)
     │
-    └─► DL expansion / setup  ◄── PP consumed here (unlocated)
-            │
-            ▼
-        Expanded edge stream ($00C37Dxx in snapshot)
-            mostly 800C/8012/804E groups, few residual 4xxx
-            dual ptrs: $00C4476E (edge a2) + $00C44772 (secondary)
+    └─► Select drawable stream (raw cluster OR alternate $00C37xxx)
+            dual ptrs: $00C4476E (a2) + $00C44772 (secondary)
             │
             ▼
         Display list walk ($00C1D96C / $00C08232)
@@ -31,10 +28,11 @@ LOD/proximity ($00C4C4C8 slot table, d5 countdown, threshold 320)
             │
             ▼
         Pen from a2 stream → $5ee line draw
+            (or jump-table path → edge-list $00C4ACC8 → DDA)
 ```
 
-**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` consumer in the expansion
-step; edge-attr semantics beyond residual style/flags hypothesis.
+**Known gaps:** PP (`$22`/`$20`/`$BA`) / `$70` consumer (no runtime path
+found); edge-attr semantics beyond residual style/flags hypothesis.
 
 ### PP / $70 observations (still open)
 
@@ -54,20 +52,32 @@ step; edge-attr semantics beyond residual style/flags hypothesis.
 - No `cmpi.w #$4070` (or `$40xx`) appears in the live CODE image; classification
   is bit-driven.
 
-**Runtime evidence for an expansion step:**
+**Alternate drawable streams (revised):**
 
-- Dispatch table points at the **raw** cluster DLs (`4070 40PP …` at
-  `$00C3977A` etc.).
-- At the in-flight snapshot, the walker’s a2 (`$00C4476E`) points at
-  `$00C37DD8` — an **expanded** edge stream (flat `800C` groups with
-  vertex indices and `804E`/`FD02` end markers), *not* the raw DL.
-- A secondary pointer `$00C44772` = `$00C37DC8` (16 bytes earlier) still
-  contains residual `4xxx` words, suggesting a partially-expanded or
-  dual-stream layout.
-- Multiple call sites (`$00C1B7C8`, `$00C1B978`, `$00C1BAF2`) load the
-  dual pointers from a table then `jsr (a0)` into the walker.
-- Therefore PP is consumed during the (still unlocated) expansion /
-  setup that produces the `$00C37Dxx` stream from the raw cluster DL.
+Earlier hypothesis of a runtime “expansion step” that consumes PP is
+**not supported** by further analysis:
+
+- No code stores `#$800C` (or `#$FD02`) as an immediate — the
+  `$00C37Dxx` content is not assembled opcode-by-opcode at runtime.
+- The signature `800C 0042 0048 804E FD02` appears only once in the
+  image (no template source elsewhere).
+- A **drawable map** at `$00C20B94` pairs walker handlers
+  (`$00C1D8A4`, `$00C21618`, …) with stream pointers into `$00C37Cxx` /
+  `$00C37Dxx` / `$00C372xx` / `$00C335xx` / cluster addresses.
+- These alternate streams are **pre-built DLs** (still contain residual
+  `4xxx` setup words, then flat `800C` edge groups). Vertex indices in
+  the edge groups are **byte offsets** (÷6 → vertex index into the
+  transformed pool at `$00C470C8`), not raw word indices.
+- Dual-pointer load sites (`$00C1B7C8`, `$00C1B978`, `$00C1BAF2`) pull
+  handler + stream ptrs from a per-drawable record, then `jsr (a2)`.
+- Preflight vs inflight differ in this region because different
+  overlays / active drawables are resident — not because of a live
+  expander.
+
+**PP remains open:** neither the primary walker nor the jump-table path
+consumes the low byte of `$40PP`.  It is most likely an offline /
+asset-build parameter, or a state value for a path not active in the
+in-flight snapshot.
 
 ### Command jump table (`$00C1E840`)
 
@@ -100,8 +110,8 @@ Selected handlers (aligned low bytes only):
 `$4070` therefore resolves to a **no-op stub**.  Unaligned PP values
 (`$22`, `$BA`) are not valid jump-table indices; they only appear as
 parameter words skipped by the primary walker, never as dispatch keys.
-This reinforces that PP is meaningful only to the expansion/setup stage,
-not to either of the two runtime walk/dispatch paths.
+This reinforces that PP is not meaningful to either of the two runtime
+walk/dispatch paths (consumer still unlocated).
 
 **Two dispatch paths summarised:**
 
