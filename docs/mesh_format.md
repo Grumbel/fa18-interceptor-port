@@ -304,9 +304,19 @@ Edge section matches static DL encoding; +78 holds coordinate pairs
 inflight dumps — pre-built compact mesh templates (LOD / 2-D stand-ins),
 not per-frame expansions of the 3-D cluster meshes.
 
-Table at `$00C21400` maps slots → static DL starts or these instances,
-interleaved with handler `$00C08232` (geometry walker: `link a6,#-152`,
-walks `(a2)+` — same frame size as `$00C1D96C`).
+### Object → drawable dispatch table (`$00C21000`–`$00C21500`)
+
+Groups of 3 identical pointers (+ optional NULL/handler) map object
+types to drawables:
+
+| Target class | Examples | Role |
+|--------------|----------|------|
+| 3-D cluster DL | `$00C3977A`, `$00C39842`, `$00C398FC`, `$00C39E42`, `$00C39BA8`, `$00C3A4DE` | Full mesh DLs |
+| Instance pool | `$00C43772`…`$00C43FCC` (**19 entries**) | Compact templates |
+| Walker/handler | `$00C1D8A0`, `$00C1D96C`, `$00C08232` | Geometry walkers |
+
+Most instances use ptr offsets +46/+78; a few use +64/+104.
+Handler `$00C08232` = `link a6,#-152` walker (same frame as `$00C1D96C`).
 
 **`PP` / `$70`**: meaning still open.  Tags do not correlate with PP.
 Immediates `$70`/`$BA`/`$20` in code are range bounds / radar scroll,
@@ -337,7 +347,8 @@ with command+param encoding, but the low-byte consumer is not this path.
       `PP`/`$70` still open
 - [x] `Axxx` → instance pool (stride `$6A`, tag `$04D0`, ptrs at +46/+78)
 - [x] Handler `$00C08232` = geometry walker (same `link a6,#-152` as `$00C1D96C`)
-- [x] Instance pool is **static** (preflight ≡ inflight); not runtime-expanded
+- [x] Instance pool is **static** (preflight ≡ inflight); 19 entries
+- [x] Object→drawable table `$00C21000`–`$00C21500` (3D DLs / instances / walkers)
 - [x] `$5400` slot index = LOD/proximity counter `d5` (0..9), not object type
 - [x] Proximity threshold = 320 after asr#8 (`$00C446DE`); countdown d5=8..1
 - [x] Companion records: stride 256, first 2 bytes match object+0x30/+0x32 ±1
