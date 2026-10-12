@@ -138,6 +138,7 @@
 38. [x] Live copper list Chip $0000A400; BPLCON0 $0200→$4200 (4 planes)→$0200
 39. [x] LOFCSR cprlist $00C01338 → start=$A400; InitVPort/MakeVPort/LoadView chain
 40. [x] Alt register-script $540E8 = 32-colour variant; C++ palette + audio queue API
+41. [x] Wire Amiga palette into SDL Flight clear/lines (draw_line_pal / clear_pal)
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -235,7 +236,8 @@
 - fa18-port-114.1-sample-block-queue-dc0339a.bundle (superseded)
 - fa18-port-115.1-live-copper-bplcon0-dc0339a.bundle (superseded)
 - fa18-port-116.1-lofsr-cprlist-display-init-dc0339a.bundle (superseded)
-- fa18-port-117.1-palette-cpp-audio-queue-dc0339a.bundle (current tip)
+- fa18-port-117.1-palette-cpp-audio-queue-dc0339a.bundle (superseded)
+- fa18-port-118.1-sdl-palette-flight-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

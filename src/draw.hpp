@@ -31,6 +31,25 @@ inline void draw_line(SDL_Renderer* ren, int x0, int y0, int x1, int y1,
   SDL_RenderDrawLine(ren, x0 * SCALE, y0 * SCALE, x1 * SCALE, y1 * SCALE);
 }
 
+// Draw / clear with recovered Amiga palette index (COLOR00–15).
+inline void draw_line_pal(SDL_Renderer* ren, int x0, int y0, int x1, int y1,
+                          int color_idx) {
+  uint32_t rgb = amiga_to_rgb24(kPaletteAmiga[color_idx & 15]);
+  draw_line(ren, x0, y0, x1, y1,
+            static_cast<Uint8>((rgb >> 16) & 0xFF),
+            static_cast<Uint8>((rgb >> 8) & 0xFF),
+            static_cast<Uint8>(rgb & 0xFF));
+}
+
+inline void clear_pal(SDL_Renderer* ren, int color_idx) {
+  uint32_t rgb = amiga_to_rgb24(kPaletteAmiga[color_idx & 15]);
+  SDL_SetRenderDrawColor(ren,
+                         static_cast<Uint8>((rgb >> 16) & 0xFF),
+                         static_cast<Uint8>((rgb >> 8) & 0xFF),
+                         static_cast<Uint8>(rgb & 0xFF), 255);
+  SDL_RenderClear(ren);
+}
+
 inline void draw_fill(SDL_Renderer* ren, int x, int y, int w, int h,
                       Uint8 r = 80, Uint8 g = 80, Uint8 b = 120) {
   int x1 = x + w - 1, y1 = y + h - 1;

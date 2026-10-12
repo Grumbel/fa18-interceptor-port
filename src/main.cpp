@@ -129,9 +129,15 @@ int main(int argc, char* argv[]) {
     }
     if (game.state() == GameState::Exit) running = false;
 
-    SDL_Color c = colour_for(game.state());
-    SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
-    SDL_RenderClear(ren);
+    if (game.state() == GameState::Flight ||
+        game.state() == GameState::Qualification) {
+      // Clear with recovered flight palette COLOR00 (black)
+      fa18::clear_pal(ren, 0);
+    } else {
+      SDL_Color c = colour_for(game.state());
+      SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
+      SDL_RenderClear(ren);
+    }
 
     if (game.state() == GameState::Title && tex_frnt) {
       int w = frnt5.width * 2, h = frnt5.height * 2;
@@ -139,11 +145,11 @@ int main(int argc, char* argv[]) {
       SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
     } else if (game.state() == GameState::Flight ||
                game.state() == GameState::Qualification) {
-      // Crosshair (HUD)
-      fa18::draw_line(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
-                      fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 0xff, 0xff, 0x00);
-      fa18::draw_line(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
-                      fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 0xff, 0xff, 0x00);
+      // Crosshair (HUD) — COLOR13 mid-gray
+      fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
+                          fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 13);
+      fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
+                          fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 13);
 
       // Object loop ($72dc) → transform ($77d8) → view translate → project → line
       // Euler angles from $4b0/$4b2-style axes (0–255 → ±90° in 7200-circle)
@@ -151,23 +157,23 @@ int main(int argc, char* argv[]) {
       int yaw_e = fa18::InputState::axis_to_euler(input.axis_1);
       int roll  = 0;
 
-      // Horizon
-      fa18::draw_line(ren, 0, fa18::PLAYFIELD_CY,
-                      fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 0x40, 0x60, 0x80);
+      // Horizon — COLOR05
+      fa18::draw_line_pal(ren, 0, fa18::PLAYFIELD_CY,
+                          fa18::PLAYFIELD_W-1, fa18::PLAYFIELD_CY, 5);
 
-      // Ground grid (static depth cue)
+      // Ground grid (static depth cue) — COLOR11 dark green
       for (int gz = 2; gz <= 12; gz += 2) {
         float z = float(gz);
         int sx0, sy0, sx1, sy1;
         fa18::project({-6.f, -1.5f, z}, sx0, sy0);
         fa18::project({ 6.f, -1.5f, z}, sx1, sy1);
-        fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
+        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, 11);
       }
       for (int gx = -6; gx <= 6; gx += 2) {
         int sx0, sy0, sx1, sy1;
         fa18::project({float(gx), -1.5f, 2.f}, sx0, sy0);
         fa18::project({float(gx), -1.5f, 12.f}, sx1, sy1);
-        fa18::draw_line(ren, sx0, sy0, sx1, sy1, 0x30, 0x50, 0x40);
+        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, 11);
       }
 
       // Object pool ($642 / $b8f) – persistent so $c6 motion integrates
