@@ -37,6 +37,9 @@ constexpr float kMeshScale = 64.f;
 struct Mesh {
   std::vector<Vec3> verts;
   std::vector<std::pair<int, int>> edges;
+  // Parallel to edges when known: Amiga palette index from attr hi/4.
+  // Empty → draw_mesh uses the caller-supplied default pen.
+  std::vector<uint8_t> edge_pens;
   std::vector<std::pair<int16_t, int16_t>> hull;  // 2-D silhouette
   std::vector<uint16_t> display_list;  // raw opcodes
   uint16_t tag0 = 0;
@@ -141,8 +144,10 @@ inline Mesh mesh_parse(const uint16_t* words, size_t count, const char* name) {
 // ---------------------------------------------------------------------------
 inline std::vector<std::pair<int, int>>
 mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
-                   size_t nverts, uint32_t /*mesh_base_addr*/ = 0) {
+                   size_t nverts, uint32_t /*mesh_base_addr*/ = 0,
+                   std::vector<uint8_t>* out_pens = nullptr) {
   std::vector<std::pair<int, int>> edges;
+  if (out_pens) out_pens->clear();
   if (!mesh_words || mesh_word_count < 4 || nverts == 0)
     return edges;
 
@@ -203,21 +208,27 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
             break;
           }
         }
-        // End-with-attrs: skip non-opcode trailing words (colour/style)
-        // Attr hi/4 is a colour-index candidate (0..7); lo = style flags.
+        // End-with-attrs: attr hi/4 = colour candidate (0..7); lo = style.
+        uint8_t pen = 0xFF;  // unknown
         if (lo != 0x00 && lo != 0x0C && k < mesh_word_count) {
           uint16_t attr = mesh_words[k];
           if (attr < 0x8000 && attr != 0xFFFF) {
-            ++k;  // consume attr; (attr >> 8) / 4 → colour candidate
-            // optional second word (e.g. $0100 / $0096)
+            uint8_t hi = static_cast<uint8_t>(attr >> 8);
+            if ((hi & 3) == 0 && hi / 4 <= 15)
+              pen = static_cast<uint8_t>(hi / 4);
+            ++k;
             if (k < mesh_word_count && mesh_words[k] < 0x100)
               ++k;
           }
         }
+        auto emit = [&](int a, int b) {
+          edges.emplace_back(a, b);
+          if (out_pens) out_pens->push_back(pen);
+        };
         for (size_t e = 1; e < idxs.size(); ++e)
-          edges.emplace_back(idxs[e - 1], idxs[e]);
+          emit(idxs[e - 1], idxs[e]);
         if (idxs.size() >= 3)
-          edges.emplace_back(idxs.back(), idxs.front());
+          emit(idxs.back(), idxs.front());
       } else {
         ++k;
       }
@@ -236,9 +247,11 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
     walk_sublist(dl_start);
   }
 
-  // Deduplicate
+  // Deduplicate (keep first pen for each undirected edge)
   std::vector<std::pair<int, int>> uniq;
-  for (auto [a, b] : edges) {
+  std::vector<uint8_t> uniq_pens;
+  for (size_t i = 0; i < edges.size(); ++i) {
+    int a = edges[i].first, b = edges[i].second;
     if (a == b) continue;
     bool found = false;
     for (auto [c, d] : uniq) {
@@ -247,8 +260,15 @@ mesh_edges_from_dl(const uint16_t* mesh_words, size_t mesh_word_count,
         break;
       }
     }
-    if (!found) uniq.emplace_back(a, b);
+    if (!found) {
+      uniq.emplace_back(a, b);
+      if (out_pens && i < out_pens->size())
+        uniq_pens.push_back((*out_pens)[i]);
+      else if (out_pens)
+        uniq_pens.push_back(0xFF);
+    }
   }
+  if (out_pens) *out_pens = std::move(uniq_pens);
   return uniq;
 }
 
@@ -522,12 +542,18 @@ inline void draw_mesh(SDL_Renderer* ren, GfxState& gfx, const Mesh& mesh,
       ok[i] = true;
     }
   }
-  for (auto [a, b] : mesh.edges) {
+  const bool per_edge = mesh.edge_pens.size() == mesh.edges.size();
+  for (size_t ei = 0; ei < mesh.edges.size(); ++ei) {
+    int a = mesh.edges[ei].first, b = mesh.edges[ei].second;
     if (a < 0 || b < 0 ||
         a >= static_cast<int>(ok.size()) ||
         b >= static_cast<int>(ok.size()))
       continue;
     if (!ok[a] || !ok[b]) continue;
+    if (per_edge && mesh.edge_pens[ei] != 0xFF)
+      gfx.pen = mesh.edge_pens[ei];
+    else
+      gfx.pen = static_cast<uint16_t>(pen);
     blitter_line_stub(ren, gfx, sx[a], sy[a], sx[b], sy[b]);
   }
 }
