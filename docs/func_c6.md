@@ -170,16 +170,92 @@ result as an offset from `a3` (object/vertex base set up by `$c6`).
 Almost certainly a **geometry / projected-vertex helper** shared by
 the object worker.
 
-## Path-B and path-C entry points
+## Path-B and path-C
 
-Flag byte at −1(a6) (high byte of word loaded from `[$396]` list
-entry) selects the path:
+Flag byte at −1(a6) (from `[$396]` list entry) selects the path:
 
-| Test | Branch | Target | Summary |
-|------|--------|--------|---------|
-| btst #6 | bne | +$222 (path-B) | index bounds check (`cmpi #20`), load `$376`, scaled obj fields, arithmetic vs `$b54` values |
-| btst #4 | beq | +$16C (path-C) | uses tables at `$5400`/`$542C` (live `$00C4C4C8`/`$00C4C4F4`) — pointer arrays + word data |
-| fall-through | | +$A4… | `cmpi.w #6, -10(a6)`; compares against object+0x2E/30/32 |
+| Test | Branch | Target |
+|------|--------|--------|
+| btst #6 | bne | +$222 path-B |
+| btst #4 | beq | +$16C path-C |
+| fall-through | | +$A4… object field compares |
+
+### Path-B (+$222) — proximity culling then detail
+
+```asm
+; --- loop / re-entry guard ---
+move.w  -6(a6), d0          ; mode from $22e
+cmp.w   -8(a6), d0          ; vs counter
+ble.s   do_cull
+cmpi.w  #10, d5
+bge.s   do_cull
+cmpi.w  #6, -10(a6)
+blt.w   list_walk           ; back to +$84
+
+do_cull:
+move.l  8(a6), d0           ; object index
+cmpi.w  #20, d0             ; max objects
+blt.w   accept              ; → +$314
+
+; 3-axis proximity test against view descriptor ($b54 fields)
+move.w  $376.L, d7          ; threshold (live $00C446DE)
+movem.w (a3), d0/d1/d6      ; object position words
+asr.w   #8, d0
+sub.w   -26(a6), d0         ; vs $b54+12
+bge.s   *+2
+neg.w   d0
+cmp.w   d7, d0
+bge.w   accept              ; too far on axis 0
+
+asr.w   #8, d1
+sub.l   -22(a6), d1         ; vs $b54+16
+bge.s   *+2
+neg.l   d1
+cmp.l   d7, d1
+bge.w   accept
+
+asr.w   #8, d6
+sub.w   -20(a6), d6         ; vs $b54+14
+bge.s   *+2
+neg.w   d6
+cmp.w   d7, d6
+bge.w   accept
+
+; within threshold — finer object work
+moveq   #8, d5
+movem.w 24(a3), d0-d2       ; object+24..28
+subi.l  #$20, d1
+moveq   #6, d4
+btst    #4, 38(a3)          ; object+$26 flag bit 4
+bne.s   ...
+btst    #5, 38(a3)          ; object+$26 flag bit 5
+beq.s   ...
+; … continues with shifts / further tests …
+```
+
+Path-B is a **distance cull**: high-byte of object position vs the
+view/camera descriptor at `$b54`, using threshold `$376`.  Objects
+outside the threshold skip straight to accept/exit; nearby ones get
+finer processing (flag bits on object+`$26`, fields at +24).
+
+### Path-C (+$16C) — table-driven
+
+```asm
+cmpi.w  #10, d5
+bge.w   path_B              ; fall up to +$222
+addq.w  #1, d5
+lea     $5400.L, a0         ; pointer table (live $00C4C4C8)
+lea     $542C.L, a1         ; word-record table (live $00C4C4F4)
+move.w  d5, d0
+asl.w   #2, d0              ; ×4
+move.l  (0,a0,d0.w), d1     ; fetch pointer
+blt.w   path_B
+move.l  d1, a0
+lsl.w   #6, d0
+adda.w  d0, a1              ; index into word-record table
+; … load object+0x30/+0x32, abs-diff vs table data,
+;    reject if delta > 1, else continue with scaled position …
+```
 
 Path-C tables (live):
 
@@ -218,6 +294,8 @@ $00C4C4F4:  word records (0x0010, 0x4143, 0x0500, 0x2F00, …)
 - [x] Exit points catalogued
 - [x] `jsr $59e` resolved — geometry/vertex helper at `$00C25FAE`
 - [x] Path-B / path-C entry points and tables identified
-- [ ] Full instruction-level decompilation of path-B / path-C bodies
+- [x] Path-B decompiled: 3-axis proximity cull vs `$b54` / threshold `$376`
+- [x] Path-C decompiled: table-driven via `$5400`/`$542C`, falls into path-B
+- [ ] Remaining path-B tail after flag-bit tests on object+`$26`
 - [ ] Exact meaning of gate flags `$18d`/`$17e`
 - [ ] Port skeleton of `$c6` into C++ object loop

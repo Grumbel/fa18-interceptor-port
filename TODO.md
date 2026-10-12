@@ -82,15 +82,15 @@
 1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
 2. [x] Resolve static jsr $c6 → object worker at $00C25206 (docs/func_c6.md)
 3. [x] $c6 body outline: decision tree, $b54 view desc, $396 list, exit points
-4. [x] Resolve jsr $59e → geometry/vertex helper at $00C25FAE (hunk file 0x1F3D0+$59E)
-5. [x] Path-B / path-C entry points and tables ($5400/$542C) identified
-6. [ ] Full instruction-level decompilation of $c6 path-B / path-C bodies
+4. [x] Resolve jsr $59e → geometry/vertex helper at $00C25FAE
+5. [x] Path-B proximity cull + Path-C table dispatch decompiled
+6. [ ] Remaining path-B tail (object+$26 flag bits onward)
 7. [ ] Disassemble vector-slot $c6 target ($00C03D46) and $be ($00C01550)
 8. [ ] Resolve $5ee (still overlay-only; not in primary fixups)
-9. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b) – $12 is RTS stub mid-frame
+9. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
 10. [ ] Action clear body (overlay past file end)
 11. [ ] $4202 full layout beyond clip bounds +6/+8/+$a and (a1)+ stream
-12. [ ] Disassemble live primary transform ($77d8) from inflight dump (entry confirmed)
+12. [ ] Disassemble live primary transform ($77d8) from inflight dump
 13. [ ] Map remaining resident overlay hunks
 14. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
@@ -111,7 +111,8 @@
 - fa18-port-056.1-live-symbols-inflight-dumps-dc0339a.bundle (superseded)
 - fa18-port-057.1-func-c6-object-worker-dc0339a.bundle (superseded)
 - fa18-port-058.1-func-c6-body-outline-dc0339a.bundle (superseded)
-- fa18-port-059.1-func-c6-helper-59e-paths-dc0339a.bundle (current tip)
+- fa18-port-059.1-func-c6-helper-59e-paths-dc0339a.bundle (superseded)
+- fa18-port-060.1-func-c6-path-bc-decompile-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
