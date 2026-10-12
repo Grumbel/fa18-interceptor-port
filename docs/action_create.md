@@ -256,3 +256,72 @@ The FreeMem + null-slot sequence above is the visible portion of clear.
 - [x] Clear-on-recreate path; FreeMem + null slot
 - [ ] Full clear body (+$3EE) – missing from on-disk image
 - [ ] Runtime targets of `$1a6` / `$22c` create vectors
+
+## Runtime vectors `$1a6` / `$22c` resolved
+
+Same relocatable-offset pattern as `$c6` / `$5ee`: the absolute value
+is the offset within the action CODE hunk (file `0x4BF14`, live
+`$00C4F010`).
+
+| Vector | Offset | Live address | Role |
+|--------|--------|--------------|------|
+| **`$1a6`** | `$1A6` | **`$00C4F1B6`** | Create wrapper (single slot) |
+| **`$22c`** | `$22C` | **`$00C4F23C`** | Create/clear wrapper (gated) |
+
+Chip-RAM at `$1A6` / `$22C` is zero — not low-memory vectors.
+
+### `$1a6` — single-slot create wrapper
+
+```asm
+$00C4F1B6  link    a6, #-8
+           move.l  8(a6), -(sp)       ; index
+           bsr.w   create_body         ; → +$00 ($00C4F010)
+           addq.l  #4, sp
+           move.l  d0, -8(a6)
+           beq.s   fail                ; AllocMem failed
+           move.l  12(a6), -(sp)       ; secondary arg
+           move.l  -8(a6), -(sp)
+           bsr.w   secondary_init      ; → +$84 region / +$B8
+           …
+```
+
+Call site pattern (primary file `0x9960`):
+
+```
+moveq  #35, d0
+move.l d0, -(sp)
+pea    $280.L
+jsr    $1a6.L              ; → $00C4F1B6
+```
+
+### `$22c` — gated create/clear
+
+```asm
+$00C4F23C  link    a6, #-4
+           movem.l a2, -(sp)
+           tst.l   $E.L                ; live $00C0631E
+           bne.s   proceed
+           moveq   #0, d0              ; gated off
+           movem.l (sp)+, a2
+           unlk    a6
+           rts
+proceed:
+           move.l  12(a6), d0          ; index
+           asl.l   #2, d0
+           ; table base 0 …
+           tst.l   (a0)
+           beq.s   empty
+           move.l  12(a6), -(sp)
+           bsr.w   clear_body
+           …
+```
+
+Call site pattern (primary file `0x9976`):
+
+```
+moveq  #36, d0
+move.l d0, -(sp)
+moveq  #35, d0
+move.l d0, -(sp)
+jsr    $22c.L              ; → $00C4F23C
+```

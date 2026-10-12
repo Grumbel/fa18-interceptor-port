@@ -96,8 +96,9 @@
 15. [ ] Disassemble draw-mode bodies in resident hunks ($01–$0a, $0f–$26)
 16. [x] Action create body at $00C4F010 decoded; clear partial (FreeMem+null)
 17. [ ] Full action clear body (+$3EE past on-disk image end)
-18. [x] Live transform matrix/out addresses confirmed
-19. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+18. [x] Runtime vectors $1a6/$22c → action hunk offsets $1A6/$22C
+19. [x] Live transform matrix/out addresses confirmed
+20. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -129,7 +130,8 @@
 - fa18-port-066.1-span-setup-cpp-dc0339a.bundle (superseded)
 - fa18-port-067.1-live-4202-mapping-dc0339a.bundle (superseded)
 - fa18-port-068.1-overlay-residency-map-dc0339a.bundle (superseded)
-- fa18-port-069.1-action-create-live-dc0339a.bundle (current tip)
+- fa18-port-069.1-action-create-live-dc0339a.bundle (superseded)
+- fa18-port-070.1-vectors-1a6-22c-action-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
