@@ -985,3 +985,63 @@ $4b0/$4b2 (8-bit stick)
 - [x] Clamp constants mapped to 7200-circle
 - [ ] Exact source of d5/d6 rates from stick (same function, earlier)
 - [ ] Label +`$68`/+`$6A` as roll/pitch/yaw from axis identity
+
+## Attitude rate fields and filter (`$00C2C1F0`)
+
+### Structure layout (player/camera at `$00C44EBC`)
+
+| Off | Role | In-flight |
+|-----|------|----------:|
+| +`$50` | raw rate contribution 0 (from stick curve) | 0 |
+| +`$52` | raw rate contribution 1 | 0 |
+| +`$54` | raw rate contribution 2 | 296 |
+| +`$56` | **filtered rate 0** (integrated into +`$68`) | 4 |
+| +`$58` | **filtered rate 1** (integrated into +`$6A`) | 0 |
+| +`$5A` | **filtered rate 2** | 0 |
+| +`$68` | attitude angle 0 | 2240 |
+| +`$6A` | attitude angle 1 | 88 |
+
+### Stick → raw rate
+
+`$00C2B6CA`: `move.w d3, $50(a1)` then clears +`$52`/+`$54` for a
+single-axis path.  d3 comes from a curve table indexed by stick/flag
+state (`$00C2B68E` family).  Other sites write +`$52`/+`$54` for the
+remaining axes.
+
+### Low-pass rate filter (`$00C2C1F0`)
+
+```asm
+; d0,d2,d4 = new deltas (from +$50/+$52/+$54 or prior rates)
+; d3       = scale 5/10/15 (from +$26 or flag path), clamped ≤15
+ext.l   d0 / d2 / d4
+divs.w  d3, d0 / d2 / d4          ; scale new deltas
+
+movem.w $56(a1), d5-d7            ; load old filtered rates
+add.w   d0, d5  /  asr #1, d5     ; blend
+add.w   d5, d0  /  asr #1, d0
+move.w  d0, $56(a1)               ; store smoothed rate 0
+; same pattern for d2→+$58, d4→+$5A
+```
+
+Result: exponential-ish smoothing of stick-driven rates before
+integration.
+
+### Chain (complete middle section)
+
+```
+stick $4b0/$4b2
+  → curve table → raw rates +$50/+$52/+$54
+  → scale by d3 (5..15) + low-pass filter
+  → filtered rates +$56/+$58/+$5A
+  → integrator: +$68 -= rate0,  +$6A -= rate1
+  → orchestrator D4 ← +$68
+  → matrix builders
+```
+
+### Status
+
+- [x] +`$50`/`$52`/`$54` = raw rates; +`$56`/`$58`/`$5A` = filtered
+- [x] Low-pass filter at `$00C2C1F0` decoded
+- [x] Stick-curve writer at `$00C2B6CA` for rate0
+- [ ] Full three-axis stick identity (which stick axis → which rate)
+- [ ] Label angles +`$68`/+`$6A` as R/P/Y
