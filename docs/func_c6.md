@@ -140,8 +140,53 @@ byte at −1(a6).
 | +$7FC | rts | near end of hunk |
 
 Internal calls: two `bsr.w` (+$440, +$446) to helpers inside the same
-hunk; two `jsr $59e.L` (+$67A, +$6C8) — another relocatable absolute
-(shared helper in a different hunk).
+hunk; two `jsr $59e.L` (+$67A, +$6C8) — see helper section below.
+
+## Helper `$59e` — list/vertex walker
+
+| Item | Value |
+|------|-------|
+| Hunk payload | file `0x1F3D0` (size 2832) |
+| Offset in hunk | **`$59E`** |
+| File offset | `0x1F96E` |
+| Live address | **`$00C25FAE`** (hunk base `$00C25A10`) |
+
+```asm
+$00C25FAE  move.l  (a4)+, d2
+           blt.s   *-8              ; skip negative entries
+           move.l  d2, d5
+           movem.l 2(a5), d2-d4
+           andi.w  #$0FFF, d4
+           addi.w  #$00A4, d2       ; +164
+           addi.w  #$00A4, d3
+           addi.w  #$00A4, d4
+           lea     (a3,d2.w), a5    ; index into base a3
+           ; … further word loads, arithmetic on the triple …
+```
+
+Role: walks a list via `a4`, loads a 3-component record, masks to 12
+bits, adds screen-space bias `$A4` (164 ≈ 160+margin), then uses the
+result as an offset from `a3` (object/vertex base set up by `$c6`).
+Almost certainly a **geometry / projected-vertex helper** shared by
+the object worker.
+
+## Path-B and path-C entry points
+
+Flag byte at −1(a6) (high byte of word loaded from `[$396]` list
+entry) selects the path:
+
+| Test | Branch | Target | Summary |
+|------|--------|--------|---------|
+| btst #6 | bne | +$222 (path-B) | index bounds check (`cmpi #20`), load `$376`, scaled obj fields, arithmetic vs `$b54` values |
+| btst #4 | beq | +$16C (path-C) | uses tables at `$5400`/`$542C` (live `$00C4C4C8`/`$00C4C4F4`) — pointer arrays + word data |
+| fall-through | | +$A4… | `cmpi.w #6, -10(a6)`; compares against object+0x2E/30/32 |
+
+Path-C tables (live):
+
+```
+$00C4C4C8:  pointer array (e.g. $00C3A58C ×3, $00C39B52 ×5, …)
+$00C4C4F4:  word records (0x0010, 0x4143, 0x0500, 0x2F00, …)
+```
 
 ## On-disk symbols used (before reloc)
 
@@ -150,14 +195,17 @@ hunk; two `jsr $59e.L` (+$67A, +$6C8) — another relocatable absolute
 | `$018D` | `$00C444F5` | gate flag A |
 | `$017E` | `$00C444E6` | gate flag B |
 | `$022E` | `$00C44596` | mode / type byte → local |
+| `$0376` | `$00C446DE` | word used in path-B |
 | `$0388` | `$00C446F0` | cleared counter / mode word |
 | `$0396` | `$00C446FE` | pointer to 24-byte-stride list |
-| `$059E` | (reloc) | helper called via jsr |
+| `$059E` | `$00C25FAE` | geometry/vertex helper (own CODE hunk) |
 | `$0642` | `$00C449AA` | object pool |
 | `$0B42` | `$00C44EAA` | scratch word trio |
 | `$0B48` | `$00C44EB0` | scaled obj+12..16 output |
 | `$0B50` | `$00C44EB8` | related scratch |
 | `$0B54` | `$00C44EBC` | view/camera descriptor (before world pos) |
+| `$5400` | `$00C4C4C8` | path-C pointer table |
+| `$542C` | `$00C4C4F4` | path-C word-record table |
 
 ## Status
 
@@ -168,7 +216,8 @@ hunk; two `jsr $59e.L` (+$67A, +$6C8) — another relocatable absolute
 - [x] Body outline through first decision tree (~0x100)
 - [x] `$b54` / `$396` data structures located
 - [x] Exit points catalogued
-- [ ] Full path decompilation of long-path-B / path-C
+- [x] `jsr $59e` resolved — geometry/vertex helper at `$00C25FAE`
+- [x] Path-B / path-C entry points and tables identified
+- [ ] Full instruction-level decompilation of path-B / path-C bodies
 - [ ] Exact meaning of gate flags `$18d`/`$17e`
-- [ ] Resolve jsr `$59e` helper
 - [ ] Port skeleton of `$c6` into C++ object loop
