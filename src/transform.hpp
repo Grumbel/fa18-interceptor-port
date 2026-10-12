@@ -148,8 +148,9 @@ inline Mat3Fixed builder_A(int16_t s0, int16_t c0,
 
 // Full pipeline matching the orchestrator at 00C2C4B2:
 //   three angles in 7200-circle units → builder B matrix (primary).
-// Angle identity (yaw/pitch/roll) still unlabelled — passed as a0,a1,a2.
-inline Mat3Fixed mat_from_angles_q14(int a0, int a1, int a2) {
+// angle0=roll (Rx), angle1=pitch (Ry), angle2=yaw (Rz) — docs/transform_3d.md
+inline Mat3Fixed mat_from_angles_q14(int roll, int pitch, int yaw) {
+  int a0 = roll, a1 = pitch, a2 = yaw;
   // asr #3 scaling is applied in the original before table lookup;
   // if callers already pass table-native units, skip it.
   int16_t s0, c0, s1, c1, s2, c2;

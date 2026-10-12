@@ -15,8 +15,8 @@ struct InputState {
 
   // Attitude / control axes (file 0x404c decoder inputs)
   // Original range 0–255; centre ≈ 128.
-  uint8_t  axis_0 = 128;         // $4b0  (pitch-like in port)
-  uint8_t  axis_1 = 128;         // $4b2  (roll-like / secondary)
+  uint8_t  axis_0 = 128;         // $4b0  → pitch (angle1 / Ry)
+  uint8_t  axis_1 = 128;         // $4b2  → yaw   (angle2 / Rz)
   uint16_t status_29c = 0;       // $29c  sticky flags
 
   // Convert 0–255 axis to 7200-circle Euler units (port convention).

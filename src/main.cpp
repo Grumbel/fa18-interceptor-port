@@ -15,7 +15,7 @@
 int main(int argc, char* argv[]) {
   std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
             << "Keys: SPACE/ENTER = next, BACKSPACE = prev, ESC = quit\n"
-            << "Flight: arrows = pitch/yaw, A/D = roll\n\n";
+            << "Flight: up/down = pitch, left/right = yaw (angle1/angle2)\n\n";
 
   std::string exe_path = "assets/F-18_Interceptor_amiga";
   if (argc > 1) exe_path = argv[1];
@@ -192,9 +192,9 @@ int main(int argc, char* argv[]) {
         pool_init = true;
       }
       // Player tracks input; companions keep integrated positions
-      list.objects[0].orient_fp = fa18::mat_from_angles_q14(yaw_e, pitch, roll);
-      list.objects[1].orient_fp = fa18::mat_from_angles_q14(-yaw_e * 3 / 2, 0, 0);
-      list.objects[2].orient_fp = fa18::mat_from_angles_q14(yaw_e * 2 / 3, pitch / 2, 0);
+      list.objects[0].orient_fp = fa18::mat_from_angles_q14(roll, pitch, yaw_e);  // roll, pitch, yaw
+      list.objects[1].orient_fp = fa18::mat_from_angles_q14(0, 0, -yaw_e * 3 / 2);  // yaw only
+      list.objects[2].orient_fp = fa18::mat_from_angles_q14(0, pitch / 2, yaw_e * 2 / 3);  // pitch+yaw
 
       list.draw_all_fp(ren, gfx);  // $c6 motion → transform → draw
 

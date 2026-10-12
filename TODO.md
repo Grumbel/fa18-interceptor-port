@@ -79,7 +79,7 @@
 
 
 ## Next Steps
-1. [ ] Label Euler angle0/1/2 (yaw/pitch/roll); $4b0 is separate 8-bit input
+1. [x] Label Euler angle0/1/2: roll (Rx) / pitch (Ry) / yaw (Rz)
 2. [x] Resolve static jsr $c6 → object motion/physics step at $00C25206
 3. [x] $c6 body: proximity cull, velocity damp ×15/16, position integrate
 4. [x] Resolve jsr $59e → geometry/vertex helper at $00C25FAE
@@ -105,6 +105,7 @@
 24. [ ] Capture dump during active draw to see if $12 is repatched
 25. [x] Live transform matrix/out addresses confirmed
 26. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+27. [ ] Live-trace which input axis feeds which Euler angle
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -143,7 +144,8 @@
 - fa18-port-073.1-walker-perspective-5ee-dc0339a.bundle (superseded)
 - fa18-port-074.1-walker-cpp-port-dc0339a.bundle (superseded)
 - fa18-port-075.1-walker-demo-main-dc0339a.bundle (superseded)
-- fa18-port-076.1-4202-xyz-perspective-dc0339a.bundle (current tip)
+- fa18-port-076.1-4202-xyz-perspective-dc0339a.bundle (superseded)
+- fa18-port-077.1-euler-yaw-pitch-roll-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

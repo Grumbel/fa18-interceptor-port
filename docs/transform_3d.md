@@ -805,3 +805,50 @@ jsr $5ee
 
 Likely a simpler “already-projected or pre-clipped edge list” drawer
 that still uses `$4202` as its source descriptor.
+
+## Euler angle labels (yaw / pitch / roll)
+
+Isolating each builder-B angle with the other two at identity:
+
+| Angle | Single-axis matrix | Body axis | Aircraft name |
+|-------|--------------------|-----------|---------------|
+| **angle0** (D4→sincos→s0,c0) | R_x | X forward | **roll** |
+| **angle1** (D5→sincos→s1,c1) | R_y | Y right | **pitch** |
+| **angle2** (D6→sincos→s2,c2) | R_z | Z down | **yaw** |
+
+Evidence (float-equivalent of builder B):
+
+- only angle0: `M = [[1,0,0],[0,c,s],[0,−s,c]]` → R_x
+- only angle1: `M = [[c,0,s],[0,1,0],[−s,0,c]]` → R_y
+- only angle2: `M = [[c,−s,0],[s,c,0],[0,0,1]]` → R_z
+
+Composition is the full builder-B product (not a naive R_z R_y R_x
+multiply order), but the **axis identity of each angle is fixed**.
+
+### Input axes vs Euler angles
+
+| Low-mem | 8-bit range | Feeds | Label |
+|---------|-------------|-------|-------|
+| `$4b0` | 0–255 | angle path (via 0x404c) | primary stick — **pitch-like in port**, needs live confirm |
+| `$4b2` | 0–255 | secondary | secondary stick |
+
+`$4b0` / `$4b2` are **not** the 7200-circle Euler angles.  They are
+8-bit input axes that a conversion path (including possible `asr #3`
+scaling into the 57600-unit circle) turns into angle0/1/2.
+
+### Port mapping (corrected)
+
+```cpp
+// mat_from_angles_q14(angle0, angle1, angle2)
+//   angle0 = roll   (R_x)
+//   angle1 = pitch  (R_y)
+//   angle2 = yaw    (R_z)
+```
+
+### Status
+
+- [x] angle0 = roll (R_x)
+- [x] angle1 = pitch (R_y)
+- [x] angle2 = yaw (R_z)
+- [ ] Live-trace which of `$4b0`/`$4b2`/other feeds which angle
+- [ ] Confirm stick polarity in-game
