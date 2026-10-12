@@ -90,12 +90,13 @@
 9. [ ] Field-level meaning of $be/$c6 context blocks; dump with install overlay
 10. [x] Resolve $5ee → edge/span helper at $00C2E5D6 (hunk 0x28B4C+$5EE)
 11. [x] Full $5ee path_hi/lo/tail decompiled; span_setup in draw.hpp
-12. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
-13. [ ] Action clear body (overlay past file end)
-14. [ ] $4202 full layout beyond clip bounds
-15. [ ] Disassemble live primary transform ($77d8) — entry + matrix abs confirmed
-16. [ ] Map remaining resident overlay hunks
-17. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
+12. [x] Live $4202 mapped to $00C4B2CA; in-flight clip bounds snapshot
+13. [ ] $4202 full field semantics (why bounds exceed playfield)
+14. [ ] Bodies of remaining draw modes (beyond $01/$16/$1b)
+15. [ ] Action clear body (overlay past file end)
+16. [x] Live transform matrix/out addresses confirmed ($00C44F4E / $00C4478A)
+17. [ ] Map remaining resident overlay hunks
+18. [x] Builder A + B sequential; exact element formulas; dual sincos; C++ port already done
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -124,7 +125,8 @@
 - fa18-port-063.1-gate-flags-18d-17e-dc0339a.bundle (superseded)
 - fa18-port-064.1-vector-slots-be-c6-data-dc0339a.bundle (superseded)
 - fa18-port-065.1-func-5ee-edge-span-dc0339a.bundle (superseded)
-- fa18-port-066.1-span-setup-cpp-dc0339a.bundle (current tip)
+- fa18-port-066.1-span-setup-cpp-dc0339a.bundle (superseded)
+- fa18-port-067.1-live-4202-mapping-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

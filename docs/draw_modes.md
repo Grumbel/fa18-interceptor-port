@@ -254,3 +254,31 @@ Clip fields read by the walker:
 Full structure of `$4202` (whether it also holds edge endpoints, counts,
 or flags beyond the three bounds) is not yet exhausted; the alternate
 path at 0x28374 treats it as a stream of vertex words via `(a1)+`.
+
+## Live `$4202` mapping (in-flight dump)
+
+| Item | Value |
+|------|-------|
+| Static | `$4202` |
+| Live | **`$00C4B2CA`** |
+| Confirmed via | `lea $4202, a1` at file `0x28452` / `0x28374` / `0x25B76` in dump |
+
+### In-flight field snapshot
+
+| Off | Value | Notes |
+|-----|-------|-------|
+| +0 | `$0EEE` (3822) | |
+| +2 | `$FCA4` (−860) | |
+| +4 | `$F6EA` (−2326) | |
+| +6 | `$0976` (2422) | clip bound A (walker D2) |
+| +8 | `$FECF` (−305) | clip bound B |
+| +$a | `$FF6F` (−145) | clip bound C (walker D6) |
+| +$c… | 0 | rest clear in this snapshot |
+
+Bounds are signed and not simple viewport min/max (2422 exceeds
+playfield width).  They may be fixed-point or object-local clip
+values written by the active draw mode before the walker runs.
+
+The alternate path at `0x28374` streams `(a1)+` from this same base —
+so +0..+4 may be vertex data or a count/header when that path is
+active.  In this dump only +0..+$a are nonzero.
