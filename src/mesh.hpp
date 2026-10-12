@@ -711,8 +711,17 @@ inline Mesh mesh_from_lod_dump(const std::string& dump_path,
   o += 2;
   if (N == 0 || N > 64)
     return empty;
-  for (uint16_t i = 0; i < N && o + 6 <= file_size; ++i) {
-    int16_t x = static_cast<int16_t>(read_be16(o));
+  // Take at least N verts; continue past N until an opcode word
+  // (same under-declared-N behaviour as cluster records).
+  const uint16_t max_verts = std::min<uint16_t>(N + 16, 64);
+  for (uint16_t i = 0; i < max_verts && o + 6 <= file_size; ++i) {
+    uint16_t wx = read_be16(o);
+    // Stop at command words (4xxx–Dxxx, excluding small negatives E000+)
+    if (i >= N && wx >= 0x4000 && wx < 0xE000)
+      break;
+    if (wx == 0x7FFF || wx == 0xFFFF)
+      break;
+    int16_t x = static_cast<int16_t>(wx);
     int16_t y = static_cast<int16_t>(read_be16(o + 2));
     int16_t z = static_cast<int16_t>(read_be16(o + 4));
     m.verts.push_back(V(x, y, z));
@@ -1090,21 +1099,23 @@ inline Mesh mesh_from_dump_A() {
 inline Mesh mesh_structure_3A4A8() {
   Mesh m;
   m.name = "structure_$00C3A4A8";
+  // From LOD table $3A47E (N=4 declared, 7 usable verts before opcodes)
   m.verts = {
-    V(  512,    0, -1024),
-    V(  -96, 1472,  -672),
-    V(-1280,    0,  -768),
-    V( -816, 1664,  -288),
-    V(-2048,    0,  1408),
-    V(  336, 3632,  1296),
-    V( 1408,    0,   512),
-    V(  576, 2816,  -336),
+    V(-1024,  -96,  1472),  // 0
+    V( -672, -1280,    0),  // 1
+    V( -768,  -816, 1664),  // 2
+    V( -288, -2048,    0),  // 3
+    V( 1408,   336, 3632),  // 4
+    V( 1296,  1408,    0),  // 5
+    V(  512,   576, 2816),  // 6
   };
-  // Dump-derived: sequential 800C pairs form a 4-cycle on verts 0..3
+  // Dump C00C groups + ring
   m.edges = {
     {0, 1}, {1, 2}, {2, 3}, {3, 0},
+    {0, 4}, {1, 5}, {2, 6},
+    {4, 5}, {5, 6}, {6, 4},
   };
-  m.edge_pens = {4, 4, 4, 4};
+  m.edge_pens = {4, 4, 4, 4, 2, 2, 2, 7, 7, 7};
   m.display_list = {
     0x4380, 0x4070, 0xC00A, 0xE070, 0xC00A, 0x0012, 0x001E, 0x0038,
     0x8052, 0xC00C, 0x0000, 0x0006, 0x8018, 0x100B,

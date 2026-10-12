@@ -204,6 +204,7 @@
 104. [x] normalize_mesh_scale for auto-loaded meshes (target extent 40)
 105. [x] Instance $04D0 dual-pointer header variant in mesh_from_instance_dump
 106. [x] mesh_from_lod_dump; LOD tables $3A47E/$3A576 in demo
+107. [x] LOD verts continue past N; structure_3A4A8 retopologized from dump
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -316,6 +317,7 @@
 - [x] normalize_mesh_scale on auto-load (extent 40)
 - [x] Instance $04D0 dual-ptr header (ptr2 → N+XYZ body)
 - [x] mesh_from_lod_dump; LOD $3A47E/$3A576 drawn in demo
+- [x] LOD under-declared N; structure_3A4A8 verts/edges from dump
 
 ## Bundle History
 - fa18-port-052.1-overlay-map-drawmode-enum-dc0339a.bundle (superseded)
@@ -448,7 +450,8 @@
 - fa18-port-180.1-edge-builder-index-sanitize-dc0339a.bundle (superseded)
 - fa18-port-181.1-normalize-mesh-scale-autoload-dc0339a.bundle (superseded)
 - fa18-port-182.1-instance-04d0-dual-ptr-header-dc0339a.bundle (superseded)
-- fa18-port-183.1-mesh-from-lod-dump-3a47e-dc0339a.bundle (current tip)
+- fa18-port-183.1-mesh-from-lod-dump-3a47e-dc0339a.bundle (superseded)
+- fa18-port-184.1-lod-underdeclared-n-structure-fix-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
