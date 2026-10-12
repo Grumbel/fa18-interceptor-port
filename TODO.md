@@ -134,6 +134,7 @@
 34. [x] Decode register-script at $00C055F8 (6-byte reg/val/pad; palette + DIW + BPLPT)
 35. [x] struct_A $00C01550 is static image data; pointer-table only copies it
 36. [x] ColorMap $00C05EB8 confirmed; ColorTable $00C069F8 == script palette
+37. [x] Sample-block queue: templates $00C06460 → holders $00C07488 → INTREQ via $00C16684
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -161,7 +162,7 @@
 - [x] Register-script *format* decoded; emitter/walker still open
 - [x] View/ViewPort + plane-clear + ColorMap done; copper list still open
 - [x] Bootstrap of `$00C01550` pointer table: static data (resolved)
-- [ ] Sample-block queue sites from game events
+- [x] Sample-block queue sites from game events (resolved)
 - [ ] Why BPLCON0=$0200 while 5 planes installed; BPL5PT missing from script
 - [ ] LOFCSN / true copper list confirmation
 
@@ -226,7 +227,8 @@
 - fa18-port-110.1-view-viewport-plane-clear-dc0339a.bundle (superseded)
 - fa18-port-111.1-fix-kAngleCircle-redef-dc0339a.bundle (superseded)
 - fa18-port-112.1-reg-script-decode-dc0339a.bundle (superseded)
-- fa18-port-113.1-structA-static-colormap-dc0339a.bundle (current tip)
+- fa18-port-113.1-structA-static-colormap-dc0339a.bundle (superseded)
+- fa18-port-114.1-sample-block-queue-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>

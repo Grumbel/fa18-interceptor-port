@@ -160,7 +160,73 @@ Paula frequency ≈ `3579545 / (period × 2)` Hz (NTSC).  Period 124 ≈ 14.4 kH
 - [x] Play + silence paths decoded
 - [x] Period clamp `$7C`, volume 6-bit with global limit
 - [ ] Sample data encoding (8-bit signed PCM expected)
-- [ ] Who builds/queues sample blocks
+- [x] Who builds/queues sample blocks (see below)
+
+## Sample-block queue from game events
+
+### Template table `$00C06460`
+
+Longword table of **pre-built sample-block templates** (static data).
+Known entries (in-flight):
+
+| Slot addr | Sample LC (Chip) | Len | Per | Vol | Countdown |
+|-----------|------------------|-----|-----|-----|-----------|
+| `$00C05450` | `$000578A8` | `$3392` | `$0202` | `$3F` | sticky |
+| `$00C05490` | `$000578A8` | `$15CC`† | `$0204` | `$3F` | sticky |
+| `$00C01450` | `$0000B3E8` | `$35FA` | `$0202` | `$16` | sticky |
+| `$00C01490` | `$0000B758` | `$328A`† | `$0204` | `$16` | sticky |
+| `$00C014D0` | `$0000A3E0` | `$0020` | `$012C` | `$04` | sticky |
+| `$00C05110` | `$0000F1E8` | `$0D86` | `$0166` | `$3F` | 1 |
+| `$00C01510` | `$0000E9E8` | `$0800` | `$0166` | `$3F` | sticky |
+| `$00C054F0` | `$0005AC40` | `$4E20` | `$0188` | `$08` | sticky |
+| `$00C05568` | `$0005B3D2` | `$2AF8`† | `$01A6` | `$08` | sticky |
+
+† high bit set in length word (possibly loop/flag).
+
+### Channel sample-list holders `$00C07488`–`$00C07494`
+
+| Holder | Channel | In-flight head |
+|--------|---------|----------------|
+| `$00C07488` | AUD0 | `$00C01450` |
+| `$00C0748C` | AUD1 | `$00C01490` |
+| `$00C07490` | AUD2 | null |
+| `$00C07494` | AUD3 | null |
+
+### Queue routine `$00C16684`
+
+```asm
+; 8(a6)  = template index (into $00C06460)
+; 12(a6) = channel index
+; 16(a6) = optional volume override
+link    a6, #0
+move.l  8(a6), d0
+asl.l   #2, d0
+lea     $00C06460, a0
+adda.l  d0, a0
+tst.l   (a0)
+beq     done
+; optional: clear previous via $00C16660
+move.l  (a0), a1              ; template sample-block*
+; optional volume write into block +$0C
+lea     $00C07488, a0
+; index by channel → holder
+move.l  template, (holder)    ; queue it
+move.l  channel, -(sp)
+jsr     $00C4EBD8             ; INTREQ → interrupt server plays it
+```
+
+### Clear / stop `$00C16660`
+
+```asm
+; 8(a6) = channel index
+asl.l   #2 → index $00C07488
+clr.l   (holder)              ; unlink sample block
+jsr     $00C4EBD8             ; fire int (play path sees null → silence)
+```
+
+Game events (actions, weapons, UI) call `$00C16684` with a template
+index + channel; the interrupt server at `$00C4ED80` / play routine
+`$00C4ED00` then programs Paula from the queued block.
 
 ## Interrupt-driven dispatch
 
