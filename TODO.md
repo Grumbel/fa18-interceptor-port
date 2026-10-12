@@ -122,6 +122,7 @@
 30. [x] GfxBase $00C16E22; IntuitionBase $00C16D60; reg script $00C055F8
 31. [x] Action dispatch via $00C4EBD8 + side tables; +0 not callable
 31b. [x] $00C07478=AUD0-3 descriptors; $00C07488=action side table
+31c. [x] Audio control API $00C4EBxx; DMACON/INTREQ bits; C++ AudioSystem
 
 ## Analysis Notes
 - Object pool: live base $00C449AA, stride 64, max 20, count $00C44EF7
@@ -181,7 +182,8 @@
 - fa18-port-094.1-rate-autocenter-input-map-dc0339a.bundle (superseded)
 - fa18-port-095.1-gfxbase-reg-script-dc0339a.bundle (superseded)
 - fa18-port-096.1-action-dispatch-side-tables-dc0339a.bundle (superseded)
-- fa18-port-097.1-audio-channel-table-dc0339a.bundle (current tip)
+- fa18-port-097.1-audio-channel-table-dc0339a.bundle (superseded)
+- fa18-port-098.1-audio-control-api-dc0339a.bundle (current tip)
 
 ## Author
 Ingo Ruhnke <grumbel@gmail.com>
