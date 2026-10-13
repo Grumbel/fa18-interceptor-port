@@ -1,6 +1,6 @@
 // Ghidra headless script: create functions at the given entry points,
 // apply names, and write decompiled pseudo-C for each to one file.
-// Args: <functions.txt> <names.txt> <out.c>
+// Args: <functions.txt> <names.txt> <out.c> [seeds.txt: extra code addresses]
 import ghidra.app.script.GhidraScript;
 import ghidra.app.decompiler.*;
 import ghidra.program.model.address.*;
@@ -34,7 +34,21 @@ public class DecompileAll extends GhidraScript {
       if (f == null) { disassemble(a); f = createFunction(a, null); }
       if (f != null) f.setName(n.getValue(), SourceType.USER_DEFINED);
     }
+    if (args.length > 3) {
+      // Known instruction addresses (coverage): make sure code after calls
+      // that Ghidra guessed to be no-return is disassembled too.
+      for (String l : Files.readAllLines(Paths.get(args[3]))) {
+        l = l.trim();
+        if (l.isEmpty() || l.startsWith("#")) continue;
+        Address a = sp.getAddress(Long.parseLong(l.split("\\s+")[0], 16));
+        if (getInstructionAt(a) == null) disassemble(a);
+      }
+    }
     analyzeChanges(currentProgram);
+    // Ghidra sometimes infers "no return" (e.g. for the WaitBlit stub) and
+    // then drops the rest of the caller; none of the game's routines are
+    // no-return except exit().
+    for (Function f : currentProgram.getFunctionManager().getFunctions(true)) f.setNoReturn(false);
     DecompInterface di = new DecompInterface();
     di.openProgram(currentProgram);
     try (PrintWriter out = new PrintWriter(new FileWriter(args[2]))) {

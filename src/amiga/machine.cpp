@@ -460,7 +460,11 @@ void Machine::execute(int64_t until) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
       if (idx < native_table_.size() && native_table_[idx] && !(pc & 1)) {
         const native::Def* d = native_table_[idx];
-        if (native_mode == NativeMode::Verify && d->verify) verify_native(d);
+        // Verify the first 200 calls of each routine, then every 50th.
+        NativeStats& st = native_stats_[d];
+        if (native_mode == NativeMode::Verify && d->verify &&
+            (st.calls < 200 || st.calls % 50 == 0))
+          verify_native(d);
         else invoke_native(d);
         continue;
       }

@@ -131,7 +131,13 @@ public:
   // CPU speed multiplier: the CPU gets cpu_speed × 455 cycles per scanline.
   void set_cpu_speed(double s) { line_cycles_ = int64_t(CYCLES_PER_LINE * (s < 0.1 ? 0.1 : s)); }
   // Emulated time since boot in microseconds (scanline based).
-  uint64_t micros() const { return uint64_t(double(total_lines_) * 1e6 / (LINES_PER_FRAME * 60.0)); }
+  uint64_t micros() const {
+    uint64_t lines = vbl_time ? total_lines_ / LINES_PER_FRAME * LINES_PER_FRAME : total_lines_;
+    return uint64_t(double(lines) * 1e6 / (LINES_PER_FRAME * 60.0));
+  }
+  // Quantise OS time to whole frames (deterministic comparisons between
+  // code variants that take different numbers of CPU cycles).
+  bool vbl_time = false;
 
   // Apply the codewheel protection bypass after loading.
   bool bypass_protection = true;

@@ -1,0 +1,32 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 6
+2600 key 1
+3000 key F6
+3200 key 6
+3400 key return
+3800 key 1
+4200 key 0c
+4205 key 0c
+4210 key 0c
+4215 key 0c
+4220 key 0c
+4225 key 0c
+4230 key 0c
+4235 key 0c
+4240 key 0c
+4245 key 0c
+4250 key 0c
+4255 key 0c
+4260 key 0c
+4265 key 0c
+4270 key 0c
+4275 key 0c
+4500 joy d
+5000 joy
+5200 key 44
+5300 joy f
+5400 joy
+7000 quit

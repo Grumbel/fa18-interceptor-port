@@ -1,0 +1,11 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 5
+2600 key 1
+3000 key 1
+3400 key return
+3800 key space
+4200 key 1
+7000 quit

@@ -359,7 +359,7 @@ int main(int argc, char** argv) {
   bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
-  bool interpret = false;
+  bool interpret = false, vbl_time = false;
   std::string native_mode = "on";
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -375,6 +375,7 @@ int main(int argc, char** argv) {
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
     else if (a == "--interpret") interpret = true;
+    else if (a == "--vbl-time") vbl_time = true;
     else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
@@ -408,6 +409,7 @@ int main(int argc, char** argv) {
   machine.bypass_protection = !protection;
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
+  machine.vbl_time = vbl_time;
   machine.native_mode = native_mode == "off"      ? amiga::Machine::NativeMode::Off
                         : native_mode == "verify" ? amiga::Machine::NativeMode::Verify
                                                   : amiga::Machine::NativeMode::On;
