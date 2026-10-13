@@ -54,8 +54,25 @@ NATIVE_STATE(0x2274c, st_2274c);
 NATIVE_STATE(0x2277e, st_2277e);
 NATIVE_STATE(0x227a4, st_227a4);
 NATIVE_STATE(0x227d0, st_227d0);
-constexpr uint32_t st_22d60_addr = 0x22d60;
-constexpr uint32_t st_228e2_addr = 0x228e2;
+NATIVE_STATE(0x22886, st_22886);
+NATIVE_STATE(0x228b2, st_228b2);
+NATIVE_STATE(0x228e2, st_228e2);
+NATIVE_STATE(0x22a32, st_22a32);
+NATIVE_STATE(0x22a56, st_22a56);
+NATIVE_STATE(0x22a58, st_22a58);
+NATIVE_STATE(0x22a9a, st_22a9a);
+NATIVE_STATE(0x22ac8, st_22ac8);
+NATIVE_STATE(0x22b04, st_22b04);
+NATIVE_STATE(0x22b7c, st_22b7c);
+NATIVE_STATE(0x22c0a, st_22c0a);
+NATIVE_STATE(0x22c3e, st_22c3e);
+NATIVE_STATE(0x22c76, st_22c76);
+NATIVE_STATE(0x22d06, st_22d06);
+NATIVE_STATE(0x22d60, st_22d60);
+NATIVE_STATE(0x22430, st_22430);
+NATIVE_STATE(0x2245a, st_2245a);
+NATIVE_STATE(0x224ba, st_224ba);
+constexpr uint32_t st_22dc0_addr = 0x22dc0;
 constexpr uint32_t st_2359e_addr = 0x2359e, st_2353c_addr = 0x2353c, st_2362a_addr = 0x2362a;
 
 // $2346a: clear the message queue / text state.
@@ -843,7 +860,284 @@ static void st_227d0() {
   q += 2;
   wr16(q, 0);
   sub_396e2();
-  game_state = 0x22886;  // next micro-state; leave as address until translated
+  game_state = st_22886_addr;
+}
+
+
+// $22886: after briefing message, advance message-queue index and continue.
+static void st_22886() {
+  if (int8_t(b_5aad8) - 1 == 0) {
+    message_queue = 4;
+    b_5aabb = 0;
+    b_5aad8 = 3;
+    game_state = st_228b2_addr;
+  }
+}
+
+// $228b2: if codewheel path active, clear messages and enter $228e2.
+static void st_228b2() {
+  if (b_5aba4 != 0) {
+    if (b_5aa7d != 0) b_5aba5 = 2;
+    clear_messages();
+    state_timer = 3;
+    game_state = st_228e2_addr;
+  }
+}
+
+// $228e2: codewheel / mission-complete gate; dispatch by scenario.
+static void st_228e2() {
+  if (state_timer >= 0) return;
+  int16_t sel = int16_t(int8_t(scenario));
+  if (b_5aba4 > 0) {
+    game_state = st_22a58_addr;
+    if (sel >= 3 && sel <= 8) {
+      message_queue = 93;
+      sub_39510(uint32_t(sel), 1, 3);
+      // config_buf+0x36 = missions-completed counter
+      wr16(config_buf + 0x36, uint16_t(rd16(config_buf + 0x36) + 1));
+      log_dirty = 1;
+    } else if (sel == 1) {
+      game_state = st_22ac8_addr;
+    } else if (sel == 2 || sel == 125) {
+      game_state = st_22430_addr;
+    } else if (sel == 9) {
+      in_flight = 1;
+      state_timer = 3;
+      game_state = st_21cc8_addr;
+    }
+    return;
+  }
+  // b_5aba4 <= 0: retry / decrement attempt counter
+  if (b_5aba4 < 0) {
+    b_5aba4 = 0;
+    in_flight = 1;
+    clear_messages();
+    state_timer = 3;
+    b_5ab90 = int8_t(b_5ab90 - 1);
+    if (b_5ab90 >= 0)
+      game_state = st_227d0_addr;
+    else
+      game_state = st_22a32_addr;
+  }
+}
+
+// $22a32 / $22a56: show "failed" message then idle.
+static void st_22a32() {
+  if (state_timer < 0) {
+    in_flight = 0;
+    message_queue = 67;
+    game_state = st_22a56_addr;
+  }
+}
+static void st_22a56() {
+  // idle sink after failure message
+}
+
+// $22a58: wait for fire (aa9b==2) or message timer, then advance.
+static void st_22a58() {
+  if (b_5aa9b == 2) {
+    st_22d06();
+    return;
+  }
+  if (b_5aad8 < 0) {
+    in_flight = 1;
+    clear_messages();
+    b_5ab4f = 1;
+    state_timer = 3;
+    game_state = st_22a9a_addr;
+  }
+}
+
+static void st_22a9a() {
+  if (b_5aa9b == 2) {
+    st_22d06();
+    return;
+  }
+  if (state_timer < 0) {
+    b_5aaad = 1;
+    game_state = st_22ac8_addr;
+  }
+}
+
+static void st_22ac8() {
+  if (b_5aa9b == 2) {
+    st_22d06();
+    return;
+  }
+  if (b_5aba6 == 4) {
+    b_5aaad = 0;
+    b_5ab4f = 0;
+    state_timer = 2;
+    game_state = st_22b04_addr;
+  }
+}
+
+static void st_22b04() {
+  if (b_5aa9b == 2) {
+    st_22d06();
+    return;
+  }
+  if (state_timer < 0) {
+    in_flight = 0;
+    if (scenario > 1) b_5aaad = 1;
+    if (scenario == 1) {
+      message_queue = 7;
+      b_5aba6 = 5;
+      b_5ab4f = 1;
+    }
+    b_5aba5 = 0;
+    b_5aabb = 0;
+    game_state = st_22b7c_addr;
+  }
+}
+
+static void st_22b7c() {
+  if (b_5aa9b == 2) {
+    st_22d06();
+    return;
+  }
+  if (b_5aaad != 0) {
+    b_5aaad = 0;
+    clear_messages();
+    b_5aaa5 = 0;
+    b_5ab2e = 3;
+    in_flight = 1;
+    state_timer = 2;
+    if (b_5ab40 != 3) {
+      game_state = st_22c0a_addr;
+      b_5aa89 = 1;
+      b_5ab4f = 0;
+      b_5aba6 = 6;
+    } else {
+      game_state = st_22c76_addr;
+    }
+  } else if (int8_t(b_5aad8) - 1 == 0) {
+    in_flight = 1;
+  }
+}
+
+static void st_22c0a() {
+  b_5aaad = 0;
+  if (state_timer < 0) {
+    in_flight = 0;
+    message_queue = 75;
+    b_5aabb = 0;
+    game_state = st_22c3e_addr;
+  }
+}
+
+static void st_22c3e() {
+  if (b_5aa89 == 0) {
+    state_timer = 2;
+    in_flight = 1;
+    clear_messages();
+    b_5ab4f = 1;
+    b_5aba5 = 1;
+    game_state = st_22c76_addr;
+  }
+}
+
+static void st_22c76() {
+  if (state_timer < 0) {
+    b_5aaad = 1;
+    sub_22ce8();
+    sub_2d452();
+    b_5aaae = 0;
+    b_5aba6 = 6;
+    b_5aba5 = 0;
+    int8_t sel = scenario;
+    if (sel >= 3 && sel <= 8) {
+      if (rd8(0x5ae53) & 0x10)
+        sub_29fa2(8);
+      else
+        sub_29e4e(8);  // original pushes only one arg here
+    }
+    game_state = st_22d60_addr;
+  }
+}
+
+// $22d06: abort / restart path used when fire-button == 2 during wait states.
+static void st_22d06() {
+  in_flight = 1;
+  // inline of the short helper at $22ce8
+  sub_2d526();
+  w_5abc4 = int16_t(uint16_t(w_5abc4) | 0x800);
+  sub_36b88();
+  b_5ab50 = -1;
+  b_5aba6 = 0;
+  clear_messages();
+  b_5aaa6 = 0;
+  b_5aaad = 0;
+  b_5ab4f = 1;
+  b_5aaac = 1;
+  b_5aba5 = 0;
+  b_5aa80 = 0;
+  state_timer = 5;
+  game_state = st_22dc0_addr;
+}
+
+// $22d60: enter the in-flight world or return to a short demo wait.
+static void st_22d60() {
+  if (b_5aa7d == 0) {
+    b_5aaac = 1;
+    b_5aba6 = 0;
+    b_5aba5 = 0;
+    b_5aa80 = 0;
+    state_timer = 5;
+    game_state = st_22dc0_addr;
+  } else if (b_5aaa6 < 0) {
+    state_timer = 2;
+    b_5ab99 = 10;
+    game_state = 0x23b7e;  // not yet translated
+  }
+}
+
+// $22430 / $2245a / $224ba: combat scenario 2/125 intro messages.
+static void st_22430() {
+  in_flight = 1;
+  b_5ab50 = -1;
+  b_5aba5 = 1;
+  state_timer = 5;
+  game_state = st_2245a_addr;
+}
+
+static void st_2245a() {
+  if (b_5aa9b != 0) {
+    st_224ba();
+    return;
+  }
+  if (state_timer < 0) {
+    in_flight = 0;
+    uint32_t q = message_queue.ptr();
+    if (scenario == 2) {
+      wr16(q, 9);
+    } else {
+      wr16(q, 10);
+      b_5aba5 = 0;
+    }
+    game_state = st_224ba_addr;
+  }
+}
+
+static void st_224ba() {
+  if (b_5aad8 < 0 || b_5aa9b != 0) {
+    in_flight = 1;
+    b_5ab50 = -1;
+    clear_messages();
+    b_5aaac = 1;
+    b_5aaad = 1;
+    b_5aba5 = 0;
+    if (scenario == 125) {
+      b_5aba6 = 6;
+      game_state = st_22d60_addr;
+    } else {
+      b_5ab2e = 3;
+      wr16(0x65092, 0);
+      b_5aa80 = 0;
+      state_timer = 5;
+      game_state = st_22dc0_addr;
+    }
+  }
 }
 
 }  // namespace native
