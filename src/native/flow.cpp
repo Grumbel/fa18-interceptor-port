@@ -334,30 +334,60 @@ static void refresh_system_time() {
 }
 NATIVE_C(0x28e5c, refresh_system_time, false);
 
+// $2e268/$2e26c/$2e270: set pitch/vertical stick bits in ab26 (+ b4e1).
+static void stick_v(uint8_t bits) {
+  b_5ab26 = int8_t(bits);
+  if (b_5aaa5 != 0 || b_5aaac != 0)
+    wr8(0x5b4e1, uint8_t((rd8(0x5b4e1) & 0xcf) | bits));
+}
+static void stick_v_down() { stick_v(0x20); }
+static void stick_v_up()   { stick_v(0x10); }
+static void stick_v_rel()  { stick_v(0x00); }
+NATIVE_C(0x2e268, stick_v_down, true);
+NATIVE_C(0x2e26c, stick_v_up, true);
+NATIVE_C(0x2e270, stick_v_rel, true);
+
+// $2e2b4/$2e2b8/$2e2bc: set roll/horizontal stick bits in ab28 (+ b4e1).
+static void stick_h(uint8_t bits) {
+  b_5ab28 = int8_t(bits);
+  if (b_5aaa5 != 0 || b_5aaac != 0)
+    wr8(0x5b4e1, uint8_t((rd8(0x5b4e1) & 0xf3) | bits));
+}
+static void stick_h_right() { stick_h(0x08); }
+static void stick_h_left()  { stick_h(0x04); }
+static void stick_h_rel()   { stick_h(0x00); }
+NATIVE_C(0x2e2b4, stick_h_right, true);
+NATIVE_C(0x2e2b8, stick_h_left, true);
+NATIVE_C(0x2e2bc, stick_h_rel, true);
+
+// $2f216: empty stub in the original (just rts).
+static void stub_2f216() {}
+NATIVE_C(0x2f216, stub_2f216, true);
+
 // $29074: sample JOY1DAT and fire edge helpers for each axis.
 static void sample_joystick() {
   uint16_t joy = rd16(0xdff00c);
   w_5ac48 = int16_t(joy);
   // Axis A: X1^X0 → 2e26c, Y1^Y0 → 2e268, else release 2e270
   if ((((joy & 0x200) >> 1) ^ (joy & 0x100)) != 0) {
-    sub_2e26c();
+    stick_v_up();
     b_5ab29 = 1;
   } else if ((((joy & 2) >> 1) ^ (joy & 1)) != 0) {
-    sub_2e268();
+    stick_v_down();
     b_5ab29 = 1;
   } else if (b_5ab29 != 0) {
-    sub_2e270();
+    stick_v_rel();
     b_5ab29 = 0;
   }
   // Axis B: X1 → 2e2b4, Y1 → 2e2b8, else release 2e2bc
   if (joy & 0x200) {
-    sub_2e2b4();
+    stick_h_right();
     b_5ab2a = 1;
   } else if (joy & 2) {
-    sub_2e2b8();
+    stick_h_left();
     b_5ab2a = 1;
   } else if (b_5ab2a != 0) {
-    sub_2e2bc();
+    stick_h_rel();
     b_5ab2a = 0;
   }
 }
@@ -464,7 +494,7 @@ static void run_game_state() {
       if (l_5ac04 != 0) t -= l_5adea - l_5ac04;
       if (t < 0 || t >= 18000) {
         w_5ac96 = 63;
-        sub_2f216();
+        stub_2f216();
       } else {
         wr32(config_buf + 8, rd32(config_buf + 8) + uint32_t(t));
         log_dirty = 1;
