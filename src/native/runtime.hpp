@@ -60,6 +60,9 @@ struct Var {
     else wr32(addr, uint32_t(v));
   }
   operator T() const { return get(); }
+  // `a = b` with two Vars would copy the address member, not the value
+  // (silently doing nothing). Write `a = b.get()` / `a = T(b)` instead.
+  Var& operator=(const Var&) = delete;
   const Var& operator=(T v) const { set(v); return *this; }
   const Var& operator+=(T v) const { set(T(get() + v)); return *this; }
   const Var& operator-=(T v) const { set(T(get() - v)); return *this; }

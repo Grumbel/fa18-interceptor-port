@@ -92,7 +92,8 @@ commit with a routine disabled "for now" without saying so in TODO.md.
   Mark a routine `verify = true` only if it has no OS side effects.
 - Name game variables in globals.hpp (`Var<T>`); `vars.hpp` has raw
   size-typed accessors. A `Var` converts to its *value*; use `.ptr()` for
-  its address.
+  its address and `.get()` when assigning one Var to another (`a = b` is a
+  compile error: it would copy the address, not the value).
 - Debugging a failure: `tests/ramdiff.sh SCENARIO FRAME DIR` (first
   differing bytes), `FA18_NATIVE_ONLY=name1,...` / `FA18_NATIVE_SKIP=...`
   to bisect routines, `FA18_CALLTRACE=from,to,file` to diff the order of
