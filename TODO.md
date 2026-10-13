@@ -94,6 +94,11 @@ Done (all verified by the gate):
   projection step $30872 (falls through into the $308cc hypot).
 - visibility classification of the object list (visibility.cpp): $31494
   with helpers $31b04-$31c28.
+- 3D object transform / polygon-op driver (render.cpp): entries $31c8c/
+  $31c9c/$31d64 and the distant variant $32d64/$32d72 with their
+  subroutines ($3223e, $328ea, $32adc/$32aec, $32b92, $32f6e), polygon
+  ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Still original: the
+  op handlers behind the jump table at $33478 ($33160, $33fda, ...).
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
