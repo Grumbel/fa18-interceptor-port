@@ -72,8 +72,18 @@ NATIVE_STATE(0x22d60, st_22d60);
 NATIVE_STATE(0x22430, st_22430);
 NATIVE_STATE(0x2245a, st_2245a);
 NATIVE_STATE(0x224ba, st_224ba);
-constexpr uint32_t st_22dc0_addr = 0x22dc0;
-constexpr uint32_t st_2359e_addr = 0x2359e, st_2353c_addr = 0x2353c, st_2362a_addr = 0x2362a;
+NATIVE_STATE(0x22dc0, st_22dc0);
+NATIVE_STATE(0x22e56, st_22e56);
+NATIVE_STATE(0x22ee2, st_22ee2);
+NATIVE_STATE(0x2353c, st_2353c);
+NATIVE_STATE(0x23576, st_23576);
+NATIVE_STATE(0x2359e, st_2359e);
+NATIVE_STATE(0x235d0, st_235d0);
+NATIVE_STATE(0x2362a, st_2362a);
+NATIVE_STATE(0x23b7e, st_23b7e);
+NATIVE_STATE(0x23ba8, st_23ba8);
+constexpr uint32_t st_22f06_addr = 0x22f06;
+constexpr uint32_t st_23712_addr = 0x23712;
 
 // $2346a: clear the message queue / text state.
 static void clear_messages() {
@@ -1088,7 +1098,7 @@ static void st_22d60() {
   } else if (b_5aaa6 < 0) {
     state_timer = 2;
     b_5ab99 = 10;
-    game_state = 0x23b7e;  // not yet translated
+    game_state = st_23b7e_addr;
   }
 }
 
@@ -1137,6 +1147,161 @@ static void st_224ba() {
       state_timer = 5;
       game_state = st_22dc0_addr;
     }
+  }
+}
+
+
+// $22dc0: build the "ready / airfield status" message queue, then enter $22e56.
+static void st_22dc0() {
+  if (state_timer >= 0) return;
+  in_flight = 0;
+  uint32_t q = message_queue.ptr();
+  int8_t sel = scenario;
+  if (sel >= 3 && sel <= 8) {
+    if (int32_t(sub_395dc()) >= 0) {
+      wr16(q, 88);
+      q += 2;
+    }
+  }
+  if (sel != 2) {
+    // $5b480 bit 3: day/night or weather flag
+    if (rd8(0x5b480) & 8) {
+      wr16(q, 90);
+      q += 2;
+    } else {
+      wr16(q, 89);
+      q += 2;
+    }
+  } else {
+    b_5aad8 = -1;
+  }
+  wr16(q, 0);
+  game_state = st_22e56_addr;
+}
+
+// $22e56: enable flight systems flags and hand off to the short timer state.
+static void st_22e56() {
+  if (b_5aad8 >= 0) return;
+  in_flight = 1;
+  w_5abc4 = int16_t(uint16_t(w_5abc4) | 0x40);
+  w_5abc6 = int16_t(uint16_t(w_5abc6) | 0x100);
+  w_5abca = int16_t(uint16_t(w_5abca) | 0x2);
+  if (scenario == 2) b_5aa8b = 1;
+  sub_28e5c();
+  wr32(0x5ac0c, rd32(0x5adea));
+  wr32(0x5ac04, rd32(0x5adea));
+  frame_counter = 0;
+  state_timer = 3;
+  game_state = st_22ee2_addr;
+}
+
+// $22ee2: brief settle, then call the HUD/system init and enter $22f06
+// (still original — deep flight-start setup).
+static void st_22ee2() {
+  if (state_timer < 0) {
+    b_5aa99 = 1;
+    sub_47d84();
+    game_state = st_22f06_addr;
+  }
+}
+
+// $2353c / $23576: picture-checksum error screen (bad splash/cockpit/front).
+static void st_2353c() {
+  if (state_timer < 0) {
+    sub_23c24(0x39fd4);
+    message_queue = 97;
+    state_timer = 500;
+    game_state = st_23576_addr;
+  } else {
+    sub_4492a();
+  }
+}
+static void st_23576() {
+  if (b_5aad8 < 0 && state_timer < 0) {
+    state_timer = 3;
+    game_state = st_23576_addr;  // hold on the error message
+  }
+}
+
+// $2359e / $235d0: title screen after successful boot check.
+static void st_2359e() {
+  if (state_timer < 0) {
+    sub_23c24(0x39fd4);
+    message_queue = 15;
+    game_state = st_235d0_addr;
+  } else {
+    sub_4492a();
+  }
+}
+static void st_235d0() {
+  if (b_5aa9b != 0) {
+    music_volume2 = 0x1f0000;
+    b_5aacf = 1;  // title_flag
+    sub_23c24(0x3a054);
+    clear_messages();
+    sub_4492a();
+    b_5aacb = 1;
+    state_timer = 5;
+    scenario = 0;
+    sub_2843c();
+    game_state = st_2362a_addr;
+  }
+}
+
+// $2362a: disk / config status messages, then return to mission menu path.
+static void st_2362a() {
+  sub_4492a();
+  state_timer = 5;
+  if (b_5aacb == 0) {
+    sub_2843c();
+    b_5aacd = -1;
+    game_state = st_23712_addr;
+    return;
+  }
+  if (disk_state == 0) {
+    b_5aacb = 0;
+    game_state = st_23712_addr;
+    return;
+  }
+  sub_23c24(0x39fd4);
+  uint32_t q = message_queue.ptr();
+  int16_t ds = disk_state;
+  if (ds == 1) {
+    wr16(q, 68); q += 2;
+  } else if (ds == 2) {
+    wr16(q, 69); q += 2;
+  } else if (ds == 3) {
+    wr16(q, 70); q += 2;
+  }
+  wr16(q, 94); q += 2;
+  wr16(q, 0);
+  game_state = 0x236f6;  // wait for key; leave until next pass
+}
+
+// $23b7e / $23ba8: short demo-end / return-to-menu after free-flight timer.
+static void st_23b7e() {
+  in_flight = 0;
+  if (b_5ab98 == b_5ab99) {
+    message_queue = 38;
+    game_state = st_23ba8_addr;
+  }
+}
+static void st_23ba8() {
+  if (b_5aaa6 < 0) {
+    // more time-accounting left in original; for now stay
+    return;
+  }
+  in_flight = 1;
+  clear_messages();
+  b_5ab99 = 15;
+  if (b_5aba6 == 6) {
+    game_state = st_22d60_addr;
+  } else {
+    sub_28e5c();
+    int32_t delta = int32_t(rd32(0x5adea)) - int32_t(rd32(0x5abfc));
+    wr32(0x5abfc, uint32_t(delta));
+    wr32(0x5ac00, uint32_t(int32_t(rd32(0x5ac00)) + delta));
+    // remaining original continues into more flight-time bookkeeping
   }
 }
 

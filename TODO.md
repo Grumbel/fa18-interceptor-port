@@ -67,23 +67,20 @@ hash every 50 frames, all scenarios) must report "same" for all.
 Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
-Done: startup (main, picture loader, delay, Workbench), flight log/config,
-codewheel hash, and the full mission-select → pre-flight state machine:
-  $2151c–$21f8e (input, menu, flight log, demo),
-  $22026 (scenario dispatch),
-  $222d6 (selectable-missions list),
-  $22354/$22380, $223ca/$223f6, $22430/$2245a/$224ba (intros),
-  $2253c–$227d0 (post-menu wait → briefing → pre-flight gate),
-  $22886/$228b2/$228e2 (codewheel / mission-complete gate),
-  $22a32–$22c76 (result / retry / view setup),
-  $22d06 (fire-abort restart), $22d60 (enter flight world).
+Done: startup, flight log/config, codewheel, and the complete menu →
+pre-flight → title/error state machine in hunk 0:
+  $2151c–$22d60 (mission select through enter-flight),
+  $22dc0/$22e56/$22ee2 (ready messages → systems enable → HUD init),
+  $2353c/$23576 (checksum-error screen),
+  $2359e/$235d0/$2362a (title → config/disk status),
+  $23b7e/$23ba8 (demo-end / return-to-menu).
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1
-- [ ] remaining states: $22dc0, $23b7e, title/fade $2353c–$2362a,
-      and any still-unlisted handlers in extra_entries.txt
+- [ ] $22f06 (deep flight-start), $236f6/$23712 (disk-error wait),
+      remaining handlers in extra_entries.txt ($231a4+, $238xx…)
 - [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
       model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: $22dc0 + title/fade chain, or chase the $5ab55 divergence.
+Next tip work: $22f06 flight-start, or chase the $5ab55 divergence.
