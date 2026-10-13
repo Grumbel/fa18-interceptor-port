@@ -81,6 +81,12 @@ Done (all verified by the gate):
   ground_poke), effect slots ($272e4/$27554/$277e0/$27b06/$27c2c;
   effects.cpp, scenario effects_poke; $27a30 is never called), gun burst
   sound ($2a2f8, sound_api.cpp)
+- asm math helpers (math.cpp, all NATIVE_ASM, verified per call): hypot
+  $308cc, isqrt $39bba, vector scaling $39cb6/$39cc0/$39d58, matrix rotate
+  $39de2, rounded divide $39eec, BCD <-> binary $39f2e/$39f74, view pan
+  $39e34, view sequence $39b06, command flags $39c70, list reset $39dd0.
+  Condition codes are only set where the original's last instruction
+  defines them (not compared by --native verify).
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
@@ -93,8 +99,8 @@ Open:
       422 executed non-native functions, ~26000 distinct instructions
       (236 of <=30 insns, 125 of 31-100, 61 larger; the biggest are the
       3D object renderer $33fda, $3223e, $33160, $40136, $31494, $31c50).
-      Suggested first cluster: math helpers $308cc, $39bba-$39f74 (leaf
-      routines, easy to verify). Counts include embedded data tables.
+      Math helpers $308cc/$39b06-$39f74 are done; next: the flight model
+      and 3D projection path. Counts include embedded data tables.
       `$201b8` (startup tail) is intentionally left original.
       Most are pure memory/register routines: use
       NATIVE_ASM and --native verify routine by routine.
