@@ -254,6 +254,55 @@ static int8_t fetch_key_byte() {
 }
 NATIVE_C(0x28d4a, fetch_key_byte, true);
 
+// $22ce8: enable in-flight systems bit and refresh the view transform.
+static void enable_inflight_systems() {
+  sub_2d526();
+  w_5abc4 = int16_t(uint16_t(w_5abc4) | 0x800);
+  sub_36b88();
+}
+NATIVE_C(0x22ce8, enable_inflight_systems, false);
+
+// $2f0b2: joystick fire pressed.
+static void joy_fire_down() {
+  if ((rd8(0x5b4f8) & 0x0f) != 0) return;
+  if (scenario == 125) {
+    if (b_5aa92 < 0) wr8(0x5bc7e, uint8_t(rd8(0x5bc7e) | 8));
+    return;
+  }
+  w_5ac92 = int16_t(uint16_t(w_5ac92) | 4);
+  uint8_t hi = uint8_t(rd8(0x5b4df) & 0xf0);
+  if (hi == 0) return;
+  if (hi == 0x10)
+    w_5abbe = int16_t(uint16_t(w_5abbe) | 8);
+  else
+    b_5aab2 = 1;
+}
+NATIVE_C(0x2f0b2, joy_fire_down, true);
+
+// $2f108: joystick fire released.
+static void joy_fire_up() {
+  w_5ac92 = int16_t(uint16_t(w_5ac92) | 8);
+  w_5abbe = int16_t(uint16_t(w_5abbe) & ~8);
+}
+NATIVE_C(0x2f108, joy_fire_up, true);
+
+// $2fa6c: start the "left" briefing/text stream.
+static void start_text_stream_left() {
+  b_5ab5d = 0;
+  w_5aca2 = w_5aca4;
+  // falls through into the shared stream pump at $2fa90 — keep via call
+  call_c(0x2fa90);
+}
+NATIVE_C(0x2fa6c, start_text_stream_left, false);
+
+// $2fa7e: start the "right" briefing/text stream.
+static void start_text_stream_right() {
+  b_5ab5d = 1;
+  w_5aca2 = w_5aca6;
+  call_c(0x2fa90);
+}
+NATIVE_C(0x2fa7e, start_text_stream_right, false);
+
 // $28dae: next keyboard event as a signed rawkey, or -1 if none.
 // Sticky-shift path ($2a5a6) returns the previously latched key.
 static int16_t read_rawkey() {
@@ -322,8 +371,8 @@ static void poll_gameport() {
   } else {
     uint32_t ie = rd32(0x2d092);
     int16_t code = int16_t(rd16(ie + 6));
-    if (code == 104) sub_2f0b2();
-    else if (code == 232) sub_2f108();
+    if (code == 104) joy_fire_down();
+    else if (code == 232) joy_fire_up();
     wr16(ie + 6, 0);
     os::SendIO(rd32(0x2d096));
   }
@@ -492,9 +541,9 @@ static void game_frame() {
     sub_43306();
     if (l_5ad5e > -0x8000000) {
       debug_stage = 120;
-      sub_2fa6c();
+      start_text_stream_left();
       debug_stage = 128;
-      sub_2fa7e();
+      start_text_stream_right();
       debug_stage = 144;
       sub_3c1bc();
       debug_stage = 160;
@@ -879,7 +928,7 @@ static void st_22026() {
     b_5aaac = -1;
     b_5aaae = 3;
     b_5ab40 = 2;
-    sub_22ce8();
+    enable_inflight_systems();
     sub_3dc86();
     sub_2d408();
     sub_3cf0e();
@@ -1285,7 +1334,7 @@ static void st_22c3e() {
 static void st_22c76() {
   if (state_timer < 0) {
     b_5aaad = 1;
-    sub_22ce8();
+    enable_inflight_systems();
     sub_2d452();
     b_5aaae = 0;
     b_5aba6 = 6;
