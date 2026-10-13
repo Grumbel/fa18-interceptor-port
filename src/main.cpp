@@ -249,8 +249,14 @@ public:
     while (script_pos < script.size() && script[script_pos].frame <= frame_no) {
       const ScriptEvent& e = script[script_pos++];
       if (e.cmd == "key" && !e.args.empty()) {
-        int rk = amiga_rawkey(SDL_GetScancodeFromName(e.args[0].c_str()));
-        if (rk < 0) rk = int(std::strtol(e.args[0].c_str(), nullptr, 16));
+        static const std::pair<const char*, const char*> alias[] = {
+            {"lshift", "Left Shift"}, {"rshift", "Right Shift"}, {"ctrl", "Left Ctrl"},
+            {"lalt", "Left Alt"}, {"ralt", "Right Alt"}, {"equals", "="}, {"minus", "-"},
+            {"comma", ","}, {"period", "."}, {"enter", "Keypad Enter"}};
+        std::string name = e.args[0];
+        for (auto& [a, b] : alias) if (name == a) name = b;
+        int rk = amiga_rawkey(SDL_GetScancodeFromName(name.c_str()));
+        if (rk < 0) rk = int(std::strtol(name.c_str(), nullptr, 16));
         std::string mode = e.args.size() > 1 ? e.args[1] : "tap";
         if (mode == "down") machine->key_event(uint8_t(rk), true);
         else if (mode == "up") machine->key_event(uint8_t(rk), false);

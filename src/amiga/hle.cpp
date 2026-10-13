@@ -315,7 +315,7 @@ void Hle::key_event(uint8_t rawkey, bool down) {
       {0x60, 1}, {0x61, 2}, {0x63, 8}, {0x64, 0x10}, {0x65, 0x20}, {0x66, 0x40}, {0x67, 0x80}};
   for (auto& q : quals)
     if (q.key == rawkey) { if (down) qualifier_ |= q.q; else qualifier_ &= uint16_t(~q.q); }
-  if (kbd_queue_.size() < 64) kbd_queue_.push_back({rawkey, down});
+  if (kbd_queue_.size() < 64) kbd_queue_.push_back({rawkey, down, qualifier_});
 }
 
 void Hle::mouse_button(int button, bool down) { (void)button; (void)down; }
@@ -342,9 +342,9 @@ void Hle::kbd_pump() {
   while (!kbd_queue_.empty() && !kbd_reads_.empty()) {
     uint32_t io = kbd_reads_.front();
     kbd_reads_.pop_front();
-    auto [key, down] = kbd_queue_.front();
+    KeyEv ev = kbd_queue_.front();
     kbd_queue_.pop_front();
-    write_input_event(m.r32(io + IO_DATA), 1, uint16_t(key | (down ? 0 : 0x80)), qualifier_, 0, 0);
+    write_input_event(m.r32(io + IO_DATA), 1, uint16_t(ev.key | (ev.down ? 0 : 0x80)), ev.qual, 0, 0);
     m.w32(io + IO_ACTUAL, 22);
     complete_io(io);
   }
@@ -775,9 +775,31 @@ uint32_t Hle::dos_open(const std::string& name, int mode) {
     return 0;
   }
   uint32_t h = next_handle_++;
-  files_[h] = {f, path};
+  files_[h] = {f, path, name, mode != 1005};
   if (m.verbose) m.log("Open(%s, %d) = %u\n", name.c_str(), mode, h);
   return h;
+}
+
+// MODE_OLDFILE handles are read/write on AmigaDOS. They are opened read-only
+// (possibly from the data dir); the first Write copies the file into the
+// save dir and reopens it there at the same position.
+bool Hle::make_writable(File& file) {
+  if (file.writable) return true;
+  long pos = ftell(file.f);
+  std::string wp = host_path(file.name, true);
+  if (wp != file.path) {
+    std::error_code ec;
+    fs::copy_file(file.path, wp, fs::copy_options::overwrite_existing, ec);
+    if (ec) return false;
+  }
+  FILE* f = fopen(wp.c_str(), "r+b");
+  if (!f) return false;
+  fclose(file.f);
+  file.f = f;
+  file.path = wp;
+  file.writable = true;
+  fseek(f, pos, SEEK_SET);
+  return true;
 }
 
 void Hle::dos(int lvo) {
@@ -807,6 +829,7 @@ void Hle::dos(int lvo) {
         for (size_t i = 0; i < n; ++i) m.w8(D(2) + uint32_t(i), buf[i]);
       } else {
         for (size_t i = 0; i < buf.size(); ++i) buf[i] = m.r8(D(2) + uint32_t(i));
+        if (!make_writable(it->second)) { D(0) = uint32_t(-1); return; }
         n = fwrite(buf.data(), 1, buf.size(), it->second.f);
         fflush(it->second.f);
       }

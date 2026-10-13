@@ -90,7 +90,10 @@ private:
   struct File {
     FILE* f = nullptr;
     std::string path;
+    std::string name;       // Amiga name, for copy-on-write
+    bool writable = false;  // false: opened read-only from data/save dir
   };
+  bool make_writable(File& file);
   std::string host_path(const std::string& amiga_name, bool for_write);
   uint32_t dos_open(const std::string& name, int mode);
 
@@ -112,7 +115,8 @@ private:
 
   // devices
   std::deque<uint32_t> kbd_reads_, gameport_reads_;
-  std::deque<std::pair<uint8_t, bool>> kbd_queue_;
+  struct KeyEv { uint8_t key; bool down; uint16_t qual; };
+  std::deque<KeyEv> kbd_queue_;
   std::deque<bool> fire_queue_;
   struct TimerReq { uint32_t io; uint64_t due; };
   std::vector<TimerReq> timers_;
