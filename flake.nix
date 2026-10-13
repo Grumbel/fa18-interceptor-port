@@ -32,6 +32,7 @@
           ];
 
           meta = with pkgs.lib; {
+            mainProgram = "fa18";
             description = "Modern port of the 1988 Amiga flight simulator F/A-18 Interceptor";
             license = licenses.gpl3Plus;
             platforms = platforms.linux;
