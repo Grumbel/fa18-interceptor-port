@@ -56,5 +56,14 @@ inline uint16_t asr16(uint16_t v, uint32_t n) {
   return uint16_t(n > 15 ? (s < 0 ? -1 : 0) : s >> n);
 }
 inline uint32_t& A(int n) { return cpu().a[n]; }
+inline void extw(int n) { setw(n, uint16_t(int16_t(int8_t(uint8_t(cpu().d[n]))))); }
+inline void extl(int n) { cpu().d[n] = uint32_t(int32_t(int16_t(uint16_t(cpu().d[n])))); }
+inline void swapw(int n) { cpu().d[n] = (cpu().d[n] << 16) | (cpu().d[n] >> 16); }
+inline uint8_t lob(int n) { return uint8_t(cpu().d[n]); }
 
 }  // namespace native::asmr
+
+namespace native {
+// $308cc entry (approximate hypot of d2/d3/d4 -> d1, $5ae38), in math.cpp.
+void hypot_308cc();
+}

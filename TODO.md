@@ -89,6 +89,9 @@ Done (all verified by the gate):
   $2f596, $2f9da, $2f7b8, $3127c (with $313fa), stubs $3a310/$3a312.
   $2f596 and $2f7b8 are not verified per call ($36b88 uses a beam-position
   random number / many callees); equivalence run covers them.
+- 3D scene list builder (scene.cpp): $30064 with its internal subroutines
+  ($3034c/$3043c/$30478/$30530/$3067a and the tail $30b5c-$3127a) and the
+  projection step $30872 (falls through into the $308cc hypot).
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 

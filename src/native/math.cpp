@@ -28,6 +28,7 @@ using namespace asmr;
 // ---- $308cc ---------------------------------------------------------------
 // In: d2, d3, d4 (non-negative words).  Out: d1 = ~sqrt-like combination,
 // $5ae38 = min(d1, 32767).  Uses the 16-bit table at $30930 twice.
+}  // namespace
 void hypot_308cc() {
   constexpr uint32_t table = 0x30930;
   if (ext(lo(3)) > ext(lo(2))) std::swap(D(2), D(3));  // cmpw d2,d3; ble
@@ -62,6 +63,7 @@ void hypot_308cc() {
   flags(lo(1), 16);
 }
 NATIVE_ASM(0x308cc, hypot_308cc, true);
+namespace {
 
 // ---- $39bba ---------------------------------------------------------------
 // Newton iteration for sqrt(d0), start value d0/200+2, stops when the
