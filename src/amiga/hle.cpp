@@ -362,9 +362,7 @@ void Hle::gameport_pump() {
   }
 }
 
-uint64_t Hle::micros() const {
-  return uint64_t(double(m.cpu.cycles) / CPU_HZ * 1e6) + 315532800ull * 0;
-}
+uint64_t Hle::micros() const { return m.micros(); }
 
 void Hle::timer_pump() {
   uint64_t now = micros();

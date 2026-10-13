@@ -388,7 +388,7 @@ int main(int argc, char** argv) {
   amiga::Machine machine;
   machine.verbose = verbose;
   machine.trace = trace;
-  machine.cpu_speed = speed;
+  machine.set_cpu_speed(speed);
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
   machine.coverage_path = coverage_path;

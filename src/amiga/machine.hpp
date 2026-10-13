@@ -126,8 +126,10 @@ public:
   std::string data_dir;
   std::string save_dir;
 
-  // Cycles per emulated frame given to the CPU (speed multiplier).
-  double cpu_speed = 1.0;
+  // CPU speed multiplier: the CPU gets cpu_speed × 455 cycles per scanline.
+  void set_cpu_speed(double s) { line_cycles_ = int64_t(CYCLES_PER_LINE * (s < 0.1 ? 0.1 : s)); }
+  // Emulated time since boot in microseconds (scanline based).
+  uint64_t micros() const { return uint64_t(double(total_lines_) * 1e6 / (LINES_PER_FRAME * 60.0)); }
 
   // Apply the codewheel protection bypass after loading.
   bool bypass_protection = true;
@@ -189,6 +191,8 @@ private:
 
   // time
   int64_t line_start_ = 0;   // cpu.cycles at start of current line
+  int64_t line_cycles_ = CYCLES_PER_LINE;
+  uint64_t total_lines_ = 0;
   int vpos_ = 0;
   uint64_t frame_count_ = 0;
   bool exit_ = false;

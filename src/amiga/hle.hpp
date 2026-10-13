@@ -14,7 +14,7 @@ namespace amiga {
 
 // Line-A opcode $A<lib><idx>: lib 15 is reserved for host traps.
 constexpr int HOST_LIB = 15;
-enum { TRAP_RETURN = 0, TRAP_EXIT = 1 };
+enum { TRAP_RETURN = 0, TRAP_EXIT = 1, TRAP_DELAY = 2 };
 
 struct ReturnFromCall {};
 

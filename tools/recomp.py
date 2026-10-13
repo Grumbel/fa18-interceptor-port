@@ -544,6 +544,15 @@ def t_group4(i, op):
             i.fallthrough = False
             return
         if sz == 3:  # JMP
+            if mode == 7 and reg == 3:
+                # C switch idiom: jmp (pc,dN) into a table of BRA instructions.
+                pos = i.pos + 2
+                for _ in range(256):
+                    w = IMG.word(pos)
+                    if w & 0xFF00 != 0x6000:
+                        break
+                    i.succ.append(pos)
+                    pos += 4 if w & 0xFF == 0 else 2
             tgt = jump_target(i, mode, reg)
             i.branch_to(tgt)
             i.fallthrough = False
@@ -897,6 +906,9 @@ def main():
     img[patch_address(0x3a964) - base] = 0x01
     p = patch_address(0x01a78) - base
     img[p:p + 6] = bytes.fromhex("4e714e714e71")
+    # delay() busy loop -> host trap (TRAP_DELAY), see Machine::boot
+    p = patch_address(0x008da) - base
+    img[p:p + 2] = bytes.fromhex("af02")
 
     IMG = Image(img, base)
     for h, a in zip(hunks, addrs):

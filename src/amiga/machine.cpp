@@ -138,6 +138,9 @@ bool Machine::boot(const std::string& dir) {
     write8(patch_address(0x3a964), 0x01);
     for (uint32_t i = 0; i < 6; i += 2) write16(patch_address(0x01a78) + i, 0x4E71);
   }
+  // CPU-speed independent replacement of the C busy-wait delay() (the
+  // WHDLoad slave patches the same loop); keep in sync with tools/recomp.py.
+  write16(patch_address(0x008da), uint16_t(0xA000 | (HOST_LIB << 8) | TRAP_DELAY));
   free_list_.clear();
   free_list_[end] = RAM_SIZE - end;
   setup_recomp(end);
@@ -199,6 +202,15 @@ bool Machine::line_a(uint16_t op) {
         exit_code_ = int(cpu.d[0]);
         cpu.stopped = true;
         return true;
+      case TRAP_DELAY: {
+        // delay(n): C busy loop "for (i = 0; i < n; i++);" (~76 clocks per
+        // iteration on a 7 MHz 68000) followed by FreeSprite(0). Wait the
+        // same amount of A500 time regardless of the CPU speed setting.
+        uint32_t n = read32(cpu.a[7] + 4);
+        idle_lines(int(uint64_t(n) * 76 / CYCLES_PER_LINE));
+        cpu.pc = cpu.pop32();
+        return true;
+      }
     }
     return false;
   }
@@ -220,10 +232,10 @@ uint32_t Machine::call68k(uint32_t addr, const uint32_t* d, const uint32_t* a) {
   ++call_depth_;
   try {
     for (;;) {
-      execute(line_start_ + CYCLES_PER_LINE);
+      execute(line_start_ + line_cycles_);
       if (cpu.stopped) { log("call68k: cpu stopped in callback %06x\n", addr); break; }
       if (exit_) break;
-      if (cpu.cycles >= line_start_ + CYCLES_PER_LINE) run_line();
+      if (cpu.cycles >= line_start_ + line_cycles_) run_line();
     }
   } catch (ReturnFromCall&) {
   }
@@ -240,7 +252,8 @@ uint32_t Machine::call68k(uint32_t addr, const uint32_t* d, const uint32_t* a) {
 
 void Machine::run_line() {
   // Called when the CPU has consumed a scanline worth of cycles.
-  line_start_ += CYCLES_PER_LINE;
+  line_start_ += line_cycles_;
+  ++total_lines_;
   audio_line();
   ++vpos_;
   if (vpos_ >= LINES_PER_FRAME) {
@@ -254,7 +267,7 @@ void Machine::run_line() {
 
 void Machine::idle_lines(int n) {
   for (int i = 0; i < n; ++i) {
-    cpu.cycles = line_start_ + CYCLES_PER_LINE;
+    cpu.cycles = line_start_ + line_cycles_;
     run_line();
   }
 }
@@ -320,9 +333,9 @@ void Machine::execute(int64_t until) {
 int Machine::run() {
   try {
     while (!exit_) {
-      execute(line_start_ + CYCLES_PER_LINE);
+      execute(line_start_ + line_cycles_);
       if (exit_) break;
-      if (cpu.cycles >= line_start_ + CYCLES_PER_LINE) run_line();
+      if (cpu.cycles >= line_start_ + line_cycles_) run_line();
     }
   } catch (QuitRequested&) {
   }

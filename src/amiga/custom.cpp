@@ -68,7 +68,7 @@ uint16_t Machine::custom_read(uint32_t reg) {
       return uint16_t(0x1000 | ((vpos_ >> 8) & 1));
     }
     case 0x006: {  // VHPOSR
-      int h = int((cpu.cycles - line_start_) / 2);
+      int h = int((cpu.cycles - line_start_) * CYCLES_PER_LINE / line_cycles_ / 2);
       if (h > 0xE2) h = 0xE2;
       if (h < 0) h = 0;
       return uint16_t((vpos_ & 0xFF) << 8 | h);
