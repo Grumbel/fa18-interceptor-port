@@ -72,10 +72,16 @@ Done: the entire hunk-0 game state machine from extra_entries.txt,
   handlers are registered; see the list at the top of flow.cpp.
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
-      gives a 1-byte divergence ($5ab55) around frame 2250 of free1
+      gives a 1-byte divergence ($5ab55) around frame 2250 of free1.
+      Investigation: $5ab55 is a copy of $5ab54, maintained by the object
+      system at $310c0–$313f4 (not by game_frame itself).  Side-by-side
+      re-read of every condition in game_frame against the assembly found
+      no control-flow mismatch; FA18_POISON is clean.  Likely a subtle
+      interaction with a not-yet-native callee.  Fixed a signed left-shift
+      on $5abd4 while looking.  $23c9c (sound-priority tick) is now native.
 - [ ] hunk 0 remaining C functions (non-state), C runtime, asm hunks
       4-40 (3D, flight model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: chase the $5ab55 divergence so game_frame can be enabled,
-or start on non-state hunk-0 C functions / the 3D engine.
+Next tip work: keep bisecting the $5ab55 divergence (FA18_NATIVE_SKIP on
+callees of game_frame), or continue non-state hunk-0 helpers.

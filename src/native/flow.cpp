@@ -114,6 +114,24 @@ static void clear_messages() {
 }
 NATIVE_C(0x2346a, clear_messages, true);
 
+// $23c9c: per-frame sound-priority / ab88 countdown (called from game_frame).
+static void tick_sound_priority() {
+  int8_t n = int8_t(b_5ab88 - 1);
+  b_5ab88 = n;
+  if (n <= 0) {
+    b_5ab88 = 8;
+    b_5ab86 = -122;
+  } else if (n == 4) {
+    b_5ab86 = 6;
+  } else if ((n & 3) == 2) {
+    b_5ab86 = 4;
+  } else if (n > 8) {
+    b_5ab88 = 8;
+    b_5ab86 = 0;
+  }
+}
+NATIVE_C(0x23c9c, tick_sound_priority, true);
+
 // $2151c: read input devices and feed key presses to the key handler.
 static void poll_input() {
   sub_29006();                       // gameport (fire button) events
@@ -251,7 +269,7 @@ static void game_frame() {
   int16_t frame = frame_counter;
   poll_input();
   run_game_state();
-  sub_23c9c();
+  tick_sound_priority();
   if (in_flight) {
     debug_stage = 8;
     sub_241f0();
@@ -300,7 +318,8 @@ static void game_frame() {
     sub_24aa8();
     debug_stage = 208;
     if (b_5aa7d == 0 || b_5ab2e != 0) {
-      uint8_t c = rd8(0x5b47c + (uint32_t(int32_t(w_5abd4)) << 9) + 98);
+      uint32_t plane = uint32_t(int32_t(int16_t(w_5abd4))) << 9;
+      uint8_t c = rd8(0x5b47c + plane + 98);
       if (c != '0' || b_5ab2e != 0) {
         sub_45368();
         sub_455ba();
