@@ -71,7 +71,7 @@ FA18_POISON, `--native verify` (per-call comparison for pure routines).
 Done: the entire hunk-0 game state machine from extra_entries.txt,
   plus non-state helpers:
   $2151c/$215fe/$21630/$216c2/$21750/$21bfc/$2346a/$234a8/
-  $23c24/$23c66/$23c9c/$23d08.
+  $23c24/$23c66/$23c9c/$23d08/$25e8c/$292b4/$29c60/$2f024/$2f02c.
   All NATIVE_STATE handlers are registered; see the list in flow.cpp.
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it

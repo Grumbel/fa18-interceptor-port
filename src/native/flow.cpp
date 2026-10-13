@@ -188,14 +188,68 @@ static void count_mission_complete() {
 }
 NATIVE_C(0x234a8, count_mission_complete, false);
 
+// $2f024 / $2f02c: arm the "systems online" boost counters used by the
+// in-flight draw path.  $2f024 also resets the view angle to 144.
+static void arm_flight_systems_flags() {
+  // All of these are brief "boost" counters decremented by game_frame.
+  constexpr int8_t k = 3;
+  b_5ab2f = k; b_5ab2e = k;
+  b_5ab31 = k; b_5ab32 = k;
+  b_5ab36 = k; b_5ab37 = k; b_5ab38 = k; b_5ab39 = k;
+  b_5ab33 = k; b_5ab35 = k;
+  b_5ab3b = k; b_5ab3c = k; b_5ab3d = k;
+  b_5ab34 = k;
+  if (b_5aab8 == 0) {
+    w_5abd0 = 0;
+    wr32(0x5ac10, 0);
+  }
+}
+static void arm_flight_systems() {
+  w_5ac7c = 144;
+  arm_flight_systems_flags();
+}
+NATIVE_C(0x2f02c, arm_flight_systems_flags, true);
+NATIVE_C(0x2f024, arm_flight_systems, true);
+
+// $292b4: mouse button state.  Bit 0 = LMB (via the original's BSS-as-CIA
+// bug at $2a862 bit 6), bit 1 = RMB (POTGOR DATLY, active low).
+static int32_t mouse_buttons() {
+  int32_t d7 = 0;
+  if (!(rd8(0x2a862) & 0x40)) d7 = 1;  // LMB pressed when bit 6 clear
+  uint16_t potgor = rd16(0xdff016);
+  if (!(potgor & (1 << 10))) d7 |= 2;  // RMB pressed when DATLY clear
+  return d7;
+}
+NATIVE_C(0x292b4, mouse_buttons, true);
+
+// $29c60: stop one Paula audio channel (clear the soft slot, notify driver).
+static void stop_sound_channel(uint32_t ch) {
+  wr32(0x65128 + (ch << 2), 0);
+  call_c(0x6529c, {ch});
+}
+NATIVE_C(0x29c60, stop_sound_channel, false);
+
+// $25e8c: on both mouse buttons held, set an abort/restart cue in ab68.
+static void mouse_chord_check() {
+  if (rd32(0x5b4ee) == 0) return;
+  if (b_5aad0 == 0) return;
+  if ((uint16_t(w_5aa78) & 3) != 3) return;
+  if (rd16(0x5b47e) & 8)
+    b_5ab68 = 119;
+  else if (rd8(0x5b4a7) >= 120)
+    b_5ab68 = 121;
+  w_5aa78 = 0;
+}
+NATIVE_C(0x25e8c, mouse_chord_check, true);
+
 // $2151c: read input devices and feed key presses to the key handler.
 static void poll_input() {
   sub_29006();                       // gameport (fire button) events
-  int16_t mb = int16_t(sub_292b4()); // mouse buttons
+  int16_t mb = int16_t(mouse_buttons()); // mouse buttons
   if (w_5aa76 != mb) {
     w_5aa76 = mb;
     w_5aa78 = mb;
-    sub_25e8c();
+    mouse_chord_check();
   }
   int8_t mode = b_5ab43;
   if (mode == 1 || mode == 2) {
@@ -222,7 +276,7 @@ NATIVE_C(0x2151c, poll_input, false);
 
 // $215fe: stop all four sound channels.
 static void stop_all_sounds() {
-  for (int ch = 0; ch < 4; ++ch) sub_29c60(ch);
+  for (int ch = 0; ch < 4; ++ch) stop_sound_channel(uint32_t(ch));
 }
 NATIVE_C(0x215fe, stop_all_sounds, false);
 
@@ -421,7 +475,7 @@ static void game_frame() {
     if ((frame & 7) == 7) sub_399f6();
     if ((frame & 15) == 4) os::FreeSprite(0);
     if ((frame & 31) == 8) sub_4418a();
-    else if (b_5aba6 == 0 && (frame & 31) == 16) sub_2f02c();
+    else if (b_5aba6 == 0 && (frame & 31) == 16) arm_flight_systems_flags();
     if (b_5aaa6 == 0) frame_counter = int16_t(frame_counter + 1);
   } else {
     sub_24aa8();
@@ -525,7 +579,7 @@ static void start_demo() {
   in_flight = 1;
   w_5ac7e = 0;
   w_5ac80 = 0;
-  sub_2f024();
+  arm_flight_systems();
   b_5ab50 = -1;
   state_timer = 1;
 }
@@ -753,7 +807,7 @@ static void st_22026() {
     in_flight = 1;
     w_5ac7e = 0;
     w_5ac80 = 0;
-    sub_2f024();
+    arm_flight_systems();
     b_5ab50 = -1;
     b_5aa7d = 0;
     game_state = st_22354_addr;
@@ -1664,7 +1718,7 @@ static void st_22f06() {
       }
       b_5aa9f = 0;
       w_5ac80 = int16_t(int16_t(w_5ac7e) << 4);
-      sub_2f02c();
+      arm_flight_systems_flags();
       b_5abaa = int8_t(uint8_t(b_5aab6) & 0x7f);
     }
     return;
