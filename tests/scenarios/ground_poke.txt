@@ -1,0 +1,52 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+4200 key 0c
+4205 key 0c
+4210 key 0c
+4215 key 0c
+4220 key 0c
+4225 key 0c
+4230 key 0c
+4235 key 0c
+4240 key 0c
+4245 key 0c
+4250 key 0c
+4255 key 0c
+4260 key 0c
+4265 key 0c
+4270 key 0c
+4275 key 0c
+4500 poke 5b494 fffff800 l
+4560 poke 5b494 00100000 l
+4620 poke 5b494 fffff800 l
+4621 poke 5b4ea 0 w
+4700 poke 5b494 00100000 l
+4760 poke 5b4ea 3 w
+4761 poke 5b494 fffff800 l
+4800 poke 5b4ea 0 w
+4801 poke 5b494 ffffe000 l
+4900 poke 5b494 00100000 l
+5000 poke 5b694 fffff800 l
+5001 poke 5b894 fffff800 l
+5100 poke 5b694 00100000 l
+5101 poke 5b894 00100000 l
+5200 poke 5b4ee 0 l
+5201 poke 5b494 fffff800 l
+5300 poke 5b494 00100000 l
+5400 poke 5b4a4 00 b
+5401 poke 5b4a4 40 b
+5402 poke 5b494 fffff800 l
+5500 poke 5b494 00100000 l
+5600 poke 5aa98 01 b
+5650 poke 5aa97 03 b
+5700 poke 5aa97 01 b
+5750 poke 5aaa6 01 b
+5800 poke 5aaa6 00 b
+5801 poke 5aa98 00 b
+5802 poke 5aa97 00 b
+7000 quit

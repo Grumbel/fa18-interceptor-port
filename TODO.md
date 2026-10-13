@@ -76,7 +76,9 @@ Done (all verified by the gate):
 - control-stick/surface deflections ($25584), per-frame sound update
   ($24aa8), aim angles ($24552), cockpit command/view toggles
   ($23d54/$241f0/$2439a/$243fa), engine/airspeed update ($25edc with
-  $269ce/$269fa/$26a3a; engine.cpp, scenario eng_poke)
+  $269ce/$269fa/$26a3a; engine.cpp, scenario eng_poke), altitude/
+  ground-contact update ($26b16 with $27290; vertical.cpp, scenario
+  ground_poke)
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
