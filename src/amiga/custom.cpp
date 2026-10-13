@@ -4,6 +4,7 @@
 #include "amiga/hle.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace amiga {
@@ -522,14 +523,18 @@ void Machine::audio_advance(double ticks, int16_t* out, int frames) {
       int s = a.active ? a.sample * vol : 0;
       if (ch == 0 || ch == 3) l += s; else r += s;
     }
+    // A500 output stage: fixed one-pole RC low-pass at ~4.4 kHz.
+    lp_l_ += lp_k_ * (double(l) - lp_l_);
+    lp_r_ += lp_k_ * (double(r) - lp_r_);
     // 2 channels × 127 × 64 → scale to 16 bit
-    out[f * 2] = int16_t(std::clamp(l * 2, -32768, 32767));
-    out[f * 2 + 1] = int16_t(std::clamp(r * 2, -32768, 32767));
+    out[f * 2] = int16_t(std::clamp(int(lp_l_ * 2), -32768, 32767));
+    out[f * 2 + 1] = int16_t(std::clamp(int(lp_r_ * 2), -32768, 32767));
   }
 }
 
 void Machine::audio_line() {
   int rate = host_ ? host_->audio_rate() : 48000;
+  lp_k_ = 1.0 - std::exp(-2.0 * 3.14159265358979 * 4400.0 / rate);
   audio_frac_ += double(rate) / (LINES_PER_FRAME * 60.0);
   int n = int(audio_frac_);
   if (n <= 0) return;

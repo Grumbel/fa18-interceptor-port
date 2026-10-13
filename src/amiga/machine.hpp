@@ -227,6 +227,7 @@ private:
   AudioChannel aud_[4];
   std::vector<int16_t> audio_buf_;
   double audio_frac_ = 0;
+  double lp_l_ = 0, lp_r_ = 0, lp_k_ = 0.4;
   // input
   int mouse_x_ = 0, mouse_y_ = 0;
   bool lmb_ = false, rmb_ = false;

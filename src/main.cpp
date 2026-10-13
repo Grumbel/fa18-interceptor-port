@@ -119,8 +119,6 @@ public:
   size_t script_pos = 0;
   std::vector<std::pair<int, int>> pending_up;  // frame, rawkey
   bool sjoy[5] = {};
-  // keyboard joystick (numpad)
-  bool kup = false, kdown = false, kleft = false, kright = false, kfire = false;
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -173,16 +171,6 @@ public:
           }
           if (sc == SDL_SCANCODE_PAUSE && down) { fast = !fast; break; }
           if (sc == SDL_SCANCODE_F4 && down && (e.key.keysym.mod & KMOD_ALT)) { quit = true; break; }
-          // Numpad doubles as joystick on port 2 (8/2/4/6, 0 or 5 = fire).
-          switch (sc) {
-            case SDL_SCANCODE_KP_8: kup = down; break;
-            case SDL_SCANCODE_KP_2: kdown = down; break;
-            case SDL_SCANCODE_KP_4: kleft = down; break;
-            case SDL_SCANCODE_KP_6: kright = down; break;
-            case SDL_SCANCODE_KP_0: case SDL_SCANCODE_KP_5: case SDL_SCANCODE_RCTRL:
-              kfire = down; break;
-            default: break;
-          }
           if (e.key.repeat) break;
           int rk = amiga_rawkey(sc);
           if (rk >= 0) machine->key_event(uint8_t(rk), down);
@@ -205,8 +193,10 @@ public:
       }
     }
     run_script();
-    bool up = kup || sjoy[0], down = kdown || sjoy[1], left = kleft || sjoy[2],
-         right = kright || sjoy[3], fire = kfire || sjoy[4];
+    // Joystick (port 2) comes from a game controller or the input script.
+    // The keyboard is passed to the game as is: the original flies with the
+    // cursor keys and fires with SPACE; the numpad selects views.
+    bool up = sjoy[0], down = sjoy[1], left = sjoy[2], right = sjoy[3], fire = sjoy[4];
     if (pad) {
       int x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
       int y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
@@ -329,7 +319,8 @@ void usage() {
           "  data-dir         directory with the files of the original disk\n"
           "                   (default: ./assets or the install data dir)\n"
           "  --scale N        window scale (default 3)\n"
-          "  --save DIR       directory for config/pilot log (default: data-dir)\n"
+          "  --save DIR       directory for config/pilot log\n"
+          "                   (default: $XDG_DATA_HOME/fa18-interceptor)\n"
           "  --speed X        CPU speed multiplier (default 1.0)\n"
           "  --verbose        log OS calls\n"
           "  --trace          trace every instruction (very slow)\n"
@@ -341,8 +332,10 @@ void usage() {
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
-          "keys: F12 grab mouse, F11 fullscreen, Pause fast-forward,\n"
-          "      numpad 8/2/4/6 + 0 = joystick\n");
+          "keys: F12 grab mouse (mouse = flight stick in port 1), F11 fullscreen,\n"
+          "      Pause fast-forward; a game controller acts as joystick in port 2.\n"
+          "      All other keys go to the game (see manual: cursor keys fly,\n"
+          "      F1-F10/=/- throttle, SPACE fire, RETURN weapon, numpad views).\n");
 }
 
 }  // namespace
@@ -379,6 +372,14 @@ int main(int argc, char** argv) {
       if (std::filesystem::exists(std::string(cand) + "/F-18 Interceptor")) { data_dir = cand; break; }
     }
   }
+  if (save_dir.empty()) {
+    const char* xdg = getenv("XDG_DATA_HOME");
+    const char* home = getenv("HOME");
+    if (xdg && *xdg) save_dir = std::string(xdg) + "/fa18-interceptor";
+    else if (home) save_dir = std::string(home) + "/.local/share/fa18-interceptor";
+    else save_dir = ".";
+  }
+  std::filesystem::create_directories(save_dir);
   if (data_dir.empty()) {
     fprintf(stderr, "Cannot find the game data (F-18 Interceptor executable).\n");
     usage();
