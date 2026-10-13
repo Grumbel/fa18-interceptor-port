@@ -230,6 +230,7 @@ NATIVE_C(0x234a8, count_mission_complete, false);
 static void arm_flight_systems_flags() {
   // All of these are brief "boost" counters decremented by game_frame.
   constexpr int8_t k = 3;
+  cpu().d[4] = 3;  // assembly routine: leaves moveq #3,d4
   b_5ab2f = k; b_5ab2e = k;
   b_5ab31 = k; b_5ab32 = k;
   b_5ab36 = k; b_5ab37 = k; b_5ab38 = k; b_5ab39 = k;
@@ -245,7 +246,7 @@ static void arm_flight_systems() {
   w_5ac7c = 144;
   arm_flight_systems_flags();
 }
-NATIVE_C(0x2f02c, arm_flight_systems_flags, true);
+NATIVE_ASM(0x2f02c, arm_flight_systems_flags, true);
 NATIVE_C(0x2f024, arm_flight_systems, true);
 
 // $292b4: mouse button state.  Bit 0 = LMB (via the original's BSS-as-CIA
@@ -301,24 +302,29 @@ NATIVE_C(0x22ce8, enable_inflight_systems, false);
 
 // $2f0b2: joystick fire pressed.
 static void joy_fire_down() {
-  if ((rd8(0x5b4f8) & 0x0f) != 0) return;
+  // Assembly routine; d4.b holds the masked flag bytes like the original.
+  auto set_d4b = [](uint8_t v) { cpu().d[4] = (cpu().d[4] & 0xFFFFFF00u) | v; };
+  uint8_t busy = uint8_t(rd8(0x5b4f8) & 0x0f);
+  set_d4b(busy);
+  if (busy != 0) return;
   if (scenario == 125) {
     if (b_5aa92 < 0) wr8(0x5bc7e, uint8_t(rd8(0x5bc7e) | 8));
     return;
   }
-  w_5ac92 = int16_t(uint16_t(w_5ac92) | 4);
+  wr8(0x5ac92, rd8(0x5ac92) | 0x04);  // bset #2,$5ac92 (byte)
   uint8_t hi = uint8_t(rd8(0x5b4df) & 0xf0);
+  set_d4b(hi);
   if (hi == 0) return;
   if (hi == 0x10)
     w_5abbe = int16_t(uint16_t(w_5abbe) | 8);
   else
     b_5aab2 = 1;
 }
-NATIVE_C(0x2f0b2, joy_fire_down, true);
+NATIVE_ASM(0x2f0b2, joy_fire_down, true);
 
 // $2f108: joystick fire released.
 static void joy_fire_up() {
-  w_5ac92 = int16_t(uint16_t(w_5ac92) | 8);
+  wr8(0x5ac92, rd8(0x5ac92) | 0x08);  // bset #3,$5ac92 (byte)
   w_5abbe = int16_t(uint16_t(w_5abbe) & ~8);
 }
 NATIVE_C(0x2f108, joy_fire_up, true);
@@ -348,12 +354,11 @@ static int16_t read_rawkey() {
     return int16_t(rd16(0x2d090));
   }
   int8_t raw = fetch_key_byte();
-  if (raw == 0) return -1;
+  if (raw == 0) return 0xFF;
   uint8_t code = uint8_t(raw) & 0x7f;
-  if ((code & 0x70) == 0x70) return -1;
-  bool up = (uint8_t(raw) & 0x80) != 0;
-  // Key-down: set bit 7 on the returned code; key-up: clear it.
-  if (!up) code = uint8_t(code + 0x80);
+  if ((code & 0x70) == 0x70) return 0xFF;
+  // Key-up events (bit 7 set) keep bit 7, key-down events return the code.
+  if (uint8_t(raw) & 0x80) code = uint8_t(code + 0x80);
   return int16_t(int8_t(code));
 }
 NATIVE_C(0x28dae, read_rawkey, true);
@@ -372,30 +377,41 @@ static void refresh_system_time() {
 NATIVE_C(0x28e5c, refresh_system_time, false);
 
 // $2e268/$2e26c/$2e270: set pitch/vertical stick bits in ab26 (+ b4e1).
+// Assembly routines: they leave d2 = bits and, when $5b4e1 is updated,
+// the new byte in d1.b (registered with the register convention so the
+// register results match exactly).
 static void stick_v(uint8_t bits) {
+  cpu().d[2] = bits;
   b_5ab26 = int8_t(bits);
-  if (b_5aaa5 != 0 || b_5aaac != 0)
-    wr8(0x5b4e1, uint8_t((rd8(0x5b4e1) & 0xcf) | bits));
+  if (b_5aaa5 != 0 || b_5aaac != 0) {
+    uint8_t v = uint8_t((rd8(0x5b4e1) & 0xcf) | bits);
+    cpu().d[1] = (cpu().d[1] & 0xFFFFFF00u) | v;
+    wr8(0x5b4e1, v);
+  }
 }
 static void stick_v_down() { stick_v(0x20); }
 static void stick_v_up()   { stick_v(0x10); }
 static void stick_v_rel()  { stick_v(0x00); }
-NATIVE_C(0x2e268, stick_v_down, true);
-NATIVE_C(0x2e26c, stick_v_up, true);
-NATIVE_C(0x2e270, stick_v_rel, true);
+NATIVE_ASM(0x2e268, stick_v_down, true);
+NATIVE_ASM(0x2e26c, stick_v_up, true);
+NATIVE_ASM(0x2e270, stick_v_rel, true);
 
 // $2e2b4/$2e2b8/$2e2bc: set roll/horizontal stick bits in ab28 (+ b4e1).
 static void stick_h(uint8_t bits) {
+  cpu().d[2] = bits;
   b_5ab28 = int8_t(bits);
-  if (b_5aaa5 != 0 || b_5aaac != 0)
-    wr8(0x5b4e1, uint8_t((rd8(0x5b4e1) & 0xf3) | bits));
+  if (b_5aaa5 != 0 || b_5aaac != 0) {
+    uint8_t v = uint8_t((rd8(0x5b4e1) & 0xf3) | bits);
+    cpu().d[1] = (cpu().d[1] & 0xFFFFFF00u) | v;
+    wr8(0x5b4e1, v);
+  }
 }
 static void stick_h_right() { stick_h(0x08); }
 static void stick_h_left()  { stick_h(0x04); }
 static void stick_h_rel()   { stick_h(0x00); }
-NATIVE_C(0x2e2b4, stick_h_right, true);
-NATIVE_C(0x2e2b8, stick_h_left, true);
-NATIVE_C(0x2e2bc, stick_h_rel, true);
+NATIVE_ASM(0x2e2b4, stick_h_right, true);
+NATIVE_ASM(0x2e2b8, stick_h_left, true);
+NATIVE_ASM(0x2e2bc, stick_h_rel, true);
 
 // $2f216: empty stub in the original (just rts).
 static void stub_2f216() {}
@@ -1683,21 +1699,21 @@ static void st_23b7e() {
   }
 }
 static void st_23ba8() {
-  if (b_5aaa6 < 0) {
-    // more time-accounting left in original; for now stay
-    return;
-  }
+  if (b_5aaa6 < 0) return;
   in_flight = 1;
   clear_messages();
   b_5ab99 = 15;
   if (b_5aba6 == 6) {
     game_state = st_22d60_addr;
   } else {
+    // Pause ended: exclude the paused time from the flight time.
     refresh_system_time();
-    int32_t delta = int32_t(rd32(0x5adea)) - int32_t(rd32(0x5abfc));
-    wr32(0x5abfc, uint32_t(delta));
-    wr32(0x5ac00, uint32_t(int32_t(rd32(0x5ac00)) + delta));
-    // remaining original continues into more flight-time bookkeeping
+    int32_t paused = l_5adea - l_5abfc;
+    l_5abfc = paused;
+    l_5ac00 = l_5ac00 + paused;
+    if (l_5ac04 != 0) l_5ac04 = l_5ac04 + l_5abfc;
+    l_5abfc = 0;
+    game_state = 0x22f06;
   }
 }
 

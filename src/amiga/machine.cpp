@@ -287,8 +287,11 @@ void Machine::verify_native(const native::Def* d) {
     }
   };
   uint32_t stack_lo = entry_sp >= 0x10000 && entry_sp < 0x20000 ? 0x10000 : entry_sp;
+  // C callees may modify their own argument slots (the caller pops them).
+  uint32_t args_lo = entry_sp + 4, args_hi = d->conv == native::Conv::C ? args_lo + 4u * uint32_t(d->nargs) : args_lo;
   for (uint32_t a = 0; a < heap_hw_; ++a) {
     if (a >= stack_lo && a < entry_sp) continue;
+    if (a >= args_lo && a < args_hi) continue;
     if (ref.ram[a] != nat.ram[a]) note(" [%06x] ref=%02x nat=%02x", a, ref.ram[a], nat.ram[a]);
   }
   bool c_conv = d->conv == native::Conv::C;

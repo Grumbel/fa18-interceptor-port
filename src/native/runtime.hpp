@@ -106,11 +106,13 @@ struct Def {
   Conv conv;     // C: stack args, result d0, d2-d7/a2-a6 preserved
   bool verify;   // safe to run twice for --native verify (no OS side effects)
   bool ret_d0;   // C: result in d0 (void functions leave garbage there)
+  int nargs = 0; // C: stack arguments (the callee may modify its slots)
 };
 
 // Registers at static-initialisation time.
 struct Registrar {
-  Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0 = true);
+  Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0 = true,
+            int nargs = 0);
 };
 
 const Def* find(uint32_t addr);
@@ -146,7 +148,8 @@ void c_adapter() {
 #define NATIVE_C(addr, fn, verify)                                                         \
   static ::native::Registrar native_reg_##fn(                                              \
       addr, #fn, &::native::c_adapter<&fn>, ::native::Conv::C, verify,                     \
-      !std::is_void_v<typename ::native::FnArgs<decltype(&fn)>::ret>)
+      !std::is_void_v<typename ::native::FnArgs<decltype(&fn)>::ret>,                     \
+      int(std::tuple_size_v<typename ::native::FnArgs<decltype(&fn)>::type>))
 
 // A game state handler: `void fn()` stored as a code address in a state
 // variable (e.g. game_state) and called through it.  Defines fn_addr.

@@ -16,8 +16,9 @@ std::map<uint32_t, Def>& registry() {
 }
 }  // namespace
 
-Registrar::Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0) {
-  registry()[addr] = Def{addr, name, fn, conv, verify, ret_d0};
+Registrar::Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0,
+                     int nargs) {
+  registry()[addr] = Def{addr, name, fn, conv, verify, ret_d0, nargs};
 }
 
 const Def* find(uint32_t addr) {
