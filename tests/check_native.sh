@@ -10,6 +10,11 @@ set -e
 here=$(cd "$(dirname "$0")" && pwd)
 w=${1:-$(mktemp -d)}
 mkdir -p "$w"
+echo "== build"
+here_root=$(cd "$here/.." && pwd)
+if ! cmake --build "$here_root/build" -j"$(nproc)" > "$w/build.txt" 2>&1; then
+  grep -E "error|Error" "$w/build.txt" | head -20; echo "FAIL: build failed"; exit 1
+fi
 echo "== equivalence (compare_native.sh)"
 if ! "$here/compare_native.sh" "$w/cmp" > "$w/compare.txt"; then
   grep DIFF "$w/compare.txt"; echo "FAIL: native code is not equivalent"; exit 1
