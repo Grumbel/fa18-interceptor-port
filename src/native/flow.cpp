@@ -185,6 +185,27 @@ static void save_rank_to_log() {
 }
 NATIVE_C(0x2d190, save_rank_to_log, true);
 
+// $2d382: zero the main gameplay flag block (bytes aa88..aabd, words abb8..ac1e).
+static void clear_gameplay_flags() {
+  for (uint32_t a = 0x5aa88; a < 0x5aabd; ++a) wr8(a, 0);
+  for (uint32_t a = 0x5abb8; a < 0x5ac20; a += 2) wr16(a, 0);
+}
+NATIVE_C(0x2d382, clear_gameplay_flags, true);
+
+// $2d3b2: set the sticky-true flag block aa7c..aa87 to 1.
+static void set_sticky_true_flags() {
+  for (uint32_t a = 0x5aa7c; a < 0x5aa88; ++a) wr8(a, 1);
+}
+NATIVE_C(0x2d3b2, set_sticky_true_flags, true);
+
+// $29d82: play the two "engine spool" samples when sound bit 2 is armed.
+static void play_engine_spool(uint32_t vol) {
+  if (!(rd8(0x5ae52) & 4)) return;
+  call_c(0x29c84, {35, 0, vol});
+  call_c(0x29c84, {36, 1, vol});
+}
+NATIVE_C(0x29d82, play_engine_spool, false);
+
 // $234a8: bump per-scenario and global mission-complete counters in the
 // flight log after a successful sortie.
 static void count_mission_complete() {
@@ -968,7 +989,7 @@ static void st_22026() {
   music_volume = 0x3f0000;
 
   if (sel >= 3 && sel <= 8) {
-    sub_29d82(40);
+    play_engine_spool(40);
   } else if (rd8(0x5ae53) & 0x10) {
     sub_29fa2(8);
   } else {
