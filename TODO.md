@@ -69,20 +69,20 @@ Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
 Done: the entire hunk-0 game state machine from extra_entries.txt,
-  including the end-of-mission debrief ($231fc).  All NATIVE_STATE
-  handlers are registered; see the list at the top of flow.cpp.
+  plus non-state helpers:
+  $2151c/$215fe/$21630/$216c2/$21750/$21bfc/$2346a/$234a8/
+  $23c24/$23c66/$23c9c/$23d08.
+  All NATIVE_STATE handlers are registered; see the list in flow.cpp.
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1.
-      Investigation: $5ab55 is a copy of $5ab54, maintained by the object
-      system at $310c0–$313f4 (not by game_frame itself).  Side-by-side
-      re-read of every condition in game_frame against the assembly found
-      no control-flow mismatch; FA18_POISON is clean.  Likely a subtle
-      interaction with a not-yet-native callee.  Fixed a signed left-shift
-      on $5abd4 while looking.  $23c9c (sound-priority tick) is now native.
-- [ ] hunk 0 remaining C functions (non-state), C runtime, asm hunks
-      4-40 (3D, flight model, HUD), sound driver (hunks 74-77)
+      Investigation: $5ab55 is owned by the object system at $310c0+;
+      condition audit of game_frame found no mismatch.  Likely a
+      not-yet-native callee.  $23c9c is now native.
+- [ ] remaining hunk-0 C helpers still called via call_c (input, audio
+      channel, view setup, etc.), C runtime, asm hunks 4-40 (3D, flight
+      model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: keep bisecting the $5ab55 divergence (FA18_NATIVE_SKIP on
-callees of game_frame), or continue non-state hunk-0 helpers.
+Next tip work: more hunk-0 helpers (input $29xxx, audio $29c60), or
+bisect $5ab55 with FA18_NATIVE_SKIP.

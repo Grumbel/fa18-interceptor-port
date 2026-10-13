@@ -132,6 +132,62 @@ static void tick_sound_priority() {
 }
 NATIVE_C(0x23c9c, tick_sound_priority, true);
 
+// $23c24: copy 16 longwords (32 palette entries) from `src` into the fade
+// target buffer and request a fade (ab9c = 2).
+static void load_fade_palette(uint32_t src) {
+  uint32_t dst = fade_palette;  // pointer value at $5a958
+  for (int i = 0; i < 16; ++i) {
+    wr32(dst, rd32(src));
+    src += 4;
+    dst += 4;
+  }
+  b_5ab9c = 2;
+}
+NATIVE_C(0x23c24, load_fade_palette, true);
+
+// $23c66: clear the fade-target palette and request a fade.
+static void clear_fade_palette() {
+  b_5ab9c = 2;
+  uint32_t dst = fade_palette;
+  for (int i = 0; i < 16; ++i) {
+    wr32(dst, 0);
+    dst += 4;
+  }
+}
+NATIVE_C(0x23c66, clear_fade_palette, true);
+
+// $23d08: record a game-event code when bit 8 of abc4 is set (in-flight
+// systems enabled).  Used for landing / touchdown cues.
+static void post_game_event(uint32_t code) {
+  if (!(uint16_t(w_5abc4) & 0x100)) return;
+  uint16_t c = uint16_t(code);
+  w_5add8 = int16_t(c);
+  w_5abc4 = int16_t(uint16_t(w_5abc4) | 1);
+  c = uint16_t(c & 0xff00);
+  if (c == 0x4000 || c == 0x4800)
+    w_5abc6 = int16_t(uint16_t(w_5abc6) & 0xdfff);
+}
+NATIVE_C(0x23d08, post_game_event, true);
+
+// $234a8: bump per-scenario and global mission-complete counters in the
+// flight log after a successful sortie.
+static void count_mission_complete() {
+  uint32_t cfg = uint32_t(config_buf);
+  uint32_t slot = cfg + 18 + uint32_t(int32_t(int8_t(scenario)));
+  sub_2d190();  // persist helper used by the original before the bumps
+  wr8(cfg + 6, uint8_t(scenario));
+  wr8(cfg + 7, rd8(slot));
+  wr16(cfg + 0x38, uint16_t(rd16(cfg + 0x38) + 1));
+  int8_t g = int8_t(b_5ab9f + 1);
+  if (g > 3) g = 3;
+  b_5ab9f = g;
+  int8_t s = int8_t(rd8(slot) + 1);
+  if (s > 3) s = 3;
+  wr8(slot, uint8_t(s));
+  b_5aba0 = b_5ab9f;
+}
+NATIVE_C(0x234a8, count_mission_complete, false);
+
 // $2151c: read input devices and feed key presses to the key handler.
 static void poll_input() {
   sub_29006();                       // gameport (fire button) events
@@ -447,7 +503,7 @@ static void st_21aea() {
     game_state = st_21b5c_addr;
   } else {
     b_5ab43 = 0;
-    sub_23c24(0x39fd4);
+    load_fade_palette(0x39fd4);
     game_state = st_mission_menu_wait_addr;
   }
 }
@@ -539,7 +595,7 @@ static void st_mission_menu() {
   clear_messages();
   sub_208e2(0xc000);  // delay
   b_5aba5 = 0;
-  sub_23c24(0x39fd4);
+  load_fade_palette(0x39fd4);
   message_y = 480;
   static const int16_t menu[] = {6, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 0};
   for (int i = 0; i < 12; ++i) message_queue.at(i) = menu[i];
@@ -646,7 +702,7 @@ static void st_22026() {
   in_flight = 1;
   b_5ab2e = 3;
   b_5ab99 = b_5ab98;
-  sub_23c66();
+  clear_fade_palette();
   game_state = st_2253c_addr;
   b_5ab40 = 3;
   b_5ab41 = 17;
@@ -1244,7 +1300,7 @@ static void st_22ee2() {
 // $2353c / $23576: picture-checksum error screen (bad splash/cockpit/front).
 static void st_2353c() {
   if (state_timer < 0) {
-    sub_23c24(0x39fd4);
+    load_fade_palette(0x39fd4);
     message_queue = 97;
     state_timer = 500;
     game_state = st_23576_addr;
@@ -1262,7 +1318,7 @@ static void st_23576() {
 // $2359e / $235d0: title screen after successful boot check.
 static void st_2359e() {
   if (state_timer < 0) {
-    sub_23c24(0x39fd4);
+    load_fade_palette(0x39fd4);
     message_queue = 15;
     game_state = st_235d0_addr;
   } else {
@@ -1273,7 +1329,7 @@ static void st_235d0() {
   if (b_5aa9b != 0) {
     music_volume2 = 0x1f0000;
     b_5aacf = 1;  // title_flag
-    sub_23c24(0x3a054);
+    load_fade_palette(0x3a054);
     clear_messages();
     sub_4492a();
     b_5aacb = 1;
@@ -1299,7 +1355,7 @@ static void st_2362a() {
     game_state = st_23712_addr;
     return;
   }
-  sub_23c24(0x39fd4);
+  load_fade_palette(0x39fd4);
   uint32_t q = message_queue.ptr();
   int16_t ds = disk_state;
   if (ds == 1) {
@@ -1383,7 +1439,7 @@ static void st_23712() {
     return;
   }
   b_5aba5 = 1;
-  sub_23c24(0x39fd4);
+  load_fade_palette(0x39fd4);
   b_5aad8 = 0;
   b_5aabb = 0;
   uint16_t rank = rd16(config_buf + 4);
@@ -1482,7 +1538,7 @@ static void st_239ca() {
 // $239f8 / $23a3e: "game over / returned to base" messages → restart.
 static void st_239f8() {
   if (state_timer < 0) {
-    sub_23c24(0x39fd4);
+    load_fade_palette(0x39fd4);
     if (b_5ab41 == 16)
       message_queue = 98;
     else
@@ -1568,7 +1624,7 @@ static void st_22f06() {
     }
     // Touchdown without the success flag: clear landing bit, play event.
     wr16(0x5b47c, uint16_t(rd16(0x5b47c) & 0xfdff));
-    sub_23d08(0x4021);
+    post_game_event(0x4021);
     return;
   }
 
@@ -1713,7 +1769,7 @@ static void st_231fc() {
   if (b_5aa90 == -4) {
     wr16(q, 84); q += 2;
     wr16(q, 0x8053); q += 2;
-    sub_234a8();
+    count_mission_complete();
     sub_28592();
   }
   wr16(q, 0);
