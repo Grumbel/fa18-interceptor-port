@@ -242,9 +242,57 @@ static void mouse_chord_check() {
 }
 NATIVE_C(0x25e8c, mouse_chord_check, true);
 
+// $28dae: next keyboard event as a signed rawkey, or -1 if none.
+// Sticky-shift path ($2a5a6) returns the previously latched key.
+static int16_t read_rawkey() {
+  if (rd16(0x2a5a6) != 0) {
+    wr16(0x2a5a6, 0);
+    return int16_t(rd16(0x2d090));
+  }
+  int8_t raw = int8_t(sub_28d4a());
+  if (raw == 0) return -1;
+  uint8_t code = uint8_t(raw) & 0x7f;
+  if ((code & 0x70) == 0x70) return -1;
+  bool up = (uint8_t(raw) & 0x80) != 0;
+  // Key-down: set bit 7 on the returned code; key-up: clear it.
+  if (!up) code = uint8_t(code + 0x80);
+  return int16_t(int8_t(code));
+}
+NATIVE_C(0x28dae, read_rawkey, true);
+
+// $28e5c: TR_GETSYSTIME into the game's timer IO, copy secs/micro out.
+static void refresh_system_time() {
+  wr8(0x2d054, 5);
+  wr8(0x2d055, 0);
+  wr32(0x2d056, 0);
+  wr32(0x2d05a, 0);
+  wr16(0x2d068, 10);
+  os::DoIO(0x2d04c);
+  wr32(0x5adea, rd32(0x2d06c));
+  wr32(0x5adee, rd32(0x2d070));
+}
+NATIVE_C(0x28e5c, refresh_system_time, false);
+
+// $29006: drain gameport.device fire-button events, then sample the stick.
+static void poll_gameport() {
+  uint32_t msg = os::GetMsg(rd32(0x2d0b4));
+  if (msg == 0) {
+    b_5ab25 = 0;
+  } else {
+    uint32_t ie = rd32(0x2d092);
+    int16_t code = int16_t(rd16(ie + 6));
+    if (code == 104) sub_2f0b2();
+    else if (code == 232) sub_2f108();
+    wr16(ie + 6, 0);
+    os::SendIO(rd32(0x2d096));
+  }
+  call_c(0x29074);  // JOY1DAT sample / edge helpers (still original)
+}
+NATIVE_C(0x29006, poll_gameport, false);
+
 // $2151c: read input devices and feed key presses to the key handler.
 static void poll_input() {
-  sub_29006();                       // gameport (fire button) events
+  poll_gameport();                       // gameport (fire button) events
   int16_t mb = int16_t(mouse_buttons()); // mouse buttons
   if (w_5aa76 != mb) {
     w_5aa76 = mb;
@@ -258,7 +306,7 @@ static void poll_input() {
     while ((w_5ac8e | w_5ac90) != 0) sub_2d984();
   }
   for (;;) {
-    int8_t key = int8_t(sub_28dae());
+    int8_t key = int8_t(read_rawkey());
     if (key == -1) break;
     sub_2dad0(uint32_t(uint8_t(key)));
   }
@@ -1333,7 +1381,7 @@ static void st_22e56() {
   w_5abc6 = int16_t(uint16_t(w_5abc6) | 0x100);
   w_5abca = int16_t(uint16_t(w_5abca) | 0x2);
   if (scenario == 2) b_5aa8b = 1;
-  sub_28e5c();
+  refresh_system_time();
   wr32(0x5ac0c, rd32(0x5adea));
   wr32(0x5ac04, rd32(0x5adea));
   frame_counter = 0;
@@ -1443,7 +1491,7 @@ static void st_23ba8() {
   if (b_5aba6 == 6) {
     game_state = st_22d60_addr;
   } else {
-    sub_28e5c();
+    refresh_system_time();
     int32_t delta = int32_t(rd32(0x5adea)) - int32_t(rd32(0x5abfc));
     wr32(0x5abfc, uint32_t(delta));
     wr32(0x5ac00, uint32_t(int32_t(rd32(0x5ac00)) + delta));
@@ -1686,7 +1734,7 @@ static void st_22f06() {
   if (b_5aaa6 < 0) {
     state_timer = 2;
     b_5ab99 = 10;
-    sub_28e5c();
+    refresh_system_time();
     wr32(0x5abfc, rd32(0x5adea));
     game_state = st_23b7e_addr;
     return;
