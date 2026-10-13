@@ -231,8 +231,11 @@ public:
     next_frame += freq / 60;
     uint64_t now = SDL_GetPerformanceCounter();
     if (fast || int64_t(next_frame - now) < -int64_t(freq / 10)) next_frame = now;
-    while (!fast && SDL_GetPerformanceCounter() < next_frame) {
-      uint64_t left_us = (next_frame - SDL_GetPerformanceCounter()) * 1000000 / freq;
+    // Signed arithmetic: the counter may pass next_frame between reads.
+    while (!fast) {
+      int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
+      if (left <= 0) break;
+      int64_t left_us = left * 1000000 / int64_t(freq);
       if (left_us > 2000) SDL_Delay(uint32_t(left_us / 1000 - 1));
     }
   }
