@@ -68,18 +68,21 @@ Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
 Done: startup (main, picture loader, delay, Workbench), flight log/config,
-codewheel hash, game state machine part 1 ($2151c-$21f8e: input poll,
-run_game_state, menu/flight-log states, demo start), and $22026 (scenario
-setup / mission-start dispatch after menu selection).
+codewheel hash, game state machine through mission-start:
+  $2151c–$21f8e (input, menu, flight log, demo),
+  $22026 (scenario dispatch),
+  $222d6 (selectable-missions list from log),
+  $22354/$22380 (free-flight intro),
+  $223ca/$223f6 (combat-mission intro),
+  $2253c/$22570/$225b0/$2261a/$226fe/$2274c/$2277e/$227a4/$227d0
+  (post-menu wait → briefing → pre-flight gate).
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1
-- [ ] rest of hunk 0 state machine after $22026 ($222d6, $22354, $223ca,
-      $2253c, $22d60, …) — see Ghidra + asm
+- [ ] rest of hunk 0 state machine after $227d0 ($22886, $228b2, $228e2,
+      $22d60, title/fade states $2353c–$2362a, …)
 - [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
       model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: either chase the $5ab55 divergence so game_frame can be
-enabled, or continue translating the post-$22026 state handlers
-($2253c is the immediate next address written by st_22026).
+Next tip work: continue the $22886+ chain, or chase the $5ab55 divergence.

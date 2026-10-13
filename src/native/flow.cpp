@@ -40,9 +40,22 @@ NATIVE_STATE(0x21d38, st_mission_menu);
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
-constexpr uint32_t st_222d6_addr = 0x222d6, st_22d60_addr = 0x22d60;
-constexpr uint32_t st_22354_addr = 0x22354, st_223ca_addr = 0x223ca;
-constexpr uint32_t st_2253c_addr = 0x2253c;
+NATIVE_STATE(0x222d6, st_222d6);
+NATIVE_STATE(0x22354, st_22354);
+NATIVE_STATE(0x22380, st_22380);
+NATIVE_STATE(0x223ca, st_223ca);
+NATIVE_STATE(0x223f6, st_223f6);
+NATIVE_STATE(0x2253c, st_2253c);
+NATIVE_STATE(0x22570, st_22570);
+NATIVE_STATE(0x225b0, st_225b0);
+NATIVE_STATE(0x2261a, st_2261a);
+NATIVE_STATE(0x226fe, st_226fe);
+NATIVE_STATE(0x2274c, st_2274c);
+NATIVE_STATE(0x2277e, st_2277e);
+NATIVE_STATE(0x227a4, st_227a4);
+NATIVE_STATE(0x227d0, st_227d0);
+constexpr uint32_t st_22d60_addr = 0x22d60;
+constexpr uint32_t st_228e2_addr = 0x228e2;
 constexpr uint32_t st_2359e_addr = 0x2359e, st_2353c_addr = 0x2353c, st_2362a_addr = 0x2362a;
 
 // $2346a: clear the message queue / text state.
@@ -629,6 +642,208 @@ static void st_22026() {
 
   if (b_5ab40 == 3) b_5ab41 = 17;
   sub_2f7b8();
+}
+
+// $222d6: build the selectable-missions list from the flight log and return
+// to the mission-menu wait state.
+static void st_222d6() {
+  sub_4492a();
+  uint32_t q = message_queue.ptr();
+  wr16(q, 64);  // header message
+  q += 2;
+  uint32_t src = 0x53ffc;  // mission-name id table (word per mission)
+  for (int i = 3; i < 9; ++i) {
+    // config_buf + 0x12 is the per-mission unlock flag array
+    if (rd8(config_buf + 0x12 + uint32_t(i)) != 0) {
+      wr16(q, rd16(src));
+      q += 2;
+      src += 2;
+    }
+    // locked slots do not consume a name-table entry (original behaviour)
+  }
+  wr16(q, 0x806e);  // "return" entry
+  q += 2;
+  wr16(q, 0);
+  game_state = st_mission_menu_wait_addr;
+}
+
+// $22354 / $22380: free-flight intro — wait for key release, then arm flight.
+static void st_22354() {
+  if (state_timer < 0) {
+    in_flight = 0;
+    b_5ab99 = 15;
+    b_5ab98 = 0;
+    game_state = st_22380_addr;
+  }
+}
+static void st_22380() {
+  if (b_5ab98 == b_5ab99) {
+    in_flight = 1;
+    b_5ab50 = -1;
+    b_5aba6 = 4;
+    b_5aba5 = 1;
+    state_timer = 5;
+    game_state = st_227d0_addr;
+  }
+}
+
+// $223ca / $223f6: combat-mission intro (scenarios 2 / 125).
+static void st_223ca() {
+  if (state_timer < 0) {
+    in_flight = 0;
+    b_5ab99 = 15;
+    b_5ab98 = 0;
+    game_state = st_223f6_addr;
+  }
+}
+static void st_223f6() {
+  if (b_5ab98 == b_5ab99) {
+    in_flight = 1;
+    b_5ab50 = -1;
+    b_5aba5 = 1;
+    state_timer = 5;
+    game_state = st_227d0_addr;
+  }
+}
+
+// $2253c / $22570: default post-menu wait (most scenarios).
+static void st_2253c() {
+  b_5aba5 = 1;
+  if (state_timer < 0) {
+    in_flight = 0;
+    b_5ab99 = 15;
+    b_5ab98 = 0;
+    game_state = st_22570_addr;
+  }
+}
+static void st_22570() {
+  if (b_5ab98 == b_5ab99) {
+    in_flight = 1;
+    b_5ab50 = -1;
+    b_5aaa5 = 1;
+    b_5ab4f = 1;
+    state_timer = 9;
+    game_state = st_225b0_addr;
+  }
+}
+
+// $225b0: after key release, either abort on fire/escape or advance.
+static void st_225b0() {
+  b_5aa8e = int8_t(uint8_t(b_5aa8e) | uint8_t(b_5aa9b));
+  if (b_5ab23 == 0 && b_5aa9b != 0) {
+    in_flight = 1;
+    clear_messages();
+    state_timer = -1;
+    game_state = st_2274c_addr;
+    return;
+  }
+  if (state_timer < 0) {
+    b_5ab4f = 0;
+    state_timer = 1;
+    game_state = st_2261a_addr;
+  }
+}
+
+// $2261a: after the post-menu wait, either abort on fire or show the
+// mission-unlock / briefing text for scenarios 3–8.
+static void st_2261a() {
+  b_5aaa6 = 0;
+  b_5aa8e = int8_t(uint8_t(b_5aa8e) | uint8_t(b_5aa9b));
+  if (b_5ab23 == 0 && b_5aa9b != 0) {
+    in_flight = 1;
+    clear_messages();
+    state_timer = -1;
+    game_state = st_2274c_addr;
+    return;
+  }
+  if (state_timer < 0) {
+    in_flight = 0;
+    int16_t sel = int16_t(int8_t(scenario));
+    if (sel >= 3 && sel <= 8) {
+      message_queue = 91;
+      uint8_t unlocked = rd8(config_buf + 0x12 + uint32_t(sel));
+      if (unlocked == 0) {
+        sub_39510(uint32_t(sel), 1, 0);
+      } else {
+        sub_39510(uint32_t(sel), 1, 1);
+      }
+    }
+    game_state = st_226fe_addr;
+  }
+}
+
+// $226fe: wait for message / input, then enter the pre-flight fade.
+static void st_226fe() {
+  if (b_5aad8 < 0 || b_5aa9b != 0) {
+    b_5aa8e = int8_t(uint8_t(b_5aa8e) | uint8_t(b_5aa9b));
+    in_flight = 1;
+    clear_messages();
+    state_timer = -1;
+    b_5ab2e = 3;
+    game_state = st_2274c_addr;
+  }
+}
+
+// $2274c: short timer, then enable radar / view flags.
+static void st_2274c() {
+  if (state_timer < 0) {
+    b_5aaa5 = 1;
+    b_5ab4f = 1;
+    state_timer = 1;
+    sub_3db54();
+    game_state = st_2277e_addr;
+  }
+}
+
+// $2277e: set view mode 2 and fire-button latch.
+static void st_2277e() {
+  if (state_timer < 0) {
+    b_5aba6 = 2;
+    b_5aaad = 1;
+    game_state = st_227a4_addr;
+  }
+}
+
+// $227a4: wait until view mode reaches 3, then clear latch and continue.
+static void st_227a4() {
+  if (b_5aba6 == 3) {
+    b_5aaad = 0;
+    b_5ab4f = 0;
+    state_timer = 2;
+    game_state = st_227d0_addr;
+  }
+}
+
+// $227d0: final pre-flight gate — either jump to codewheel path or show
+// mission briefing messages and hand off to $228e2 (not yet translated).
+static void st_227d0() {
+  if (state_timer >= 0) return;
+  in_flight = 0;
+  if (b_5ab23 != 0) {
+    b_5aba4 = 1;
+    b_5aba5 = 2;
+    state_timer = 3;
+    game_state = st_228e2_addr;
+    return;
+  }
+  // Build a short message queue from the scenario id (missions 3–8).
+  uint32_t q = message_queue.ptr();
+  int16_t sel = int16_t(int8_t(scenario));
+  if (b_5aa8e == 0 && sel >= 3 && sel <= 8) {
+    if (sel == 3) {
+      wr16(q, 95);
+      q += 2;
+    } else {
+      wr16(q, 96);
+      q += 2;
+    }
+  }
+  b_5aa8e = 0;
+  wr16(q, 71);
+  q += 2;
+  wr16(q, 0);
+  sub_396e2();
+  game_state = 0x22886;  // next micro-state; leave as address until translated
 }
 
 }  // namespace native
