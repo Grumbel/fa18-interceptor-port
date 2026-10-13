@@ -72,8 +72,8 @@ Done: the entire hunk-0 game state machine from extra_entries.txt,
   plus non-state helpers:
   $2151c/$215fe/$21630/$216c2/$21750/$21bfc/$2346a/$234a8/
   $22ce8/$23c24/$23c66/$23c9c/$23d08/$25e8c/$28d4a/$28dae/
-  $28e5c/$29006/$29074/$292b4/$29c60/$2e268-$2e2bc/$2f024/
-  $2f02c/$2f0b2/$2f108/$2f216/$2fa6c/$2fa7e.
+  $28e5c/$29006/$29074/$292b4/$29c60/$2d408/$2d50a/$2e268-$2e2bc/
+  $2f024/$2f02c/$2f0b2/$2f108/$2f216/$2fa6c/$2fa7e.
   All NATIVE_STATE handlers are registered; see the list in flow.cpp.
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it

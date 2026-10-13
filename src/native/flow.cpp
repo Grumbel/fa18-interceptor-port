@@ -364,6 +364,35 @@ NATIVE_C(0x2e2bc, stick_h_rel, true);
 static void stub_2f216() {}
 NATIVE_C(0x2f216, stub_2f216, true);
 
+// $2d408: initialise the world-origin / camera offset vectors used by the
+// 3-D transform (positive set + negated set).
+static void init_world_origin() {
+  int32_t x = 0x0f248000;  // 254050304
+  int32_t y = 0x00005000;  // 20480
+  int32_t z = 0x0fccf000;  // 265089024
+  wr32(0x5af36, uint32_t(x));
+  wr32(0x5af3a, uint32_t(y));
+  wr32(0x5af3e, uint32_t(z));
+  x = -(x & 0x003fffff);
+  y = -y;
+  z = -(z & 0x003fffff);
+  wr32(0x5af2a, uint32_t(x));
+  wr32(0x5af2e, uint32_t(y));
+  wr32(0x5af32, uint32_t(z));
+}
+NATIVE_C(0x2d408, init_world_origin, true);
+
+// $2d50a: clear taxi/menu flags then fall into the flight-start reset at
+// $2d526.  Shared tail stays original for now.
+static void begin_flight_reset() {
+  b_5aa7d = 0;
+  b_5aa9e = 0;
+  b_5aaad = 1;
+  b_5aaac = 1;
+  call_c(0x2d526);  // full reset body
+}
+NATIVE_C(0x2d50a, begin_flight_reset, false);
+
 // $29074: sample JOY1DAT and fire edge helpers for each axis.
 static void sample_joystick() {
   uint16_t joy = rd16(0xdff00c);
@@ -741,7 +770,7 @@ static void start_demo() {
   b_5aa88 = 1;
   sub_3cf0e();
   scenario = 3;
-  sub_2d50a();
+  begin_flight_reset();
   clear_messages();
   b_5aba5 = 0;
   in_flight = 1;
@@ -960,7 +989,7 @@ static void st_22026() {
     b_5ab40 = 2;
     enable_inflight_systems();
     sub_3dc86();
-    sub_2d408();
+    init_world_origin();
     sub_3cf0e();
     b_5aaa5 = 0;
     game_state = st_223ca_addr;
@@ -969,7 +998,7 @@ static void st_22026() {
     b_5aba6 = 0;
     b_5aaa5 = 0;
     sub_3cf0e();
-    sub_2d50a();
+    begin_flight_reset();
     clear_messages();
     b_5aba5 = 1;
     in_flight = 1;
