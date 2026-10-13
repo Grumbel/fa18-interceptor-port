@@ -100,7 +100,7 @@ NATIVE_STATE(0x23a8c, st_23a8c);
 NATIVE_STATE(0x23ab0, st_23ab0);
 NATIVE_STATE(0x23b2c, st_23b2c);
 NATIVE_STATE(0x22f06, st_22f06);
-constexpr uint32_t st_231fc_addr = 0x231fc;
+NATIVE_STATE(0x231fc, st_231fc);
 
 // $2346a: clear the message queue / text state.
 static void clear_messages() {
@@ -1616,6 +1616,88 @@ static void st_22f06() {
     b_5ab99 = 2;
   else
     b_5ab99 = 15;
+}
+
+
+// $231fc: end-of-mission debrief — build a message queue from how the
+// flight ended ($5aa90) and the selected scenario, then return control
+// to the in-flight dispatcher ($22f06) which reacts to the aa90 codes.
+static void st_231fc() {
+  if (state_timer >= 0) return;
+
+  int16_t sel = int16_t(int8_t(scenario));
+  in_flight = 0;
+  game_state = st_22f06_addr;
+  clear_messages();
+  uint32_t q = message_queue.ptr();
+  int8_t end = b_5aa90;
+
+  if (end == -1) {
+    // Successful completion / landing.
+    if (sel >= 3 && sel <= 8) {
+      sub_39510(uint32_t(sel), 0, 4);
+      q = message_queue.ptr() + 2;
+      wr16(q, sel == 3 ? uint16_t(0x8055) : uint16_t(0x8056));
+      q += 2;
+    } else if (sel == 9) {
+      wr16(config_buf, 1);
+      sub_28592();
+      q = message_queue.ptr();
+      wr16(q, 74); q += 2;
+      wr16(q, 0x8053); q += 2;
+      b_5ab23 = 1;
+      b_5aa90 = -17;
+    } else if (sel == 125) {
+      wr16(q, 72); q += 2;
+      b_5aa90 = -16;
+    } else {
+      wr16(q, 65); q += 2;
+    }
+  } else if (end == -2) {
+    // Failed / aborted — scenario-specific debrief text.
+    int32_t idx = int32_t(sel) - 4;
+    if (idx >= 0 && idx < 4) {
+      switch (idx) {
+        case 0:
+          wr16(q, (frame_counter & 1) ? 36 : 37);
+          q += 2;
+          break;
+        case 1:
+          wr16(q, 44); q += 2;
+          b_5aa90 = -16;
+          break;
+        case 2:
+          wr16(q, 51); q += 2;
+          break;
+        case 3:
+          wr16(q, 57); q += 2;
+          if (frame_counter & 1) {
+            wr16(q, 0x803a); q += 2;
+            b_5aa90 = -16;
+          } else {
+            wr16(q, 0x805c); q += 2;
+          }
+          break;
+      }
+    } else {
+      wr16(q, 66); q += 2;
+    }
+    if (b_5aa90 != -16) {
+      wr16(q, 0x8056); q += 2;
+      wr16(q, 0x8053); q += 2;
+    }
+  } else if (end == -3 && sel == 4) {
+    wr16(q, 76); q += 2;
+    b_5aa90 = -16;
+  }
+
+  if (b_5aa90 == -4) {
+    wr16(q, 84); q += 2;
+    wr16(q, 0x8053); q += 2;
+    sub_234a8();
+    sub_28592();
+  }
+  wr16(q, 0);
 }
 
 }  // namespace native

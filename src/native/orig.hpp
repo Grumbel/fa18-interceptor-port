@@ -89,6 +89,7 @@ inline uint32_t sub_231a4(auto... a) { return call_c(0x231a4, {uint32_t(a)...});
 inline uint32_t sub_231d0(auto... a) { return call_c(0x231d0, {uint32_t(a)...}); }
 inline uint32_t sub_231fc(auto... a) { return call_c(0x231fc, {uint32_t(a)...}); }
 inline uint32_t sub_2346a(auto... a) { return call_c(0x2346a, {uint32_t(a)...}); }
+inline uint32_t sub_234a8(auto... a) { return call_c(0x234a8, {uint32_t(a)...}); }
 inline uint32_t sub_2353c(auto... a) { return call_c(0x2353c, {uint32_t(a)...}); }
 inline uint32_t sub_23576(auto... a) { return call_c(0x23576, {uint32_t(a)...}); }
 inline uint32_t sub_2359e(auto... a) { return call_c(0x2359e, {uint32_t(a)...}); }
