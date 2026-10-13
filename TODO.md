@@ -67,20 +67,17 @@ hash every 50 frames, all scenarios) must report "same" for all.
 Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
-Done: startup, flight log/config, codewheel, and the complete menu →
-pre-flight → title/error state machine in hunk 0:
-  $2151c–$22d60 (mission select through enter-flight),
-  $22dc0/$22e56/$22ee2 (ready messages → systems enable → HUD init),
-  $2353c/$23576 (checksum-error screen),
-  $2359e/$235d0/$2362a (title → config/disk status),
-  $23b7e/$23ba8 (demo-end / return-to-menu).
+Done: nearly all of the hunk-0 game state machine:
+  menu / mission-select / pre-flight / title / error / disk /
+  name-entry / death-eject / restart paths (see NATIVE_STATE list in
+  flow.cpp).  Only two large handlers remain original:
+  $22f06 (deep flight-start setup) and $231fc (end-of-mission debrief).
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1
-- [ ] $22f06 (deep flight-start), $236f6/$23712 (disk-error wait),
-      remaining handlers in extra_entries.txt ($231a4+, $238xx…)
+- [ ] $22f06 (flight-start), $231fc (debrief) — the last two large states
 - [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
       model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: $22f06 flight-start, or chase the $5ab55 divergence.
+Next tip work: $22f06 / $231fc, or chase the $5ab55 divergence.

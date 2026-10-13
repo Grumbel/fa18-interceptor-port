@@ -82,8 +82,25 @@ NATIVE_STATE(0x235d0, st_235d0);
 NATIVE_STATE(0x2362a, st_2362a);
 NATIVE_STATE(0x23b7e, st_23b7e);
 NATIVE_STATE(0x23ba8, st_23ba8);
+NATIVE_STATE(0x231a4, st_231a4);
+NATIVE_STATE(0x231d0, st_231d0);
+NATIVE_STATE(0x236f6, st_236f6);
+NATIVE_STATE(0x23712, st_23712);
+NATIVE_STATE(0x237f2, st_237f2);
+NATIVE_STATE(0x23808, st_23808);
+NATIVE_STATE(0x23826, st_23826);
+NATIVE_STATE(0x23890, st_23890);
+NATIVE_STATE(0x238e0, st_238e0);
+NATIVE_STATE(0x23988, st_23988);
+NATIVE_STATE(0x239ca, st_239ca);
+NATIVE_STATE(0x239f8, st_239f8);
+NATIVE_STATE(0x23a3e, st_23a3e);
+NATIVE_STATE(0x23a54, st_23a54);
+NATIVE_STATE(0x23a8c, st_23a8c);
+NATIVE_STATE(0x23ab0, st_23ab0);
+NATIVE_STATE(0x23b2c, st_23b2c);
 constexpr uint32_t st_22f06_addr = 0x22f06;
-constexpr uint32_t st_23712_addr = 0x23712;
+constexpr uint32_t st_231fc_addr = 0x231fc;
 
 // $2346a: clear the message queue / text state.
 static void clear_messages() {
@@ -1275,7 +1292,7 @@ static void st_2362a() {
   }
   wr16(q, 94); q += 2;
   wr16(q, 0);
-  game_state = 0x236f6;  // wait for key; leave until next pass
+  game_state = st_236f6_addr;
 }
 
 // $23b7e / $23ba8: short demo-end / return-to-menu after free-flight timer.
@@ -1302,6 +1319,206 @@ static void st_23ba8() {
     wr32(0x5abfc, uint32_t(delta));
     wr32(0x5ac00, uint32_t(int32_t(rd32(0x5ac00)) + delta));
     // remaining original continues into more flight-time bookkeeping
+  }
+}
+
+
+// $231a4: show message 14, then $23a54 (out-of-fuel / similar).
+static void st_231a4() {
+  if (state_timer < 0) {
+    in_flight = 0;
+    message_queue = 14;
+    b_5aad8 = 0;
+    game_state = st_23a54_addr;
+  }
+}
+
+// $231d0: brief pause then enter the large end-of-mission handler $231fc
+// (still original — complex debrief).
+static void st_231d0() {
+  if (state_timer < 0) {
+    b_5aaa6 = 1;
+    state_timer = 2;
+    game_state = st_231fc_addr;
+    b_5aba5 = 1;
+  }
+}
+
+// $236f6: disk-error wait — when cleared, retry $2362a.
+static void st_236f6() {
+  if (b_5aacb == 0) {
+    sub_4492a();
+    game_state = st_2362a_addr;
+  }
+}
+
+// $23712: post-title name-entry / first-run setup.
+static void st_23712() {
+  if (disk_state != 0) {
+    clear_messages();
+    game_state = st_mission_menu_addr;
+    return;
+  }
+  if (state_timer >= 0) {
+    sub_4492a();
+    return;
+  }
+  b_5aba5 = 1;
+  sub_23c24(0x39fd4);
+  b_5aad8 = 0;
+  b_5aabb = 0;
+  uint16_t rank = rd16(config_buf + 4);
+  if (rank == 0) {
+    message_queue = 1;  // "enter name"
+    game_state = st_237f2_addr;
+  } else {
+    message_queue = 2;  // "welcome back, <name>"
+    // copy pilot name from config into the string buffer at $544df
+    uint32_t dst = 0x544df + 10;
+    uint32_t src = config_buf + 0x1e;
+    for (int i = 0; i < 24; ++i) {
+      uint8_t c = rd8(src + uint32_t(i));
+      if (c == 0) break;
+      wr8(dst + uint32_t(i), c);
+    }
+    game_state = st_23808_addr;
+  }
+}
+
+static void st_237f2() {
+  if (b_5aad8 < 0) game_state = st_23826_addr;
+}
+
+static void st_23808() {
+  if (b_5aad8 < 0 || b_5aa9b != 0) game_state = st_23826_addr;
+}
+
+// $23826: after name entry / welcome, increment rank and go to menu or prompt.
+static void st_23826() {
+  clear_messages();
+  state_timer = 5;
+  uint16_t rank = rd16(config_buf + 4);
+  if (rank == 0) {
+    message_queue = 3;
+    b_5aabb = 0;
+    b_5aad8 = 2;
+    b_5aaed = 20;
+    game_state = st_23890_addr;
+  } else {
+    game_state = st_mission_menu_addr;
+  }
+  wr16(config_buf + 4, uint16_t(rank + 1));
+}
+
+static void st_23890() {
+  if (b_5aad8 < 0) {
+    clear_messages();
+    state_timer = 5;
+    game_state = st_mission_menu_addr;
+  }
+}
+
+// $238e0: in-flight death / eject / mission-fail transition.
+static void st_238e0() {
+  // Cleanup runs when (aa7d==0 && ab91==0) OR (aa7d!=0 && bit10 of $5b47c clear).
+  if (b_5aa7d == 0) {
+    if (b_5ab91 != 0) return;
+  } else {
+    if (rd16(0x5b47c) & (1 << 10)) return;
+  }
+  w_5abc4 = int16_t(uint16_t(w_5abc4) & 0x9fff);
+  w_5abc4 = int16_t(uint16_t(w_5abc4) & 0xfffe);
+  sub_2d560();
+  b_5ab99 = 15;
+  b_5ab81 = 0;
+  w_5abcc = int16_t(uint16_t(w_5abcc) & 0xfbff);
+  b_5ab8f = int8_t(b_5ab8f - 1);
+  if (b_5ab8f <= 0) {
+    sub_4492a();
+    state_timer = 5;
+    in_flight = 0;
+    game_state = st_239f8_addr;
+  } else {
+    game_state = st_23988_addr;
+  }
+}
+
+static void st_23988() {
+  b_5ab92 = 0;
+  wr16(0x5b47e, uint16_t(rd16(0x5b47e) | 2));
+  if (b_5aa7d == 0) sub_2e662();
+  sub_2d560();
+  state_timer = 5;
+  game_state = st_239ca_addr;
+}
+
+static void st_239ca() {
+  if (state_timer < 0) {
+    w_5abc4 = int16_t(uint16_t(w_5abc4) | 0x40);
+    b_5aba8 = -2;
+    game_state = st_22f06_addr;
+  }
+}
+
+// $239f8 / $23a3e: "game over / returned to base" messages → restart.
+static void st_239f8() {
+  if (state_timer < 0) {
+    sub_23c24(0x39fd4);
+    if (b_5ab41 == 16)
+      message_queue = 98;
+    else
+      message_queue = 99;
+    b_5ab23 = 0;
+    game_state = st_23a3e_addr;
+  }
+}
+static void st_23a3e() {
+  if (b_5aad8 < 0) game_state = st_restart_addr;
+}
+
+// $23a54 / $23a8c: clear systems, timed pause, then restart.
+static void st_23a54() {
+  if (b_5aad8 < 0) {
+    w_5abc4 = int16_t(uint16_t(w_5abc4) & 0x9fbf);
+    state_timer = 100;
+    game_state = st_23a8c_addr;
+  }
+}
+static void st_23a8c() {
+  if (state_timer < 0) {
+    b_5ab22 = 0;
+    b_5aa90 = 0;
+    game_state = st_restart_addr;
+  }
+}
+
+// $23ab0 / $23b2c: alternate end-of-flight path (player quit / escape).
+static void st_23ab0() {
+  if (b_5aad8 < 0) {
+    w_5abc4 = int16_t(uint16_t(w_5abc4) & 0x9fbf);
+    state_timer = 100;
+    game_state = st_23b2c_addr;
+    return;
+  }
+  if (b_5ab22 == -1) {
+    b_5ab22 = 0;
+    b_5ab23 = 0;
+    game_state = st_restart_addr;
+  } else if (b_5ab22 == 1) {
+    state_timer = -1;
+    game_state = st_23b2c_addr;
+  }
+}
+static void st_23b2c() {
+  if (state_timer < 0) {
+    b_5ab22 = 0;
+    b_5aa90 = 0;
+    if (b_5aba4 != 0) b_5ab23 = 1;
+    b_5aaa6 = 1;
+    state_timer = 3;
+    in_flight = 0;
+    b_5ab99 = 0;
+    game_state = st_21a9e_addr;
   }
 }
 
