@@ -294,7 +294,28 @@ public:
     fclose(f);
   }
 
+  FILE* wav = nullptr;
+  uint32_t wav_bytes = 0;
+
+  void open_wav(const std::string& path) {
+    wav = fopen(path.c_str(), "wb");
+    if (wav) { uint8_t hdr[44] = {}; fwrite(hdr, 1, 44, wav); }
+  }
+
+  void close_wav() {
+    if (!wav) return;
+    auto le32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) fputc(int(v >> (8 * i)) & 0xFF, wav); };
+    auto le16 = [&](uint16_t v) { fputc(v & 0xFF, wav); fputc(v >> 8, wav); };
+    fseek(wav, 0, SEEK_SET);
+    fwrite("RIFF", 1, 4, wav); le32(36 + wav_bytes); fwrite("WAVEfmt ", 1, 8, wav);
+    le32(16); le16(1); le16(2); le32(48000); le32(48000 * 4); le16(4); le16(16);
+    fwrite("data", 1, 4, wav); le32(wav_bytes);
+    fclose(wav);
+    wav = nullptr;
+  }
+
   void audio(const int16_t* samples, size_t frames) override {
+    if (wav) { fwrite(samples, 4, frames, wav); wav_bytes += uint32_t(frames * 4); }
     if (!audio_dev || fast) return;
     // Keep latency bounded.
     if (SDL_GetQueuedAudioSize(audio_dev) > 48000 * 4 / 5) return;
@@ -316,6 +337,7 @@ void usage() {
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
           "  --protection     keep the original codewheel check\n"
+          "  --wav FILE       record audio\n"
           "  --script FILE    scripted input (see source)\n"
           "keys: F12 grab mouse, F11 fullscreen, Pause fast-forward,\n"
           "      numpad 8/2/4/6 + 0 = joystick\n");
@@ -329,7 +351,7 @@ int main(int argc, char** argv) {
   double speed = 1.0;
   bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
-  std::string shot_path, script_path;
+  std::string shot_path, script_path, wav_path;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
@@ -341,6 +363,7 @@ int main(int argc, char** argv) {
     else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
     else if (a == "--fast") fast = true;
     else if (a == "--protection") protection = true;
+    else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
     else if (a == "-h" || a == "--help") { usage(); return 0; }
     else data_dir = a;
@@ -373,7 +396,9 @@ int main(int argc, char** argv) {
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
   machine.set_host(&host);
+  if (!wav_path.empty()) host.open_wav(wav_path);
   int rc = machine.run();
+  host.close_wav();
   SDL_Quit();
   return rc;
 }
