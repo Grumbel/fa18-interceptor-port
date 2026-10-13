@@ -99,7 +99,7 @@ NATIVE_STATE(0x23a54, st_23a54);
 NATIVE_STATE(0x23a8c, st_23a8c);
 NATIVE_STATE(0x23ab0, st_23ab0);
 NATIVE_STATE(0x23b2c, st_23b2c);
-constexpr uint32_t st_22f06_addr = 0x22f06;
+NATIVE_STATE(0x22f06, st_22f06);
 constexpr uint32_t st_231fc_addr = 0x231fc;
 
 // $2346a: clear the message queue / text state.
@@ -1520,6 +1520,102 @@ static void st_23b2c() {
     b_5ab99 = 0;
     game_state = st_21a9e_addr;
   }
+}
+
+
+// $22f06: per-frame in-flight state dispatcher — landing detection,
+// mission-end keys, and systems re-init when starting a leg.
+static void st_22f06() {
+  int8_t saved_aa90 = b_5aa90;
+
+  // Landing / touchdown path: bit 9 of $5b47c and low nibble of $5b4f8 clear.
+  if ((rd16(0x5b47c) & (1 << 9)) && (rd8(0x5b4f8) & 0x0f) == 0) {
+    if (b_5aa84 != 0) {
+      // Successful landing: bump mission-complete count, clear flags, debrief.
+      wr16(config_buf + 0x10, uint16_t(rd16(config_buf + 0x10) + 1));
+      log_dirty = 1;
+      w_5abc2 = int16_t(uint16_t(w_5abc2) & 0xfeff);
+      w_5abc4 = int16_t(uint16_t(w_5abc4) & 0xffbf);
+      wr16(0x5b47c, uint16_t(rd16(0x5b47c) & 0xfdff));
+      if (b_5aa7d == 0) {
+        b_5ab92 = 1;
+        wr32(0x5b4be, 0);
+        b_5ab91 = 40;
+        stop_all_sounds();
+        sub_2a0e4(63, 120);
+      }
+      game_state = st_238e0_addr;
+      return;
+    }
+    // Touchdown without the success flag: clear landing bit, play event.
+    wr16(0x5b47c, uint16_t(rd16(0x5b47c) & 0xfdff));
+    sub_23d08(0x4021);
+    return;
+  }
+
+  // Demo timer expired → demo-end state.
+  if (b_5aaa6 < 0) {
+    state_timer = 2;
+    b_5ab99 = 10;
+    sub_28e5c();
+    wr32(0x5abfc, rd32(0x5adea));
+    game_state = st_23b7e_addr;
+    return;
+  }
+
+  // Player end-of-leg keys encoded in aa90: -1/-2/-4 (and messages pending).
+  if (saved_aa90 <= -1 && saved_aa90 >= -4 && b_5aabb != 0 && b_5aad8 != 0) {
+    if (saved_aa90 == -1) b_5aa90 = 1;
+    else if (saved_aa90 == -2) b_5aa90 = 2;
+    else if (saved_aa90 == -4) b_5aa90 = 4;
+
+    in_flight = 1;
+    clear_messages();
+    b_5aba5 = 0;
+    b_5aba8 = -2;
+    b_5ab50 = -1;
+    b_5aaa6 = 0;
+
+    if (w_5abd4 != 0) {
+      w_5abd4 = 0;
+      w_5abd6 = 0;
+      b_5aa7d = b_5ab2c;
+      if (b_5aa7d != 0) {
+        w_5ac7e = 50;
+        w_5ac7c = 167;
+      } else {
+        w_5ac7e = 0;
+        w_5ac7c = 144;
+      }
+      b_5aa9f = 0;
+      w_5ac80 = int16_t(int16_t(w_5ac7e) << 4);
+      sub_2f02c();
+      b_5abaa = int8_t(uint8_t(b_5aab6) & 0x7f);
+    }
+    return;
+  }
+
+  // Explicit quit / abort keys.
+  if (b_5ab22 == -1) {
+    b_5ab22 = 0;
+    b_5aad8 = -1;
+    game_state = st_23a54_addr;
+    return;
+  }
+  if (saved_aa90 == -16) {
+    game_state = st_23a54_addr;
+    return;
+  }
+  if (saved_aa90 == -17) {
+    game_state = st_23ab0_addr;
+    return;
+  }
+
+  // Default: refresh the key-release wait counter used by the state machine.
+  if (w_5abd6 == 0 && b_5aa7d == 0 && b_5ab81 > 5)
+    b_5ab99 = 2;
+  else
+    b_5ab99 = 15;
 }
 
 }  // namespace native

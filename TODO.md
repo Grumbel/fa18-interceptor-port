@@ -67,17 +67,17 @@ hash every 50 frames, all scenarios) must report "same" for all.
 Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
-Done: nearly all of the hunk-0 game state machine:
+Done: the entire hunk-0 game state machine except the debrief:
   menu / mission-select / pre-flight / title / error / disk /
-  name-entry / death-eject / restart paths (see NATIVE_STATE list in
-  flow.cpp).  Only two large handlers remain original:
-  $22f06 (deep flight-start setup) and $231fc (end-of-mission debrief).
+  name-entry / death-eject / restart / in-flight dispatcher ($22f06).
+  Only $231fc (end-of-mission debrief) remains original among the
+  state handlers listed in extra_entries.txt.
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1
-- [ ] $22f06 (flight-start), $231fc (debrief) — the last two large states
+- [ ] $231fc (end-of-mission debrief) — last large state handler
 - [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
       model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: $22f06 / $231fc, or chase the $5ab55 divergence.
+Next tip work: $231fc debrief, or chase the $5ab55 divergence.
