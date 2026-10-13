@@ -1,411 +1,292 @@
+// F/A-18 Interceptor — SDL2 front end.
+#include "amiga/machine.hpp"
+
 #include <SDL.h>
-#include <iostream>
-#include <string>
-#include <sstream>
+
 #include <cstdio>
-#include <algorithm>
-#include <vector>
-#include "amiga_hunk.hpp"
-#include "game_state.hpp"
-#include "ilbm.hpp"
-#include "display.hpp"
-#include "draw.hpp"
-#include "gfx_state.hpp"
-#include "input_state.hpp"
-#include "transform.hpp"
-#include "flight.hpp"
-#include "audio.hpp"
-#include "mesh.hpp"
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <string>
 
-int main(int argc, char* argv[]) {
-  std::cout << "FA-18 Interceptor - modern port (skeleton)\n"
-            << "Keys: SPACE/ENTER = next, BACKSPACE = prev, ESC = quit\n"
-            << "Flight: arrows/WASD hold = pitch/yaw (release centres)\n\n";
+namespace {
 
-  std::string exe_path = "assets/F-18_Interceptor_amiga";
-  if (argc > 1) exe_path = argv[1];
-
-  AmigaExecutable exe;
-  if (!exe.load(exe_path)) {
-    std::cerr << "Failed to load " << exe_path << "\n";
-    return 1;
+int amiga_rawkey(SDL_Scancode sc) {
+  switch (sc) {
+    case SDL_SCANCODE_GRAVE: return 0x00;
+    case SDL_SCANCODE_1: return 0x01; case SDL_SCANCODE_2: return 0x02;
+    case SDL_SCANCODE_3: return 0x03; case SDL_SCANCODE_4: return 0x04;
+    case SDL_SCANCODE_5: return 0x05; case SDL_SCANCODE_6: return 0x06;
+    case SDL_SCANCODE_7: return 0x07; case SDL_SCANCODE_8: return 0x08;
+    case SDL_SCANCODE_9: return 0x09; case SDL_SCANCODE_0: return 0x0A;
+    case SDL_SCANCODE_MINUS: return 0x0B; case SDL_SCANCODE_EQUALS: return 0x0C;
+    case SDL_SCANCODE_BACKSLASH: return 0x0D;
+    case SDL_SCANCODE_Q: return 0x10; case SDL_SCANCODE_W: return 0x11;
+    case SDL_SCANCODE_E: return 0x12; case SDL_SCANCODE_R: return 0x13;
+    case SDL_SCANCODE_T: return 0x14; case SDL_SCANCODE_Y: return 0x15;
+    case SDL_SCANCODE_U: return 0x16; case SDL_SCANCODE_I: return 0x17;
+    case SDL_SCANCODE_O: return 0x18; case SDL_SCANCODE_P: return 0x19;
+    case SDL_SCANCODE_LEFTBRACKET: return 0x1A; case SDL_SCANCODE_RIGHTBRACKET: return 0x1B;
+    case SDL_SCANCODE_A: return 0x20; case SDL_SCANCODE_S: return 0x21;
+    case SDL_SCANCODE_D: return 0x22; case SDL_SCANCODE_F: return 0x23;
+    case SDL_SCANCODE_G: return 0x24; case SDL_SCANCODE_H: return 0x25;
+    case SDL_SCANCODE_J: return 0x26; case SDL_SCANCODE_K: return 0x27;
+    case SDL_SCANCODE_L: return 0x28; case SDL_SCANCODE_SEMICOLON: return 0x29;
+    case SDL_SCANCODE_APOSTROPHE: return 0x2A;
+    case SDL_SCANCODE_NONUSBACKSLASH: return 0x30;
+    case SDL_SCANCODE_Z: return 0x31; case SDL_SCANCODE_X: return 0x32;
+    case SDL_SCANCODE_C: return 0x33; case SDL_SCANCODE_V: return 0x34;
+    case SDL_SCANCODE_B: return 0x35; case SDL_SCANCODE_N: return 0x36;
+    case SDL_SCANCODE_M: return 0x37; case SDL_SCANCODE_COMMA: return 0x38;
+    case SDL_SCANCODE_PERIOD: return 0x39; case SDL_SCANCODE_SLASH: return 0x3A;
+    case SDL_SCANCODE_SPACE: return 0x40; case SDL_SCANCODE_BACKSPACE: return 0x41;
+    case SDL_SCANCODE_TAB: return 0x42; case SDL_SCANCODE_KP_ENTER: return 0x43;
+    case SDL_SCANCODE_RETURN: return 0x44; case SDL_SCANCODE_ESCAPE: return 0x45;
+    case SDL_SCANCODE_DELETE: return 0x46; case SDL_SCANCODE_KP_MINUS: return 0x4A;
+    case SDL_SCANCODE_UP: return 0x4C; case SDL_SCANCODE_DOWN: return 0x4D;
+    case SDL_SCANCODE_RIGHT: return 0x4E; case SDL_SCANCODE_LEFT: return 0x4F;
+    case SDL_SCANCODE_F1: return 0x50; case SDL_SCANCODE_F2: return 0x51;
+    case SDL_SCANCODE_F3: return 0x52; case SDL_SCANCODE_F4: return 0x53;
+    case SDL_SCANCODE_F5: return 0x54; case SDL_SCANCODE_F6: return 0x55;
+    case SDL_SCANCODE_F7: return 0x56; case SDL_SCANCODE_F8: return 0x57;
+    case SDL_SCANCODE_F9: return 0x58; case SDL_SCANCODE_F10: return 0x59;
+    case SDL_SCANCODE_KP_0: return 0x0F; case SDL_SCANCODE_KP_1: return 0x1D;
+    case SDL_SCANCODE_KP_2: return 0x1E; case SDL_SCANCODE_KP_3: return 0x1F;
+    case SDL_SCANCODE_KP_4: return 0x2D; case SDL_SCANCODE_KP_5: return 0x2E;
+    case SDL_SCANCODE_KP_6: return 0x2F; case SDL_SCANCODE_KP_7: return 0x3D;
+    case SDL_SCANCODE_KP_8: return 0x3E; case SDL_SCANCODE_KP_9: return 0x3F;
+    case SDL_SCANCODE_KP_PERIOD: return 0x3C; case SDL_SCANCODE_KP_DIVIDE: return 0x5C;
+    case SDL_SCANCODE_KP_MULTIPLY: return 0x5D; case SDL_SCANCODE_KP_PLUS: return 0x5E;
+    case SDL_SCANCODE_HOME: return 0x5F;  // HELP
+    case SDL_SCANCODE_LSHIFT: return 0x60; case SDL_SCANCODE_RSHIFT: return 0x61;
+    case SDL_SCANCODE_CAPSLOCK: return 0x62; case SDL_SCANCODE_LCTRL: return 0x63;
+    case SDL_SCANCODE_LALT: return 0x64; case SDL_SCANCODE_RALT: return 0x65;
+    case SDL_SCANCODE_LGUI: return 0x66; case SDL_SCANCODE_RGUI: return 0x67;
+    default: return -1;
   }
-  exe.dump_summary();
-  std::cout << "\n";
+}
 
-  Game game;
-  fa18::GfxState gfx;
-  gfx.view_z = 0;  // camera; object pos.z supplies depth
-  fa18::InputState input;
-  fa18::AudioSystem audio;  // mirrors $00C07478 channel table
+class SdlHost : public amiga::Host {
+public:
+  SDL_Window* win = nullptr;
+  SDL_Renderer* ren = nullptr;
+  SDL_Texture* tex = nullptr;
+  SDL_AudioDeviceID audio_dev = 0;
+  amiga::Machine* machine = nullptr;
+  SDL_GameController* pad = nullptr;
+  bool mouse_grab = false;
+  bool fast = false;
+  bool quit = false;
+  uint64_t next_frame = 0;
+  int screenshot_frame = -1;
+  std::string screenshot_path;
+  int frame_no = 0;
+  int quit_after = -1;
+  // keyboard joystick (numpad)
+  bool kup = false, kdown = false, kleft = false, kright = false, kfire = false;
 
-  if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-    std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
-    return 1;
-  }
-
-  SDL_Window* win = SDL_CreateWindow(
-      "FA-18 Interceptor (port) - Startup",
-      SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      fa18::WINDOW_W, fa18::WINDOW_H, SDL_WINDOW_SHOWN);
-  if (!win) {
-    std::cerr << "SDL_CreateWindow failed\n";
-    SDL_Quit();
-    return 1;
-  }
-  SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-  if (!ren) {
-    SDL_DestroyWindow(win);
-    SDL_Quit();
-    return 1;
-  }
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-
-  IlbmImage frnt5, inst5;
-  SDL_Texture* tex_frnt = nullptr;
-  SDL_Texture* tex_inst = nullptr;
-  if (frnt5.load("assets/pix/frnt5")) {
-    tex_frnt = frnt5.to_texture(ren);
-    std::cout << "[ilbm] frnt5 " << frnt5.width << "x" << frnt5.height
-              << " planes=" << frnt5.planes
-              << " colors=" << frnt5.palette.size() << "\n";
-  } else {
-    std::cerr << "[ilbm] failed to load frnt5\n";
-  }
-  if (inst5.load("assets/pix/inst5")) {
-    tex_inst = inst5.to_texture(ren);
-    std::cout << "[ilbm] inst5 " << inst5.width << "x" << inst5.height
-              << " planes=" << inst5.planes
-              << " colors=" << inst5.palette.size() << "\n";
-  } else {
-    std::cerr << "[ilbm] failed to load inst5\n";
-  }
-
-  auto colour_for = [](GameState s) -> SDL_Color {
-    switch (s) {
-      case GameState::Startup:       return {0x00, 0x20, 0x40, 255};
-      case GameState::Title:          return {0x00, 0x55, 0xaa, 255};
-      case GameState::Enlistment:     return {0x20, 0x60, 0x20, 255};
-      case GameState::Qualification:  return {0x60, 0x40, 0x00, 255};
-      case GameState::MissionSelect:  return {0x40, 0x00, 0x60, 255};
-      case GameState::Flight:         return {0x00, 0x30, 0x60, 255};
-      case GameState::FlightLog:      return {0x40, 0x40, 0x40, 255};
-      case GameState::Exit:           return {0x20, 0x00, 0x00, 255};
+  bool init(int scale) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+      fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+      return false;
     }
-    return {0, 0, 0, 255};
-  };
+    win = SDL_CreateWindow("F/A-18 Interceptor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                           amiga::FB_W * scale, amiga::FB_H * scale * 6 / 5,
+                           SDL_WINDOW_RESIZABLE);
+    if (!win) return false;
+    ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    if (!ren) ren = SDL_CreateRenderer(win, -1, 0);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    // NTSC lores pixels are slightly taller than wide; 320x240 approximates.
+    SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
+    tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                            amiga::FB_W, amiga::FB_H);
+    SDL_AudioSpec want{}, have{};
+    want.freq = 48000;
+    want.format = AUDIO_S16SYS;
+    want.channels = 2;
+    want.samples = 1024;
+    audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
+    for (int i = 0; i < SDL_NumJoysticks(); ++i)
+      if (SDL_IsGameController(i)) { pad = SDL_GameControllerOpen(i); break; }
+    next_frame = SDL_GetPerformanceCounter();
+    return true;
+  }
 
-  auto update_title = [&]() {
-    std::ostringstream oss;
-    oss << "FA-18 Interceptor (port) - " << game.state_name();
-    SDL_SetWindowTitle(win, oss.str().c_str());
-  };
-  update_title();
+  void set_grab(bool g) {
+    mouse_grab = g;
+    SDL_SetRelativeMouseMode(g ? SDL_TRUE : SDL_FALSE);
+  }
 
-  bool running = true;
-  while (running) {
-    input.key_code = 0;
+  void handle_events() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-      if (e.type == SDL_QUIT) running = false;
-      if (e.type == SDL_KEYDOWN) {
-        // Map to $155-style key code (ASCII where applicable)
-        if (e.key.keysym.sym < 128)
-          input.key_code = static_cast<uint8_t>(e.key.keysym.sym);
-        else if (e.key.keysym.sym == SDLK_ESCAPE)
-          input.key_code = 27;
-        else if (e.key.keysym.sym == SDLK_BACKSPACE)
-          input.key_code = 8;
-        input.input_enabled = true;
-        // Mode 2 ≈ $64c title/proceed path
-        input.input_mode = 2;
-      }
-    }
-
-    // Flight axes from held keys (0–255, centre 128). Release → centre.
-    // Stand-in for JOY0DAT path; continuous hold matches stick better than steps.
-    if (game.state() == GameState::Flight ||
-        game.state() == GameState::Qualification) {
-      const Uint8* kb = SDL_GetKeyboardState(nullptr);
-      int pitch = 128, yaw = 128;
-      if (kb[SDL_SCANCODE_UP] || kb[SDL_SCANCODE_W])    pitch -= 80;
-      if (kb[SDL_SCANCODE_DOWN] || kb[SDL_SCANCODE_S])  pitch += 80;
-      if (kb[SDL_SCANCODE_LEFT] || kb[SDL_SCANCODE_A])  yaw -= 80;
-      if (kb[SDL_SCANCODE_RIGHT] || kb[SDL_SCANCODE_D]) yaw += 80;
-      if (pitch < 0) pitch = 0;
-      if (pitch > 255) pitch = 255;
-      if (yaw < 0) yaw = 0;
-      if (yaw > 255) yaw = 255;
-      input.axis_0 = static_cast<uint8_t>(pitch);
-      input.axis_1 = static_cast<uint8_t>(yaw);
-    }
-
-    // Drive transitions from recovered keyboard path ($155 / $206 / $207)
-    GameState prev = game.state();
-    game.update(input);
-    if (game.state() != prev) {
-      gfx.phase = static_cast<uint16_t>(game.state());
-      update_title();
-      // Action-table style sound trigger ($00C16684 queue path).
-      // No PCM yet — logs the channel enable / INTREQ sequence.
-      if (game.state() == GameState::Flight)
-        audio.enable(0);
-      else if (prev == GameState::Flight)
-        audio.stop(0);
-      else
-        audio.request(static_cast<int>(game.state()) & 3);
-    }
-    if (game.state() == GameState::Exit) running = false;
-
-    if (game.state() != GameState::Flight &&
-        game.state() != GameState::Qualification) {
-      SDL_Color c = colour_for(game.state());
-      SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
-      SDL_RenderClear(ren);
-    }
-
-    if (game.state() == GameState::Title && tex_frnt) {
-      int w = frnt5.width * 2, h = frnt5.height * 2;
-      SDL_Rect dst = { (fa18::WINDOW_W-w)/2, (fa18::WINDOW_H-h)/2, w, h };
-      SDL_RenderCopy(ren, tex_frnt, nullptr, &dst);
-    } else if (game.state() == GameState::Flight ||
-               game.state() == GameState::Qualification) {
-      // Attitude: axes → rate deltas → filter → integrate (docs/transform_3d.md)
-      static fa18::PlayerAttitude att;
-      int16_t deltas[3] = {
-        static_cast<int16_t>((int(input.axis_0) - 128) * 4),  // pitch rate
-        static_cast<int16_t>((int(input.axis_1) - 128) * 4),  // yaw rate
-        0
-      };
-      fa18::filter_rates(att, deltas);
-      fa18::integrate_attitude(att);
-      fa18::auto_center_rates(att, 32);
-
-      // Sky / ground fill from pitch (7200-circle; ~20 units/degree)
-      // horizon_y shifts with pitch so the band moves on the screen.
-      {
-        int horizon_y = fa18::PLAYFIELD_CY + att.angle[1] / 20;
-        if (horizon_y < 0) horizon_y = 0;
-        if (horizon_y > fa18::PLAYFIELD_H) horizon_y = fa18::PLAYFIELD_H;
-        // COLOR06 ≈ sky blue-ish, COLOR09 ≈ ground brown in recovered palette
-        uint32_t sky = fa18::amiga_to_rgb24(fa18::kPaletteAmiga[6]);
-        uint32_t gnd = fa18::amiga_to_rgb24(fa18::kPaletteAmiga[9]);
-        SDL_SetRenderDrawColor(ren,
-            (sky >> 16) & 0xFF, (sky >> 8) & 0xFF, sky & 0xFF, 255);
-        SDL_Rect sky_rc{0, 0, fa18::WINDOW_W, horizon_y * fa18::SCALE};
-        SDL_RenderFillRect(ren, &sky_rc);
-        SDL_SetRenderDrawColor(ren,
-            (gnd >> 16) & 0xFF, (gnd >> 8) & 0xFF, gnd & 0xFF, 255);
-        SDL_Rect gnd_rc{0, horizon_y * fa18::SCALE,
-                        fa18::WINDOW_W,
-                        (fa18::PLAYFIELD_H - horizon_y) * fa18::SCALE};
-        SDL_RenderFillRect(ren, &gnd_rc);
-      }
-
-      fa18::Mat3Fixed view =
-          fa18::mat_from_angles_q14(att.angle[0], att.angle[1], att.angle[2]);
-
-      auto draw_world_line = [&](fa18::Vec3 a, fa18::Vec3 b, int col) {
-        auto ta = fa18::transform_point_fp(view,
-            static_cast<int16_t>(a.x * 64),
-            static_cast<int16_t>(a.y * 64),
-            static_cast<int16_t>(a.z * 64));
-        auto tb = fa18::transform_point_fp(view,
-            static_cast<int16_t>(b.x * 64),
-            static_cast<int16_t>(b.y * 64),
-            static_cast<int16_t>(b.z * 64));
-        ta.z += 4.f; tb.z += 4.f;
-        if (ta.z < 0.2f && tb.z < 0.2f) return;
-        int sx0, sy0, sx1, sy1;
-        fa18::project(ta, sx0, sy0);
-        fa18::project(tb, sx1, sy1);
-        fa18::draw_line_pal(ren, sx0, sy0, sx1, sy1, col);
-      };
-
-      // Horizon line — COLOR05
-      draw_world_line({-20.f, 0.f, 8.f}, {20.f, 0.f, 8.f}, 5);
-
-      // Runway: edges + markers + centerline
-      const float half_w = 1.2f;
-      for (int i = 0; i < 10; ++i) {
-        float z0 = 2.f + i * 3.f;
-        float z1 = z0 + 3.f;
-        draw_world_line({-half_w, 1.5f, z0}, {-half_w, 1.5f, z1}, 11);
-        draw_world_line({ half_w, 1.5f, z0}, { half_w, 1.5f, z1}, 11);
-        draw_world_line({-half_w, 1.5f, z0}, { half_w, 1.5f, z0}, 11);
-      }
-      draw_world_line({0.f, 1.5f, 2.f}, {0.f, 1.5f, 32.f}, 13);
-
-      // Real mesh data from dump cluster $00C39700–$00C3A600
-      static fa18::Mesh craft  = fa18::mesh_aircraft_39738();
-      static fa18::Mesh craft2 = fa18::mesh_aircraft_39800();
-      static fa18::Mesh craft3 = fa18::mesh_aircraft_398C6();
-      static fa18::Mesh craft4 = fa18::mesh_aircraft_39980();
-      static fa18::Mesh craftB = fa18::mesh_from_dump_B();
-      static fa18::Mesh craftE = fa18::mesh_aircraft_39E00();
-      static fa18::Mesh structA = fa18::mesh_structure_3A4A8();
-      static fa18::Mesh structB = fa18::mesh_structure_3A980();
-      static fa18::Mesh instA = fa18::mesh_instance_4335E();
-      static fa18::Mesh lodA = fa18::mesh_from_lod_dump(
-          "dumps/inflight/fa18_inflight_code.bin", 0x00C3A47E, "lod_$00C3A47E");
-      static fa18::Mesh lodB = fa18::mesh_from_lod_dump(
-          "dumps/inflight/fa18_inflight_code.bin", 0x00C3A576, "lod_$00C3A576");
-      // Auto-parsed from in-flight CODE dump (7FFF-header at $00C39710)
-      static fa18::Mesh craftDump = fa18::mesh_from_dump_file(
-          "dumps/inflight/fa18_inflight_code.bin", 0x00C39710, 256,
-          "dump_auto_$00C39710");
-      // Meshes resolved from scene list A → dispatch → stream.
-      // Positions use scene-list coords as Q8.8 world units (hypothesis).
-      struct SceneMesh {
-        fa18::Mesh mesh;
-        float x = 0, z = 0;  // world XZ from coord_a/coord_b Q8.8
-      };
-      static std::vector<SceneMesh> sceneMeshes;
-      static bool mesh_logged = false;
-      if (!mesh_logged) {
-        auto logm = [](const fa18::Mesh& m) {
-          std::cout << "[mesh] " << m.name
-                    << " verts=" << m.verts.size()
-                    << " edges=" << m.edges.size()
-                    << " hull=" << m.hull.size()
-                    << " dl=" << m.display_list.size() << "\n";
-        };
-        logm(craft); logm(craft2); logm(craft3); logm(craft4);
-        logm(craftB); logm(craftE); logm(structA); logm(structB); logm(instA); logm(lodA); logm(lodB); logm(craftDump);
-        const char* dump = "dumps/inflight/fa18_inflight_code.bin";
-        auto scenes = fa18::scene_list_from_dump(dump, fa18::kSceneListA, 16);
-        std::cout << "[scene] list A entries=" << scenes.size() << "\n";
-        std::vector<uint32_t> seen;
-        for (size_t i = 0; i < scenes.size() && i < 12; ++i) {
-          const auto& s = scenes[i];
-          auto slot = fa18::dispatch_slot_from_dump(dump, s.dispatch_ptr);
-          float wx = s.coord_a / 256.0f;
-          float wz = s.coord_b / 256.0f;
-          std::cout << "  [" << i << "] flag=" << std::hex << s.flag
-                    << " type=" << int(s.type_id())
-                    << " lod=" << int(s.lod_tier())
-                    << " h=" << slot.handler
-                    << " s0=" << slot.stream[0]
-                    << " pos=(" << std::dec << wx << "," << wz << ")\n";
-          uint32_t stream = slot.stream[0];
-          if (!stream) continue;
-          fa18::Mesh m;
-          char name[64];
-          // Cluster 7FFF records only — pure DL streams lack verts and
-          // produce garbage geometry (long lines across the view).
-          uint32_t rec = fa18::cluster_record_start(stream);
-          if (rec) {
-            if (std::find(seen.begin(), seen.end(), rec) != seen.end())
-              continue;
-            seen.push_back(rec);
-            std::snprintf(name, sizeof(name), "scene_cluster_$%06X", rec);
-            m = fa18::mesh_from_dump_file(dump, rec, 512, name);
-          } else if (stream >= 0x00C43000 && stream < 0x00C45000) {
-            if (std::find(seen.begin(), seen.end(), stream) != seen.end())
-              continue;
-            seen.push_back(stream);
-            std::snprintf(name, sizeof(name), "scene_inst_$%06X", stream);
-            m = fa18::mesh_from_instance_dump(dump, stream, name);
-            // Instance verts are coarse (±8k); scale down to mesh units
-            for (auto& v : m.verts) {
-              v.x *= (1.0f / 64.0f);
-              v.y *= (1.0f / 64.0f);
-              v.z *= (1.0f / 64.0f);
-            }
-          } else {
-            continue;  // pure DL ($35/$36/$39690) — no vertex header yet
+      switch (e.type) {
+        case SDL_QUIT: quit = true; break;
+        case SDL_KEYDOWN:
+        case SDL_KEYUP: {
+          bool down = e.type == SDL_KEYDOWN;
+          SDL_Scancode sc = e.key.keysym.scancode;
+          if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
+          if (sc == SDL_SCANCODE_F11 && down) {
+            Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+            SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+            break;
           }
-          if (!m.verts.empty() && !m.edges.empty()) {
-            logm(m);
-            sceneMeshes.push_back({std::move(m), wx, wz});
+          if (sc == SDL_SCANCODE_PAUSE && down) { fast = !fast; break; }
+          if (sc == SDL_SCANCODE_F4 && down && (e.key.keysym.mod & KMOD_ALT)) { quit = true; break; }
+          // Numpad doubles as joystick on port 2 (8/2/4/6, 0 or 5 = fire).
+          switch (sc) {
+            case SDL_SCANCODE_KP_8: kup = down; break;
+            case SDL_SCANCODE_KP_2: kdown = down; break;
+            case SDL_SCANCODE_KP_4: kleft = down; break;
+            case SDL_SCANCODE_KP_6: kright = down; break;
+            case SDL_SCANCODE_KP_0: case SDL_SCANCODE_KP_5: case SDL_SCANCODE_RCTRL:
+              kfire = down; break;
+            default: break;
           }
+          if (e.key.repeat) break;
+          int rk = amiga_rawkey(sc);
+          if (rk >= 0) machine->key_event(uint8_t(rk), down);
+          break;
         }
-        std::cout << "[scene] loaded " << sceneMeshes.size()
-                  << " unique cluster meshes (Q8.8 positions)\n";
-        // Instance-pool meshes from list B streams ($43xxx)
-        auto scenesB = fa18::scene_list_from_dump(dump, fa18::kSceneListB, 12);
-        std::vector<uint32_t> seenInst;
-        for (size_t i = 0; i < scenesB.size() && sceneMeshes.size() < 10; ++i) {
-          auto slot = fa18::dispatch_slot_from_dump(dump, scenesB[i].dispatch_ptr);
-          uint32_t stream = slot.stream[0];
-          if (stream < 0x00C43000 || stream >= 0x00C45000) continue;
-          if (std::find(seenInst.begin(), seenInst.end(), stream) != seenInst.end())
-            continue;
-          seenInst.push_back(stream);
-          char name[64];
-          std::snprintf(name, sizeof(name), "instance_$%06X", stream);
-          auto m = fa18::mesh_from_instance_dump(dump, stream, name);
-          if (!m.verts.empty() && !m.edges.empty()) {
-            for (auto& v : m.verts) {
-              v.x *= (1.0f / 64.0f);
-              v.y *= (1.0f / 64.0f);
-              v.z *= (1.0f / 64.0f);
-            }
-            logm(m);
-            float wx = scenesB[i].coord_a / 256.0f;
-            float wz = scenesB[i].coord_b / 256.0f;
-            sceneMeshes.push_back({std::move(m), wx, wz});
-          }
+        case SDL_MOUSEMOTION:
+          if (mouse_grab) machine->mouse_move(e.motion.xrel, e.motion.yrel);
+          break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP: {
+          bool down = e.type == SDL_MOUSEBUTTONDOWN;
+          if (!mouse_grab && down && e.button.button == SDL_BUTTON_LEFT) { set_grab(true); break; }
+          if (e.button.button == SDL_BUTTON_LEFT) machine->mouse_button(0, down);
+          if (e.button.button == SDL_BUTTON_RIGHT) machine->mouse_button(1, down);
+          break;
         }
-        std::cout << "[scene] total sceneMeshes=" << sceneMeshes.size() << "\n";
-        mesh_logged = true;
-      }
-      fa18::Mat3Fixed orient =
-          fa18::mat_from_angles_q14(0, att.angle[1] / 3, att.angle[2] / 2);
-      // Player craft ahead; companions off to the sides / above
-      fa18::draw_mesh(ren, gfx, craft,  orient, { 0.f,  0.f, 10.f}, 13);
-      fa18::draw_mesh(ren, gfx, craft2, orient, { 5.f, -0.5f, 16.f},  9);
-      fa18::draw_mesh(ren, gfx, craft3, orient, {-4.f,  0.f, 14.f}, 11);
-      fa18::draw_mesh(ren, gfx, craft4, orient, { 3.f,  0.5f, 20.f}, 10);
-      fa18::draw_mesh(ren, gfx, craftB, orient, { 2.f,  1.5f, 12.f},  7);
-      fa18::draw_mesh(ren, gfx, craftE, orient, {-2.f, -1.0f, 18.f},  5);
-      fa18::draw_mesh(ren, gfx, structA, orient, { 6.f,  0.f, 22.f},  8);
-      fa18::draw_mesh(ren, gfx, structB, orient, {-5.f, -0.5f, 24.f}, 12);
-      fa18::draw_mesh(ren, gfx, instA, orient, {8.f, 0.f, 20.f}, 10);
-      if (!lodA.edges.empty())
-        fa18::draw_mesh(ren, gfx, lodA, orient, {-8.f, 1.f, 26.f}, 11);
-      if (!lodB.edges.empty())
-        fa18::draw_mesh(ren, gfx, lodB, orient, {4.f, 1.f, 30.f}, 13);
-      if (!craftDump.edges.empty())
-        fa18::draw_mesh(ren, gfx, craftDump, orient, {-6.f, 0.5f, 15.f}, 14);
-      for (size_t i = 0; i < sceneMeshes.size() && i < 6; ++i) {
-        if (sceneMeshes[i].mesh.edges.empty()) continue;
-        // Scene coords as Q8.8; scale down for the demo camera
-        float x = sceneMeshes[i].x * 0.15f;
-        float z = 18.f + sceneMeshes[i].z * 0.15f;
-        fa18::draw_mesh(ren, gfx, sceneMeshes[i].mesh, orient,
-                        {x, 1.5f, z},
-                        static_cast<uint8_t>(8 + (i % 7)));
-      }
-
-      // 2-D hull radar silhouette (top-left, from mesh.hull)
-      fa18::draw_hull_2d(ren, gfx, craft, 40, 40, 0.04f, 13);
-      fa18::draw_hull_2d(ren, gfx, craft2, 90, 40, 0.04f, 9);
-      if (!craftDump.hull.empty())
-        fa18::draw_hull_2d(ren, gfx, craftDump, 140, 40, 0.04f, 14);
-
-      // HUD crosshair — COLOR13
-      fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX-10, fa18::PLAYFIELD_CY,
-                          fa18::PLAYFIELD_CX+10, fa18::PLAYFIELD_CY, 13);
-      fa18::draw_line_pal(ren, fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY-10,
-                          fa18::PLAYFIELD_CX, fa18::PLAYFIELD_CY+10, 13);
-
-      // Instrument panel (inst5) — full width, native aspect ×2
-      if (tex_inst) {
-        int w = inst5.width * 2, h = inst5.height * 2;
-        SDL_Rect dst = { (fa18::WINDOW_W - w) / 2, fa18::WINDOW_H - h, w, h };
-        SDL_RenderCopy(ren, tex_inst, nullptr, &dst);
+        case SDL_CONTROLLERDEVICEADDED:
+          if (!pad) pad = SDL_GameControllerOpen(e.cdevice.which);
+          break;
       }
     }
-
-    SDL_RenderPresent(ren);
-    SDL_Delay(16);
+    bool up = kup, down = kdown, left = kleft, right = kright, fire = kfire;
+    if (pad) {
+      int x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+      int y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+      up |= y < -12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP);
+      down |= y > 12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+      left |= x < -12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+      right |= x > 12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+      fire |= SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A) != 0;
+    }
+    machine->joy_state(up, down, left, right, fire);
   }
 
-  if (tex_frnt) SDL_DestroyTexture(tex_frnt);
-  if (tex_inst) SDL_DestroyTexture(tex_inst);
-  SDL_DestroyRenderer(ren);
-  SDL_DestroyWindow(win);
+  void frame(const uint32_t* fb) override {
+    ++frame_no;
+    SDL_UpdateTexture(tex, nullptr, fb, amiga::FB_W * 4);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
+    SDL_RenderCopy(ren, tex, nullptr, nullptr);
+    SDL_RenderPresent(ren);
+    if (frame_no == screenshot_frame) save_screenshot(fb);
+    if (quit_after >= 0 && frame_no >= quit_after) quit = true;
+    handle_events();
+    if (quit) throw amiga::QuitRequested{};
+    // Pace to 60 Hz unless fast-forwarding.
+    uint64_t freq = SDL_GetPerformanceFrequency();
+    next_frame += freq / 60;
+    uint64_t now = SDL_GetPerformanceCounter();
+    if (fast || int64_t(next_frame - now) < -int64_t(freq / 10)) next_frame = now;
+    while (!fast && SDL_GetPerformanceCounter() < next_frame) {
+      uint64_t left_us = (next_frame - SDL_GetPerformanceCounter()) * 1000000 / freq;
+      if (left_us > 2000) SDL_Delay(uint32_t(left_us / 1000 - 1));
+    }
+  }
+
+  void save_screenshot(const uint32_t* fb) {
+    FILE* f = fopen(screenshot_path.c_str(), "wb");
+    if (!f) return;
+    fprintf(f, "P6\n%d %d\n255\n", amiga::FB_W, amiga::FB_H);
+    for (int i = 0; i < amiga::FB_W * amiga::FB_H; ++i) {
+      uint8_t px[3] = {uint8_t(fb[i] >> 16), uint8_t(fb[i] >> 8), uint8_t(fb[i])};
+      fwrite(px, 1, 3, f);
+    }
+    fclose(f);
+  }
+
+  void audio(const int16_t* samples, size_t frames) override {
+    if (!audio_dev || fast) return;
+    // Keep latency bounded.
+    if (SDL_GetQueuedAudioSize(audio_dev) > 48000 * 4 / 5) return;
+    SDL_QueueAudio(audio_dev, samples, uint32_t(frames * 4));
+  }
+};
+
+void usage() {
+  fprintf(stderr,
+          "usage: fa18 [options] [data-dir]\n"
+          "  data-dir         directory with the files of the original disk\n"
+          "                   (default: ./assets or the install data dir)\n"
+          "  --scale N        window scale (default 3)\n"
+          "  --save DIR       directory for config/pilot log (default: data-dir)\n"
+          "  --speed X        CPU speed multiplier (default 1.0)\n"
+          "  --verbose        log OS calls\n"
+          "  --trace          trace every instruction (very slow)\n"
+          "  --screenshot N FILE  save frame N as PPM\n"
+          "  --frames N       quit after N frames\n"
+          "  --fast           run unthrottled\n"
+          "keys: F12 grab mouse, F11 fullscreen, Pause fast-forward,\n"
+          "      numpad 8/2/4/6 + 0 = joystick\n");
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  std::string data_dir, save_dir;
+  int scale = 3;
+  double speed = 1.0;
+  bool verbose = false, trace = false, fast = false;
+  int shot_frame = -1, quit_after = -1;
+  std::string shot_path;
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
+    else if (a == "--save" && i + 1 < argc) save_dir = argv[++i];
+    else if (a == "--speed" && i + 1 < argc) speed = std::atof(argv[++i]);
+    else if (a == "--verbose") verbose = true;
+    else if (a == "--trace") trace = true;
+    else if (a == "--screenshot" && i + 2 < argc) { shot_frame = std::atoi(argv[++i]); shot_path = argv[++i]; }
+    else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
+    else if (a == "--fast") fast = true;
+    else if (a == "-h" || a == "--help") { usage(); return 0; }
+    else data_dir = a;
+  }
+  if (data_dir.empty()) {
+    for (const char* cand : {"assets", "data", FA18_DATADIR}) {
+      if (std::filesystem::exists(std::string(cand) + "/F-18 Interceptor")) { data_dir = cand; break; }
+    }
+  }
+  if (data_dir.empty()) {
+    fprintf(stderr, "Cannot find the game data (F-18 Interceptor executable).\n");
+    usage();
+    return 1;
+  }
+
+  amiga::Machine machine;
+  machine.verbose = verbose;
+  machine.trace = trace;
+  machine.cpu_speed = speed;
+  machine.save_dir = save_dir;
+  if (!machine.boot(data_dir)) return 1;
+
+  SdlHost host;
+  host.machine = &machine;
+  host.screenshot_frame = shot_frame;
+  host.screenshot_path = shot_path;
+  host.quit_after = quit_after;
+  host.fast = fast;
+  if (!host.init(scale)) return 1;
+  machine.set_host(&host);
+  int rc = machine.run();
   SDL_Quit();
-  return 0;
+  return rc;
 }

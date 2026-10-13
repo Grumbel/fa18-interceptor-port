@@ -5,3 +5,5 @@ build/
 *.bundle
 .DS_Store
 *~
+result
+__pycache__/
