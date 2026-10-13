@@ -76,8 +76,31 @@ Keys are passed to the game as on the Amiga (see `manual.txt`):
 
 Front end keys: **F11** fullscreen, **Pause** fast-forward, **F12**
 captures the mouse (port 1; the game reads it but flies with joystick or
-keyboard). A game controller acts as the joystick in port 2 (stick/d-pad,
-A = fire).
+keyboard).
+
+### Game controller
+
+The original Amiga game only supports a **digital** joystick (four
+directions + fire on port 2) — it never reads the proportional pot
+registers.  The left stick is therefore thresholded to digital
+directions.  Remaining functions are mapped to buttons and two hold
+layers that work like pie menus (aim with the stick, release the
+shoulder to activate):
+
+| Input | Action |
+|-------|--------|
+| Left stick / D-pad | Fly |
+| A | Fire |
+| B | Select weapon |
+| X | Cycle target |
+| Y | Map |
+| LT / RT | Throttle down / up |
+| Start / Back | Pause / Esc |
+| LS click / RS click | Brakes / Gear |
+| Right stick X / Y | Rudder / Zoom |
+| **LB + stick** (release) | Systems pie: N radar, E target, S map, W HUD, NE ECM, SE chaff, SW flare, NW arrestor, center gear |
+| **LB + face** | A HUD, B ECM, X chaff, Y flare |
+| **RB + stick** (release) | View pie (keypad directions); center = forward, **RB+A** = outside view |
 
 ## Project layout
 

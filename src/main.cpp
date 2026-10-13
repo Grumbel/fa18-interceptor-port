@@ -119,6 +119,11 @@ public:
   size_t script_pos = 0;
   std::vector<std::pair<int, int>> pending_up;  // frame, rawkey
   bool sjoy[5] = {};
+  // Gamepad: previous button mask for edge detection; held rawkeys for release.
+  uint32_t pad_prev_btns = 0;
+  int pad_prev_hat = -1;      // layered d-pad/stick selection (-1 none, 0-7 dirs, 8 center)
+  int pad_throttle_cd = 0;    // frames until next throttle step
+  bool pad_held_key[128] = {};
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -193,20 +198,149 @@ public:
       }
     }
     run_script();
-    // Joystick (port 2) comes from a game controller or the input script.
-    // The keyboard is passed to the game as is: the original flies with the
-    // cursor keys and fires with SPACE; the numpad selects views.
+    // Joystick (port 2) + expanded gamepad → keyboard shortcuts.
+    // The original only supports a digital stick (JOY1DAT) — no analog pots.
     bool up = sjoy[0], down = sjoy[1], left = sjoy[2], right = sjoy[3], fire = sjoy[4];
-    if (pad) {
-      int x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
-      int y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
-      up |= y < -12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP);
-      down |= y > 12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-      left |= x < -12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-      right |= x > 12000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-      fire |= SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A) != 0;
-    }
+    if (pad) poll_gamepad(up, down, left, right, fire);
     machine->joy_state(up, down, left, right, fire);
+  }
+
+  // Inject a one-frame key tap (down now, up next frame via pending_up).
+  void pad_tap(int rawkey) {
+    if (rawkey < 0) return;
+    machine->key_event(uint8_t(rawkey), true);
+    pending_up.push_back({frame_no + 2, rawkey});
+  }
+
+  void pad_set_held(int rawkey, bool down) {
+    if (rawkey < 0 || rawkey >= 128) return;
+    if (down == pad_held_key[rawkey]) return;
+    pad_held_key[rawkey] = down;
+    machine->key_event(uint8_t(rawkey), down);
+  }
+
+  // Direction index from stick/dpad: 0=N,1=NE,2=E,...,7=NW, 8=center, -1=none.
+  static int pad_dir8(int x, int y, bool du, bool dd, bool dl, bool dr) {
+    constexpr int dead = 16000;
+    int hx = 0, hy = 0;
+    if (x < -dead || dl) hx = -1;
+    else if (x > dead || dr) hx = 1;
+    if (y < -dead || du) hy = -1;
+    else if (y > dead || dd) hy = 1;
+    if (hx == 0 && hy == 0) return 8;  // center / neutral
+    // 8-way: N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7
+    static const int tbl[3][3] = {
+      {7, 0, 1},
+      {6, 8, 2},
+      {5, 4, 3},
+    };
+    return tbl[hy + 1][hx + 1];
+  }
+
+  void poll_gamepad(bool& up, bool& down, bool& left, bool& right, bool& fire) {
+    auto btn = [&](SDL_GameControllerButton b) {
+      return SDL_GameControllerGetButton(pad, b) != 0;
+    };
+    auto axis = [&](SDL_GameControllerAxis a) {
+      return int(SDL_GameControllerGetAxis(pad, a));
+    };
+
+    const bool lb = btn(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+    const bool rb = btn(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+    const bool a = btn(SDL_CONTROLLER_BUTTON_A);
+    const bool b = btn(SDL_CONTROLLER_BUTTON_B);
+    const bool x = btn(SDL_CONTROLLER_BUTTON_X);
+    const bool y = btn(SDL_CONTROLLER_BUTTON_Y);
+    const bool start = btn(SDL_CONTROLLER_BUTTON_START);
+    const bool back = btn(SDL_CONTROLLER_BUTTON_BACK);
+    const bool ls = btn(SDL_CONTROLLER_BUTTON_LEFTSTICK);
+    const bool rs = btn(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool du = btn(SDL_CONTROLLER_BUTTON_DPAD_UP);
+    const bool dd = btn(SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+    const bool dl = btn(SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+    const bool dr = btn(SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+
+    int lx = axis(SDL_CONTROLLER_AXIS_LEFTX);
+    int ly = axis(SDL_CONTROLLER_AXIS_LEFTY);
+    int rx = axis(SDL_CONTROLLER_AXIS_RIGHTX);
+    int ry = axis(SDL_CONTROLLER_AXIS_RIGHTY);
+    int lt = axis(SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+    int rt = axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+
+    // --- flight stick (digital JOY1DAT); suppressed while a layer is held ---
+    if (!lb && !rb) {
+      constexpr int dead = 12000;
+      up |= ly < -dead || du;
+      down |= ly > dead || dd;
+      left |= lx < -dead || dl;
+      right |= lx > dead || dr;
+    }
+    fire |= a;
+
+    // --- edge-triggered face / menu buttons ---
+    uint32_t now = 0;
+    auto bit = [&](int i, bool v) { if (v) now |= (1u << i); };
+    bit(0, a); bit(1, b); bit(2, x); bit(3, y);
+    bit(4, start); bit(5, back); bit(6, ls); bit(7, rs);
+    bit(8, lb); bit(9, rb);
+    uint32_t pressed = now & ~pad_prev_btns;
+    uint32_t released = pad_prev_btns & ~now;
+    pad_prev_btns = now;
+
+    // Primary (no layer): face + sticks + start/back
+    if (!lb && !rb) {
+      if (pressed & (1u << 1)) pad_tap(0x44);       // B = Return (weapon)
+      if (pressed & (1u << 2)) pad_tap(0x14);       // X = T (target)
+      if (pressed & (1u << 3)) pad_tap(0x37);       // Y = M (map)
+      if (pressed & (1u << 4)) pad_tap(0x19);       // Start = P (pause)
+      if (pressed & (1u << 5)) pad_tap(0x45);       // Back = Esc
+      if (pressed & (1u << 6)) pad_tap(0x41);       // LS click = brakes
+      if (pressed & (1u << 7)) pad_tap(0x24);       // RS click = gear
+    }
+
+    // Hold layers act as pie menus: aim with stick/d-pad, release the
+    // shoulder to commit.  Face buttons are shortcuts while the layer is held.
+    // LB wins over RB if both are down.
+    if (released & (1u << 8)) {
+      // N=R, NE=J, E=T, SE=C, S=M, SW=F, W=H, NW=A, center=G
+      static const int sys_keys[9] = {
+        0x13, 0x26, 0x14, 0x33, 0x37, 0x23, 0x25, 0x20, 0x24
+      };
+      if (pad_prev_hat >= 0 && pad_prev_hat <= 8) pad_tap(sys_keys[pad_prev_hat]);
+      pad_prev_hat = -1;
+    } else if (lb) {
+      pad_prev_hat = pad_dir8(lx, ly, du, dd, dl, dr);
+      if (pressed & (1u << 0)) pad_tap(0x25);  // A = H (HUD)
+      if (pressed & (1u << 1)) pad_tap(0x26);  // B = J (ECM)
+      if (pressed & (1u << 2)) pad_tap(0x33);  // X = C (chaff)
+      if (pressed & (1u << 3)) pad_tap(0x23);  // Y = F (flare)
+    } else if (released & (1u << 9)) {
+      // Keypad 8,9,6,3,2,1,4,7,5
+      static const int view_keys[9] = {
+        0x3E, 0x3F, 0x2F, 0x1F, 0x1E, 0x1D, 0x2D, 0x3D, 0x2E
+      };
+      if (pad_prev_hat >= 0 && pad_prev_hat <= 8) pad_tap(view_keys[pad_prev_hat]);
+      pad_prev_hat = -1;
+    } else if (rb) {
+      pad_prev_hat = pad_dir8(lx, ly, du, dd, dl, dr);
+      if (pressed & (1u << 0)) pad_tap(0x43);  // A = keypad Enter (outside view)
+    }
+
+    // Throttle on triggers: RT = increase (+ / F10), LT = decrease (- / F1)
+    // Repeat every ~10 frames while held past the threshold.
+    if (pad_throttle_cd > 0) --pad_throttle_cd;
+    if (pad_throttle_cd == 0) {
+      if (rt > 20000) { pad_tap(0x0C); pad_throttle_cd = 8; }       // =
+      else if (lt > 20000) { pad_tap(0x0B); pad_throttle_cd = 8; }  // -
+    }
+
+    // Right stick: rudder (held while deflected)
+    constexpr int rdead = 14000;
+    pad_set_held(0x38, rx < -rdead);  // comma = rudder left
+    pad_set_held(0x39, rx > rdead);   // period = rudder right
+    // Right-stick Y: zoom [ ]
+    pad_set_held(0x1A, ry < -rdead);  // [
+    pad_set_held(0x1B, ry > rdead);   // ]
   }
 
   void frame(const uint32_t* fb) override {
@@ -346,9 +480,11 @@ void usage() {
           "  --script FILE    scripted input (see source)\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
           "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
-          "      Pause fast-forward; a game controller acts as joystick in port 2.\n"
-          "      All other keys go to the game (see manual: cursor keys fly,\n"
-          "      F1-F10/=/- throttle, SPACE fire, RETURN weapon, numpad views).\n");
+          "      Pause fast-forward.  Game controller (see README):\n"
+          "      stick/d-pad fly, A fire, B weapon, X target, Y map,\n"
+          "      LT/RT throttle, LB systems pie, RB views pie, Start pause.\n"
+          "      Keyboard: cursor fly, F1-F10/=/- throttle, SPACE fire,\n"
+          "      RETURN weapon, numpad views (full list in the manual).\n");
 }
 
 }  // namespace

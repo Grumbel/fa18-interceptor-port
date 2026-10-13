@@ -32,6 +32,7 @@ Verified with scripted runs (`--script`):
 - [ ] Optional: >15 fps would need patching the game's timer.device based
       frame limiter (and checking the simulation's time-step clamp)
 - [ ] Optional: load directly from the ADF instead of extracted files
+- [ ] Optional: on-screen pie-menu overlay for the gamepad layers
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the
       dispatch table maps addresses to functions, so hand-written
