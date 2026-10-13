@@ -105,10 +105,11 @@ bool Machine::boot(const std::string& dir) {
     log("cannot load %s\n", path.c_str());
     return false;
   }
-  // Same layout as tools/loadseg.py and the recompiler.
+  // Segments are laid out back to back (8-byte LoadSeg header + payload),
+  // so WHDLoad PatchSeg offsets map to LOAD_BASE + offset. Same layout as
+  // tools/loadseg.py and the recompiler.
   uint32_t a = LOAD_BASE;
   for (auto& h : exe.hunks) {
-    a = (a + 7) & ~7u;
     hunk_addrs.push_back(a + 8);
     hunk_sizes.push_back(h.alloc_size);
     a += 8 + h.alloc_size;
@@ -123,10 +124,28 @@ bool Machine::boot(const std::string& dir) {
     for (auto& [target, offs] : h.relocs)
       for (uint32_t o : offs) write32(base + o, read32(base + o) + hunk_addrs[target]);
   }
+  if (bypass_protection) {
+    // Codewheel protection, as patched by JOTD's WHDLoad slave (offsets are
+    // relative to the concatenated hunk payloads):
+    //   $19737: wrong-answer path stores 1 instead of $FF in the pass flag
+    //   $3a964: the pass flag itself, preset to 1
+    //   $01a78: NOP the instruction that clears the flag after the check
+    write8(patch_address(0x19737), 0x01);
+    write8(patch_address(0x3a964), 0x01);
+    for (uint32_t i = 0; i < 6; i += 2) write16(patch_address(0x01a78) + i, 0x4E71);
+  }
   free_list_.clear();
   free_list_[end] = RAM_SIZE - end;
   hle_->boot(hunk_addrs[0], (hunk_addrs[0] - 4) >> 2);
   return true;
+}
+
+uint32_t Machine::patch_address(uint32_t offset) const {
+  for (size_t i = 0; i < hunk_addrs.size(); ++i) {
+    if (offset < hunk_sizes[i]) return hunk_addrs[i] + offset;
+    offset -= hunk_sizes[i];
+  }
+  return 0;
 }
 
 // ---- 68k <-> host calls ----------------------------------------------------

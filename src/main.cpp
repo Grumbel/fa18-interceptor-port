@@ -7,9 +7,42 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
+
+// Scripted input for automated runs:  <frame> <command> [args]
+//   key <SDL key name> [down|up|tap]   joy <subset of "udlrf">
+//   mouse <dx> <dy>   lmb|rmb <0|1>   shot <file.ppm>   quit
+struct ScriptEvent {
+  int frame;
+  std::string cmd;
+  std::vector<std::string> args;
+};
+
+std::vector<ScriptEvent> load_script(const std::string& path) {
+  std::vector<ScriptEvent> ev;
+  std::ifstream in(path);
+  std::string line;
+  int last = 0;
+  while (std::getline(in, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream ss(line);
+    std::string f;
+    ScriptEvent e;
+    ss >> f >> e.cmd;
+    // "+N" is relative to the previous event
+    e.frame = f[0] == '+' ? last + std::atoi(f.c_str() + 1) : std::atoi(f.c_str());
+    last = e.frame;
+    std::string a;
+    while (ss >> a) e.args.push_back(a);
+    ev.push_back(e);
+  }
+  return ev;
+}
 
 int amiga_rawkey(SDL_Scancode sc) {
   switch (sc) {
@@ -82,6 +115,10 @@ public:
   std::string screenshot_path;
   int frame_no = 0;
   int quit_after = -1;
+  std::vector<ScriptEvent> script;
+  size_t script_pos = 0;
+  std::vector<std::pair<int, int>> pending_up;  // frame, rawkey
+  bool sjoy[5] = {};
   // keyboard joystick (numpad)
   bool kup = false, kdown = false, kleft = false, kright = false, kfire = false;
 
@@ -167,7 +204,9 @@ public:
           break;
       }
     }
-    bool up = kup, down = kdown, left = kleft, right = kright, fire = kfire;
+    run_script();
+    bool up = kup || sjoy[0], down = kdown || sjoy[1], left = kleft || sjoy[2],
+         right = kright || sjoy[3], fire = kfire || sjoy[4];
     if (pad) {
       int x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
       int y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
@@ -188,6 +227,12 @@ public:
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     SDL_RenderPresent(ren);
     if (frame_no == screenshot_frame) save_screenshot(fb);
+    if (!pending_shot.empty()) {
+      std::swap(pending_shot, screenshot_path);
+      save_screenshot(fb);
+      std::swap(pending_shot, screenshot_path);
+      pending_shot.clear();
+    }
     if (quit_after >= 0 && frame_no >= quit_after) quit = true;
     handle_events();
     if (quit) throw amiga::QuitRequested{};
@@ -201,6 +246,42 @@ public:
       if (left_us > 2000) SDL_Delay(uint32_t(left_us / 1000 - 1));
     }
   }
+
+  void run_script() {
+    for (size_t i = 0; i < pending_up.size();) {
+      if (pending_up[i].first <= frame_no) {
+        machine->key_event(uint8_t(pending_up[i].second), false);
+        pending_up.erase(pending_up.begin() + long(i));
+      } else {
+        ++i;
+      }
+    }
+    while (script_pos < script.size() && script[script_pos].frame <= frame_no) {
+      const ScriptEvent& e = script[script_pos++];
+      if (e.cmd == "key" && !e.args.empty()) {
+        int rk = amiga_rawkey(SDL_GetScancodeFromName(e.args[0].c_str()));
+        if (rk < 0) rk = int(std::strtol(e.args[0].c_str(), nullptr, 16));
+        std::string mode = e.args.size() > 1 ? e.args[1] : "tap";
+        if (mode == "down") machine->key_event(uint8_t(rk), true);
+        else if (mode == "up") machine->key_event(uint8_t(rk), false);
+        else { machine->key_event(uint8_t(rk), true); pending_up.push_back({frame_no + 4, rk}); }
+      } else if (e.cmd == "joy") {
+        std::string st = e.args.empty() ? "" : e.args[0];
+        const char* names = "udlrf";
+        for (int k = 0; k < 5; ++k) sjoy[k] = st.find(names[k]) != std::string::npos;
+      } else if (e.cmd == "mouse" && e.args.size() >= 2) {
+        machine->mouse_move(std::atoi(e.args[0].c_str()), std::atoi(e.args[1].c_str()));
+      } else if ((e.cmd == "lmb" || e.cmd == "rmb") && !e.args.empty()) {
+        machine->mouse_button(e.cmd == "lmb" ? 0 : 1, e.args[0] != "0");
+      } else if (e.cmd == "shot" && !e.args.empty()) {
+        pending_shot = e.args[0];
+      } else if (e.cmd == "quit") {
+        quit = true;
+      }
+    }
+  }
+
+  std::string pending_shot;
 
   void save_screenshot(const uint32_t* fb) {
     FILE* f = fopen(screenshot_path.c_str(), "wb");
@@ -234,6 +315,8 @@ void usage() {
           "  --screenshot N FILE  save frame N as PPM\n"
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
+          "  --protection     keep the original codewheel check\n"
+          "  --script FILE    scripted input (see source)\n"
           "keys: F12 grab mouse, F11 fullscreen, Pause fast-forward,\n"
           "      numpad 8/2/4/6 + 0 = joystick\n");
 }
@@ -244,9 +327,9 @@ int main(int argc, char** argv) {
   std::string data_dir, save_dir;
   int scale = 3;
   double speed = 1.0;
-  bool verbose = false, trace = false, fast = false;
+  bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
-  std::string shot_path;
+  std::string shot_path, script_path;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
@@ -257,6 +340,8 @@ int main(int argc, char** argv) {
     else if (a == "--screenshot" && i + 2 < argc) { shot_frame = std::atoi(argv[++i]); shot_path = argv[++i]; }
     else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
     else if (a == "--fast") fast = true;
+    else if (a == "--protection") protection = true;
+    else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
     else if (a == "-h" || a == "--help") { usage(); return 0; }
     else data_dir = a;
   }
@@ -276,6 +361,7 @@ int main(int argc, char** argv) {
   machine.trace = trace;
   machine.cpu_speed = speed;
   machine.save_dir = save_dir;
+  machine.bypass_protection = !protection;
   if (!machine.boot(data_dir)) return 1;
 
   SdlHost host;
@@ -284,6 +370,7 @@ int main(int argc, char** argv) {
   host.screenshot_path = shot_path;
   host.quit_after = quit_after;
   host.fast = fast;
+  if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
   machine.set_host(&host);
   int rc = machine.run();

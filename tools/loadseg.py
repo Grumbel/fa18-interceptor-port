@@ -2,8 +2,9 @@
 """Relocate all hunks of the executable to fixed addresses, the same way the
 C++ runtime's LoadSeg does (keep the two in sync!).
 
-Each hunk gets an 8-byte LoadSeg header (alloc size, next-segment BPTR) and
-its payload starts 8 bytes later, 8-byte aligned.
+Each hunk gets an 8-byte LoadSeg header (alloc size + 8, next-segment BPTR)
+and the segments are laid out back to back, so a WHDLoad PatchSeg offset X is
+at address LOAD_BASE + X.
 
     python3 tools/loadseg.py "F-18 Interceptor" image.bin   # writes flat image
 """
@@ -21,7 +22,6 @@ def layout(hunks, base=LOAD_BASE):
     addrs = []
     a = base
     for h in hunks:
-        a = (a + 7) & ~7
         addrs.append(a + 8)
         a += 8 + h.alloc_size
     return addrs, (a + 7) & ~7

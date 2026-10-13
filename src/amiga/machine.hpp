@@ -127,6 +127,11 @@ public:
   // Cycles per emulated frame given to the CPU (speed multiplier).
   double cpu_speed = 1.0;
 
+  // Apply the codewheel protection bypass after loading.
+  bool bypass_protection = true;
+  // Map a WHDLoad PatchSeg offset (concatenated hunk payloads) to an address.
+  uint32_t patch_address(uint32_t offset) const;
+
   // Exposed for debugging tools.
   std::vector<uint32_t> hunk_addrs;
   std::vector<uint32_t> hunk_sizes;
