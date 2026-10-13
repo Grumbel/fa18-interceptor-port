@@ -67,7 +67,17 @@ file(GLOB NATIVE_SRCS CONFIGURE_DEPENDS src/native/*.cpp src/native/*.hpp)
 add_library(native OBJECT ${NATIVE_SRCS})
 target_link_libraries(native PUBLIC amiga)
 
+# Line coverage of the native translation (tests/coverage_native.sh):
+#   cmake -B build-cov -DFA18_COVERAGE=ON
+option(FA18_COVERAGE "Instrument src/native for gcov" OFF)
+if(FA18_COVERAGE)
+  target_compile_options(native PRIVATE --coverage -O0)
+endif()
+
 add_executable(fa18 src/main.cpp $<TARGET_OBJECTS:native>)
+if(FA18_COVERAGE)
+  target_link_options(fa18 PRIVATE --coverage)
+endif()
 target_link_libraries(fa18 PRIVATE amiga SDL2::SDL2)
 target_compile_definitions(fa18 PRIVATE
   FA18_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/fa18-interceptor")

@@ -27,7 +27,30 @@ def layout(hunks, base=LOAD_BASE):
     return addrs, (a + 7) & ~7
 
 
-def load(path, base=LOAD_BASE):
+def patch_address(hunks, addrs, off):
+    """WHDLoad PatchSeg offsets are offsets into the concatenated payloads."""
+    for h, a in zip(hunks, addrs):
+        if off < h.alloc_size:
+            return a + off
+        off -= h.alloc_size
+
+
+def apply_patches(hunks, addrs, img, base=LOAD_BASE):
+    """The same patches as Machine::boot (keep in sync):
+      $19737 / $3a964  codewheel pass flag preset to 1
+      $01a78           6 bytes NOP: the store that clears the flag after
+                       the check ($21a80 = moveb d0,$5aba4)
+      $008da           delay() busy loop -> host trap A $AF02 (TRAP_DELAY)
+    """
+    img[patch_address(hunks, addrs, 0x19737) - base] = 0x01
+    img[patch_address(hunks, addrs, 0x3a964) - base] = 0x01
+    p = patch_address(hunks, addrs, 0x01a78) - base
+    img[p:p + 6] = bytes.fromhex("4e714e714e71")
+    p = patch_address(hunks, addrs, 0x008da) - base
+    img[p:p + 2] = bytes.fromhex("af02")
+
+
+def load(path, base=LOAD_BASE, patched=True):
     hunks = hunkmod.parse(path)
     addrs, end = layout(hunks, base)
     img = bytearray(end - base)
@@ -41,6 +64,8 @@ def load(path, base=LOAD_BASE):
             for o in offs:
                 v = struct.unpack_from(">I", img, off + o)[0]
                 struct.pack_into(">I", img, off + o, (v + addrs[target]) & 0xFFFFFFFF)
+    if patched:
+        apply_patches(hunks, addrs, img, base)
     return hunks, addrs, img
 
 

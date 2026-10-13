@@ -900,20 +900,7 @@ def main():
     hunks, addrs, img = loadseg.load(exe)
     base = loadseg.LOAD_BASE
 
-    # Same protection bypass as Machine::boot.
-    def patch_address(off):
-        for h, a in zip(hunks, addrs):
-            if off < h.alloc_size:
-                return a + off
-            off -= h.alloc_size
-    img[patch_address(0x19737) - base] = 0x01
-    img[patch_address(0x3a964) - base] = 0x01
-    p = patch_address(0x01a78) - base
-    img[p:p + 6] = bytes.fromhex("4e714e714e71")
-    # delay() busy loop -> host trap (TRAP_DELAY), see Machine::boot
-    p = patch_address(0x008da) - base
-    img[p:p + 2] = bytes.fromhex("af02")
-
+    # loadseg.load() already applied the Machine::boot patches.
     IMG = Image(img, base)
     for h, a in zip(hunks, addrs):
         if h.kind == "CODE":

@@ -792,7 +792,9 @@ static void st_boot_check() {
 
 static void st_restart() {
   sub_2d1e6();
-  b_5aba4 = 0;
+  // The original also clears $5aba4 here (moveb d0,$5aba4 at $21a80); that
+  // store is NOP'd by the codewheel bypass (Machine::boot), which keeps the
+  // protection-passed flag set. We emulate the patched program.
   scenario = 0;
   b_5ab43 = 0;
   game_state = st_mission_menu_addr;

@@ -73,7 +73,10 @@ deterministic timing and compares memory hashes every 50 frames, then runs
 `--native verify` (per-call comparison). Never commit on a failure; never
 commit with a routine disabled "for now" without saying so in TODO.md.
 
-- Translate from the assembly (`tools/disasm.py`); Ghidra pseudo-C
+- Translate from the assembly of the *patched* program (`tools/disasm.py`
+  and `tools/loadseg.py` apply the codewheel bypass and the delay() trap
+  exactly like `Machine::boot`; the bytes in the ADF executable differ, e.g.
+  the store of $5aba4 at $21a80 is a NOP). Ghidra pseudo-C
   (tools/ghidra) is only a reading aid — it drops code after calls it
   thinks never return and cannot read Lattice switch tables.
 - Exact 68000 semantics: `bset/bclr/bchg/btst` on memory are byte

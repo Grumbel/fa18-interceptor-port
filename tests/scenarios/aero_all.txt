@@ -1,0 +1,81 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3300 key 1
+3700 key KP_Enter
+3800 key F10
+4300 key down down
+4500 key down up
+4600 key g
+4700 joy l
+4850 joy 
+5000 joy r
+5150 joy 
+5300 joy u
+5450 joy 
+5600 joy d
+5750 joy 
+5900 joy lu
+6050 joy 
+6200 joy rd
+6350 joy 
+6500 joy ld
+6650 joy 
+6800 joy ru
+6950 joy 
+7100 key comma down
+7200 key comma up
+7300 key period down
+7400 key period up
+7500 key F10
+7510 key F10
+7600 joy d
+8000 joy
+8200 key space
+8240 key return
+8280 key space
+8320 key return
+8360 key space
+8400 key return
+8440 key space
+8480 key c
+8540 key f
+8600 key j
+8660 key h
+8720 key h
+8780 key m
+8840 key m
+8900 key t
+8960 key r
+9020 key r
+9080 key p
+9140 key p
+9200 key KP_4
+9260 key KP_6
+9320 key KP_5
+9380 key KP_2
+9440 key KP_8
+9500 key KP_1
+9560 key KP_7
+9620 key KP_Enter
+9680 key KP_3
+9740 key KP_9
+9800 key KP_5
+9860 key KP_Enter
+9920 key backspace
+9980 key a
+10040 key F1
+10100 key F5
+10160 key F10
+10220 key minus
+10280 key equals
+10340 key leftbracket
+10400 key rightbracket
+10460 key g
+10520 joy u
+13020 joy
+13520 quit

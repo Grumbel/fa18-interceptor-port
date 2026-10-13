@@ -1,0 +1,23 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 5
+2600 key 1
+3000 key return
+3400 key KP_Enter
+3800 key F10
+3810 key F10
+4800 joy d
+5100 joy
+5200 key g
+5400 joy l
+5800 joy
+6200 joy r
+6600 joy
+7000 key a
+7200 key g
+7400 key F5
+7500 key backspace
+8000 key F1
+9000 quit
