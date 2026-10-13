@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <deque>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -83,7 +84,7 @@ private:
 
   // graphics
   void build_copper(uint32_t view);
-  uint32_t copper_buffer(uint32_t view);
+  void poke_colors(uint32_t vp);
 
   // dos
   struct File {
@@ -122,7 +123,11 @@ private:
 
   // graphics
   uint32_t active_view_ = 0;
-  std::map<uint32_t, uint32_t> coplists_;  // view → copper buffer
+  // Copper lists built by MrgCop (cprlist header addresses we own), and for
+  // each ViewPort DspIns token the copper MOVE addresses of its colours, so
+  // LoadRGB4 can update the list that belongs to the current DspIns.
+  std::set<uint32_t> cprlists_;
+  std::map<uint32_t, std::vector<uint32_t>> color_moves_;
 
   // dos
   std::map<uint32_t, File> files_;

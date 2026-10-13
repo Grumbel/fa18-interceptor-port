@@ -906,16 +906,14 @@ void Hle::dos(int lvo) {
 
 // ---- graphics -----------------------------------------------------------------
 
-uint32_t Hle::copper_buffer(uint32_t view) {
-  auto it = coplists_.find(view);
-  if (it != coplists_.end()) return it->second;
-  uint32_t buf = m.alloc(4096 + 16);
-  coplists_[view] = buf;
-  return buf;
-}
-
 void Hle::build_copper(uint32_t view) {
-  uint32_t hdr = copper_buffer(view);
+  // Reuse the view's current list if we built it, else make a new one
+  // (the game clears LOFCprList to get a second list for double buffering).
+  uint32_t hdr = m.r32(view + 4);
+  if (!cprlists_.count(hdr)) {
+    hdr = m.alloc(4096 + 16);
+    cprlists_.insert(hdr);
+  }
   uint32_t start = hdr + 16;
   uint32_t p = start;
   auto move = [&](uint16_t reg, uint16_t val) { m.w16(p, reg); m.w16(p + 2, val); p += 4; };
@@ -984,11 +982,16 @@ void Hle::build_copper(uint32_t view) {
       move(0x10A, uint16_t(m.r16(bm + 0) - nwords * 2));
     }
     uint32_t cm = m.r32(vp + 4);
+    std::vector<uint32_t> moves;
     if (cm) {
       int count = std::min<int>(m.r16(cm + 2), 32);
       uint32_t table = m.r32(cm + 4);
-      for (int i = 0; i < count; ++i) move(uint16_t(0x180 + i * 2), m.r16(table + uint32_t(i) * 2));
+      for (int i = 0; i < count; ++i) {
+        moves.push_back(p);
+        move(uint16_t(0x180 + i * 2), m.r16(table + uint32_t(i) * 2));
+      }
     }
+    if (uint32_t dsp = m.r32(vp + 8)) color_moves_[dsp] = moves;
     move(0x100, con0);
     last_end = vstart + dh;
     waitl(last_end);
@@ -1002,9 +1005,18 @@ void Hle::build_copper(uint32_t view) {
   m.w32(hdr + 4, start);
   m.w16(hdr + 8, uint16_t((p - start) / 4));
   m.w32(view + 4, hdr);  // LOFCprList
-  if (view == active_view_) {
-    m.cop1lc_ = start;
-  }
+  if (view == active_view_) m.cop1lc_ = start;
+}
+
+void Hle::poke_colors(uint32_t vp) {
+  // Like LoadRGB4 in Kickstart 1.3: update the colour MOVEs of the copper
+  // list that belongs to the viewport's current DspIns.
+  auto it = color_moves_.find(m.r32(vp + 8));
+  uint32_t cm = m.r32(vp + 4);
+  if (it == color_moves_.end() || !cm) return;
+  uint32_t table = m.r32(cm + 4);
+  for (size_t i = 0; i < it->second.size(); ++i)
+    m.w16(it->second[i] + 2, m.r16(table + uint32_t(i) * 2));
 }
 
 void Hle::gfx(int lvo) {
@@ -1017,10 +1029,7 @@ void Hle::gfx(int lvo) {
       uint32_t table = m.r32(cm + 4);
       for (int i = 0; i < count; ++i)
         m.w16(table + uint32_t(i) * 2, m.r16(A(1) + uint32_t(i) * 2) & 0xFFF);
-      if (active_view_) {
-        for (uint32_t v = m.r32(active_view_); v; v = m.r32(v))
-          if (v == vp) { build_copper(active_view_); break; }
-      }
+      poke_colors(vp);
       return;
     }
     case 198: {  // InitRastPort(a1)
@@ -1038,13 +1047,17 @@ void Hle::gfx(int lvo) {
       return;
     }
     case 210: build_copper(A(1)); return;  // MrgCop(a1 view)
-    case 216: return;                       // MakeVPort(a0 view, a1 vp)
+    case 216: {  // MakeVPort(a0 view, a1 vp): just provide a DspIns token
+      if (!m.r32(A(1) + 8)) m.w32(A(1) + 8, m.alloc(16));
+      return;
+    }
     case 222: {  // LoadView(a1 view)
+      ++m.loadview_count;
       active_view_ = A(1);
       m.w32(gfxbase + 34, active_view_);
       if (!active_view_) { m.cop1lc_ = 0; m.bplcon0_ = 0x200; return; }
       uint32_t cpr = m.r32(active_view_ + 4);
-      if (!cpr) build_copper(active_view_), cpr = m.r32(active_view_ + 4);
+      if (!cprlists_.count(cpr)) build_copper(active_view_), cpr = m.r32(active_view_ + 4);
       m.cop1lc_ = m.r32(cpr + 4);
       m.w32(gfxbase + 50, m.cop1lc_);  // LOFlist
       m.dmacon_ |= 0x0200 | 0x0100 | 0x0080;
@@ -1061,7 +1074,7 @@ void Hle::gfx(int lvo) {
       if (cm && D(0) < m.r16(cm + 2)) {
         uint16_t c = uint16_t((D(1) & 15) << 8 | (D(2) & 15) << 4 | (D(3) & 15));
         m.w16(m.r32(cm + 4) + D(0) * 2, c);
-        if (active_view_) build_copper(active_view_);
+        poke_colors(A(0));
       }
       return;
     }

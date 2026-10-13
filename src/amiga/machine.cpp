@@ -269,8 +269,12 @@ void Machine::idle_until(const std::function<bool()>& done) {
 void Machine::end_of_frame() {
   render_frame();
   ++frame_count_;
-  if (verbose && frame_count_ % 50 == 0)
-    log("[frame %llu] pc=%06x sr=%04x a7=%06x\n", (unsigned long long)frame_count_, cpu.pc, cpu.sr(), cpu.a[7]);
+  if (verbose && frame_count_ % 60 == 0) {
+    static uint64_t last_lv = 0;
+    log("[frame %llu] pc=%06x game fps=%llu\n", (unsigned long long)frame_count_, cpu.pc,
+        (unsigned long long)(loadview_count - last_lv));
+    last_lv = loadview_count;
+  }
   if (host_) {
     host_->frame(fb_.data());
     host_->audio(audio_buf_.data(), audio_buf_.size() / 2);

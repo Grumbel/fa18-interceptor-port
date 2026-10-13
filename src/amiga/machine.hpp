@@ -148,6 +148,8 @@ public:
   std::vector<uint8_t> original;  // loaded image for SMC detection
   void write_coverage();
 
+  uint64_t loadview_count = 0;  // game frames presented (stats)
+
   // Exposed for debugging tools.
   std::vector<uint32_t> hunk_addrs;
   std::vector<uint32_t> hunk_sizes;
