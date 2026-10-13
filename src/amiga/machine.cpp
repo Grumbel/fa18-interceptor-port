@@ -179,6 +179,13 @@ void Machine::setup_native() {
   calltrace_ = getenv("FA18_CALLTRACE") != nullptr;
   // FA18_WATCH=hexaddr: log every change of the long at addr (needs
   // --interpret so every instruction is visible).
+  // FA18_REGS=hexaddr[,count]: log all registers when execution reaches
+  // addr (use --native off or the routine's callers will not be seen).
+  if (const char* r = getenv("FA18_REGS")) {
+    regs_addr_ = uint32_t(strtoul(r, nullptr, 16));
+    const char* c = strchr(r, ',');
+    regs_log_budget_ = c ? atoi(c + 1) : 20;
+  }
   if (const char* w = getenv("FA18_WATCH")) {
     watch_addr_ = uint32_t(strtoul(w, nullptr, 16));
     watch_val_ = read32(watch_addr_);
@@ -547,6 +554,14 @@ void Machine::execute(int64_t until) {
       }
       if (f && frame_count_ >= from && frame_count_ <= to) fprintf(f, "%llu %06x %08x %08x %08x\n", (unsigned long long)frame_count_, pc, read32(cpu.a[7] + 4), read32(cpu.a[7] + 8), read32(cpu.a[7] + 12));
     }
+    if (regs_addr_ && pc == regs_addr_ && regs_log_budget_ > 0) {
+      --regs_log_budget_;
+      log("[regs] pc=%06x frame %llu d:", pc, (unsigned long long)frame_count_);
+      for (int i = 0; i < 8; ++i) log(" %08x", cpu.d[i]);
+      log(" a:");
+      for (int i = 0; i < 8; ++i) log(" %08x", cpu.a[i]);
+      log("\n");
+    }
     if (native_mode != NativeMode::Off && !in_reference_) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
       if (idx < native_table_.size() && native_table_[idx] && !(pc & 1)) {
@@ -575,8 +590,11 @@ void Machine::execute(int64_t until) {
     if (watch_addr_) {
       uint32_t v = read32(watch_addr_);
       if (v != watch_val_) {
-        log("[watch] %06x: %08x -> %08x at pc=%06x (op_pc=%06x) frame %llu\n", watch_addr_,
-            watch_val_, v, cpu.pc, cpu.op_pc, (unsigned long long)frame_count_);
+        log("[watch] %06x: %08x -> %08x at pc=%06x (op_pc=%06x) frame %llu a7=%06x a6=%06x stack:",
+            watch_addr_, watch_val_, v, cpu.pc, cpu.op_pc, (unsigned long long)frame_count_,
+            cpu.a[7], cpu.a[6]);
+        for (int i = 0; i < 6; ++i) log(" %06x", read32(cpu.a[7] + uint32_t(i) * 4));
+        log("\n");
         watch_val_ = v;
       }
     }

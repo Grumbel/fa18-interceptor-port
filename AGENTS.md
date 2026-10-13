@@ -90,6 +90,12 @@ commit with a routine disabled "for now" without saying so in TODO.md.
   Assembly routines that change registers their callers can see must use
   `NATIVE_ASM` and set those registers (see stick_v/joy_fire_down).
   Mark a routine `verify = true` only if it has no OS side effects.
+  Assembly callees often consume *leftover registers* of the compiled C
+  code that calls them (e.g. $2e7e2 ends in the key tail $2ef98 which reads
+  the key code from d0). When native C code calls such a routine, set the
+  registers as the original code had them (find out with
+  `FA18_REGS=addr,count ... --native off`, which logs all registers when
+  execution reaches addr, and by comparing FA18_CALLTRACE/FA18_WATCH runs).
 - Name game variables in globals.hpp (`Var<T>`); `vars.hpp` has raw
   size-typed accessors. A `Var` converts to its *value*; use `.ptr()` for
   its address and `.get()` when assigning one Var to another (`a = b` is a
