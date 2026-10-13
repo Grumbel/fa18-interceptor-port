@@ -1,6 +1,9 @@
 #include "native/runtime.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <map>
+#include <string>
 
 namespace native {
 
@@ -13,8 +16,8 @@ std::map<uint32_t, Def>& registry() {
 }
 }  // namespace
 
-Registrar::Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify) {
-  registry()[addr] = Def{addr, name, fn, conv, verify};
+Registrar::Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0) {
+  registry()[addr] = Def{addr, name, fn, conv, verify, ret_d0};
 }
 
 const Def* find(uint32_t addr) {
@@ -26,30 +29,43 @@ void for_each(void (*f)(const Def&)) {
   for (auto& [a, d] : registry()) f(d);
 }
 
+// Debug aid: FA18_POISON=all|addr,addr (hex) fills d0-d7/a0-a6 with a
+// pattern (FA18_POISON_SEED) before calling the routine, to find original
+// routines that read registers they were not given.
+static void poison(uint32_t addr, m68k::Cpu& c) {
+  static const char* list = getenv("FA18_POISON");
+  if (!list) return;
+  if (std::string(list) != "all") {
+    char key[16];
+    snprintf(key, sizeof key, ",%x,", addr);
+    if ((std::string(",") + list + ",").find(key) == std::string::npos) return;
+  }
+  static uint32_t seed = getenv("FA18_POISON_SEED") ? uint32_t(strtoul(getenv("FA18_POISON_SEED"), nullptr, 0)) : 0xDEAD0000u;
+  for (int i = 0; i < 8; ++i) c.d[i] = seed + uint32_t(i);
+  for (int i = 0; i < 7; ++i) c.a[i] = (seed + 0x100u + uint32_t(i) * 4) & 0x7FFFFC;
+}
+
 uint32_t call_c(uint32_t addr, std::initializer_list<uint32_t> args) {
   m68k::Cpu& c = cpu();
-  m68k::Cpu saved = c;
+  m68k::Cpu::Regs saved = c.save();
+  poison(addr, c);
   const uint32_t* a = args.begin();
   for (size_t i = args.size(); i-- > 0;) c.push32(a[i]);
   g_machine->call_sub(addr);
   uint32_t ret = c.d[0];
-  int64_t cycles = c.cycles;
-  c = saved;
-  c.cycles = cycles;
+  c.restore(saved);
   return ret;
 }
 
 Regs call_asm(uint32_t addr, const Regs& in) {
   m68k::Cpu& c = cpu();
-  m68k::Cpu saved = c;
+  m68k::Cpu::Regs saved = c.save();
   for (int i = 0; i < 8; ++i) c.d[i] = in.d[i];
   for (int i = 0; i < 7; ++i) c.a[i] = in.a[i];
   g_machine->call_sub(addr);
   Regs out;
   for (int i = 0; i < 8; ++i) { out.d[i] = c.d[i]; out.a[i] = c.a[i]; }
-  int64_t cycles = c.cycles;
-  c = saved;
-  c.cycles = cycles;
+  c.restore(saved);
   return out;
 }
 

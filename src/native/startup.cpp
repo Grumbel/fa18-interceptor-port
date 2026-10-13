@@ -36,7 +36,10 @@ uint32_t load_picture(uint32_t name, uint32_t palette, uint32_t bmhd) {
   {
     uint32_t tmp = os::AllocMem(uint32_t(len), 0);
     os::Read(fh, tmp, len);
-    for (int32_t i = 0; i < len; ++i) file[size_t(i)] = rd8(tmp + uint32_t(i));
+    for (int32_t i = 0; i < len; ++i) {
+      file[size_t(i)] = rd8(tmp + uint32_t(i));
+      wr8(tmp + uint32_t(i), 0);  // leave free memory as the original did
+    }
     os::FreeMem(tmp, uint32_t(len));
   }
   uint32_t form_size = be32(file, 4);
@@ -60,25 +63,43 @@ uint32_t load_picture(uint32_t name, uint32_t palette, uint32_t bmhd) {
     wr32(bm + 8 + p * 4, os::AllocMem((uint32_t(width) * height) >> 3, os::MEMF_CHIP | os::MEMF_CLEAR));
   uint16_t bpr = rd16(bm);
   // Decompression buffer of the original (never freed).
-  uint32_t bufsize = ((uint32_t(bpr) + 0x7F) >> 7) + bpr;
-  os::AllocMem(bufsize * 2, os::MEMF_CHIP | os::MEMF_CLEAR);
+  int32_t bufsize = int32_t(((uint32_t(bpr) + 0x7F) >> 7) + bpr);
+  uint32_t buf = os::AllocMem(uint32_t(bufsize) * 2, os::MEMF_CHIP | os::MEMF_CLEAR);
 
-  // BODY: rows of interleaved planes, ByteRun1 or raw.
+  // BODY: rows of interleaved planes, raw or ByteRun1. Compressed data goes
+  // through the read buffer exactly like EA's GetBODY (so the buffer ends up
+  // with the same contents): before each row the unread bytes are moved to
+  // the front and the buffer is topped up from the file.
   uint16_t rowbytes = uint16_t(((width + 15) >> 4) * 2);
   if (rowbytes == bpr && compression <= 1 && depth < 18) {
     uint32_t rows = std::min<uint32_t>(rd16(bm + 2), height);
     uint32_t dst[17];
     int nplanes = depth + (masking == 1 ? 1 : 0);
     for (int p = 0; p < nplanes; ++p) dst[p] = p < rd8(bm + 5) ? rd32(bm + 8 + uint32_t(p) * 4) : 0;
-    auto in = [&]() -> uint8_t { return pos < file.size() ? file[pos++] : 0; };
+    int32_t avail = bufsize;   // valid bytes in the buffer
+    int32_t rdpos = bufsize;   // next unread byte in the buffer
     for (uint32_t y = 0; y < rows; ++y) {
       for (int p = 0; p < nplanes; ++p) {
         uint32_t out = dst[p];
         if (compression == 0) {
-          for (int i = 0; i < rowbytes; ++i) { uint8_t v = in(); if (out) wr8(out + uint32_t(i), v); }
+          for (int i = 0; i < rowbytes; ++i) {
+            uint8_t v = pos < file.size() ? file[pos] : 0;
+            ++pos;
+            if (out) wr8(out + uint32_t(i), v);
+          }
         } else {
+          int32_t used = rdpos, keep = avail - used;
+          for (int32_t i = 0; i < keep; ++i) wr8(buf + uint32_t(i), rd8(buf + uint32_t(used + i)));
+          int32_t left = int32_t(file.size()) - int32_t(pos);
+          if (left < used) {
+            avail = left + keep;
+            used = left;
+          }
+          for (int32_t i = 0; i < used; ++i) wr8(buf + uint32_t(keep + i), file[pos++]);
+          rdpos = 0;
           int i = 0;
-          while (i < rowbytes) {
+          auto in = [&]() -> uint8_t { return rdpos < avail ? rd8(buf + uint32_t(rdpos++)) : 0; };
+          while (i < rowbytes && rdpos < avail) {
             int8_t n = int8_t(in());
             if (n >= 0) {
               for (int k = 0; k <= n && i < rowbytes; ++k, ++i) { uint8_t v = in(); if (out) wr8(out + uint32_t(i), v); }
@@ -146,7 +167,7 @@ static void main_() {
   title_flag_5ab47 = 0;
   sound_flags = 0;
   title_flag_5ab46 = 1;
-  splash_bitmap = load_picture(str_splsh, palette_buf, splash_bmhd);
+  splash_bitmap = load_picture(str_splsh, palette_buf.ptr(), splash_bmhd);
   os::FreeSprite(0);
   sub_29668();
   os::FreeSprite(0);
@@ -197,8 +218,8 @@ static void main_() {
   reuse_splash_planes();
   os::FreeSprite(0);
   if (gfx_base != 0) os::CloseLibrary(gfx_base);
-  cockpit_bitmap = load_picture(str_inst5, palette_buf, cockpit_bmhd);
-  front_bitmap = load_picture(str_frnt5, palette_buf, front_bmhd);
+  cockpit_bitmap = load_picture(str_inst5, palette_buf.ptr(), cockpit_bmhd);
+  front_bitmap = load_picture(str_frnt5, palette_buf.ptr(), front_bmhd);
   uint32_t ck = cockpit_bitmap;
   cockpit_checksum = int16_t(sub_3931c(rd32(ck + 8), rd32(ck + 0xc), rd32(ck + 0x10), rd32(ck + 0x14),
                                        cockpit_bmhd_w, cockpit_bmhd_h));

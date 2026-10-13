@@ -56,3 +56,25 @@ Verified with scripted runs (`--script`):
   the fire button; mouse JOY0DAT is accumulated in the VBL server ($292e6)
 - The LMB test at $292b4 reads a BSS variable (`_ciaa` linked as data, an
   original bug) instead of CIA-A
+
+## Native C++ translation (in progress)
+
+Hand-translated routines live in src/native/ and replace the original code
+by address (`--native on`, default); `--native off` runs only the
+recompiled original. Equivalence oracle:
+`tests/compare_native.sh DIR` (deterministic timing `--det-timing`, memory
+hash every 50 frames, all scenarios) must report "same" for all.
+Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
+FA18_POISON, `--native verify` (per-call comparison for pure routines).
+
+Done: startup (main, picture loader, delay, Workbench), flight log/config,
+codewheel hash, game state machine part 1 ($2151c-$22026: input poll,
+run_game_state, menu/flight-log states, demo start).
+Open:
+- [ ] game_frame ($2112c) is translated but not registered: enabling it
+      gives a 1-byte divergence ($5ab55) around frame 2250 of free1
+- [ ] rest of hunk 0 state machine from $22026 (see Ghidra + asm)
+- [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
+      model, HUD), sound driver (hunks 74-77)
+Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
+Ghidra drops code and mis-types switches - translate from the assembly).

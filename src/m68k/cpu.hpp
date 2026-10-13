@@ -119,6 +119,25 @@ struct Cpu {
   uint16_t pop16() { uint16_t v = bus->read16(a[7]); a[7] += 2; return v; }
   uint32_t pop32() { uint32_t v = bus->read32(a[7]); a[7] += 4; return v; }
 
+  // Plain register state (for cheap save/restore by host code).
+  struct Regs {
+    uint32_t d[8], a[8], osp, pc;
+    bool s, t, fx, fn, fz, fv, fc, stopped;
+    uint8_t imask;
+  };
+  Regs save() const {
+    Regs r;
+    for (int i = 0; i < 8; ++i) { r.d[i] = d[i]; r.a[i] = a[i]; }
+    r.osp = osp; r.pc = pc; r.s = s; r.t = t; r.imask = imask;
+    r.fx = fx; r.fn = fn; r.fz = fz; r.fv = fv; r.fc = fc; r.stopped = stopped;
+    return r;
+  }
+  void restore(const Regs& r) {
+    for (int i = 0; i < 8; ++i) { d[i] = r.d[i]; a[i] = r.a[i]; }
+    osp = r.osp; pc = r.pc; s = r.s; t = r.t; imask = r.imask;
+    fx = r.fx; fn = r.fn; fz = r.fz; fv = r.fv; fc = r.fc; stopped = r.stopped;
+  }
+
   uint16_t fetch16() { uint16_t v = bus->read16(pc); pc += 2; cycles += 4; return v; }
   uint32_t fetch32() { uint32_t v = bus->read32(pc); pc += 4; cycles += 8; return v; }
 };

@@ -37,6 +37,7 @@ inline constexpr Var<uint32_t> game_planes{0x5a9ca};    // [4] plane pointers
 inline constexpr Var<uint32_t> work_buffer{0x5a9da};    // 8000 bytes chip
 inline constexpr Var<uint32_t> misc_buffer_6510c{0x6510c};
 inline constexpr Var<int16_t> fade_steps{0x5aa3a};
+inline constexpr Var<uint32_t> fade_palette{0x5a958};   // -> 32 colours (target of fades)
 
 // ---- pictures (pix/splsh, inst5, frnt5) -----------------------------------
 inline constexpr Var<uint16_t> palette_buf{0x2cf64};    // [32] loaded CMAP
@@ -73,6 +74,7 @@ constexpr uint32_t str_splsh = 0x2a3c9;
 constexpr uint32_t str_inst5 = 0x2a3d7;
 constexpr uint32_t str_frnt5 = 0x2a3e5;
 constexpr uint32_t str_intuition = 0x2a3f3;
+constexpr uint32_t str_input_device = 0x2a410;
 constexpr uint32_t str_config_w = 0x2a436;   // "df0:config" (write)
 constexpr uint32_t str_config_r = 0x2a441;   // "df0:config" (read)
 constexpr uint32_t str_config_u = 0x2a44c;   // "df0:config" (update)

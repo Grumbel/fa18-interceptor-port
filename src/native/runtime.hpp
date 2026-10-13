@@ -70,6 +70,8 @@ struct Var {
   T operator--() const { T v = T(get() - 1); set(v); return v; }
   T operator++(int) const { T v = get(); set(T(v + 1)); return v; }
   T operator--(int) const { T v = get(); set(T(v - 1)); return v; }
+  // The variable's address (a Var converts implicitly to its *value*).
+  uint32_t ptr() const { return addr; }
   // Element access for arrays starting at addr.
   Var at(int i) const { return Var{addr + uint32_t(i) * sizeof(T)}; }
 };
@@ -103,11 +105,12 @@ struct Def {
   Impl fn;
   Conv conv;     // C: stack args, result d0, d2-d7/a2-a6 preserved
   bool verify;   // safe to run twice for --native verify (no OS side effects)
+  bool ret_d0;   // C: result in d0 (void functions leave garbage there)
 };
 
 // Registers at static-initialisation time.
 struct Registrar {
-  Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify);
+  Registrar(uint32_t addr, const char* name, Impl fn, Conv conv, bool verify, bool ret_d0 = true);
 };
 
 const Def* find(uint32_t addr);
@@ -122,7 +125,7 @@ void c_adapter() {
     using Tuple = typename FnArgs<Fn>::type;
     if constexpr (std::is_void_v<typename FnArgs<Fn>::ret>) {
       F(static_cast<std::tuple_element_t<I, Tuple>>(arg(int(I)))...);
-      cpu().d[0] = 0;
+      // void: d0 is left as is
     } else {
       using R = typename FnArgs<Fn>::ret;
       uint32_t r = uint32_t(F(static_cast<std::tuple_element_t<I, Tuple>>(arg(int(I)))...));
@@ -140,8 +143,17 @@ void c_adapter() {
 
 // Register a C-convention function `fn` (typed parameters, 32-bit stack
 // arguments) as the replacement for the original routine at `addr`.
-#define NATIVE_C(addr, fn, verify) \
-  static ::native::Registrar native_reg_##fn(addr, #fn, &::native::c_adapter<&fn>, ::native::Conv::C, verify)
+#define NATIVE_C(addr, fn, verify)                                                         \
+  static ::native::Registrar native_reg_##fn(                                              \
+      addr, #fn, &::native::c_adapter<&fn>, ::native::Conv::C, verify,                     \
+      !std::is_void_v<typename ::native::FnArgs<decltype(&fn)>::ret>)
+
+// A game state handler: `void fn()` stored as a code address in a state
+// variable (e.g. game_state) and called through it.  Defines fn_addr.
+#define NATIVE_STATE(addr, fn)          \
+  static void fn();                     \
+  constexpr uint32_t fn##_addr = addr;  \
+  NATIVE_C(addr, fn, false)
 // Register a register-convention routine `void fn()` that reads/writes cpu().
 #define NATIVE_ASM(addr, fn, verify) \
   static ::native::Registrar native_reg_##fn(addr, #fn, &fn, ::native::Conv::Asm, verify)

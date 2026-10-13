@@ -359,7 +359,9 @@ int main(int argc, char** argv) {
   bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
-  bool interpret = false, vbl_time = false;
+  bool interpret = false, vbl_time = false, det_timing = false;
+  int ram_hash = 0, ram_dump_frame = 0;
+  std::string ram_dump_path;
   std::string native_mode = "on";
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -376,6 +378,9 @@ int main(int argc, char** argv) {
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
     else if (a == "--interpret") interpret = true;
     else if (a == "--vbl-time") vbl_time = true;
+    else if (a == "--det-timing") det_timing = true;
+    else if (a == "--ram-hash" && i + 1 < argc) ram_hash = std::atoi(argv[++i]);
+    else if (a == "--ram-dump" && i + 2 < argc) { ram_dump_frame = std::atoi(argv[++i]); ram_dump_path = argv[++i]; }
     else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
@@ -404,12 +409,16 @@ int main(int argc, char** argv) {
   amiga::Machine machine;
   machine.verbose = verbose;
   machine.trace = trace;
-  machine.set_cpu_speed(speed);
+  if (!det_timing) machine.set_cpu_speed(speed);
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
   machine.vbl_time = vbl_time;
+  if (det_timing) machine.set_det_timing(true);
+  machine.ram_hash_every = ram_hash;
+  machine.ram_dump_frame = uint64_t(ram_dump_frame);
+  machine.ram_dump_path = ram_dump_path;
   machine.native_mode = native_mode == "off"      ? amiga::Machine::NativeMode::Off
                         : native_mode == "verify" ? amiga::Machine::NativeMode::Verify
                                                   : amiga::Machine::NativeMode::On;

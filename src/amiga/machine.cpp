@@ -177,15 +177,25 @@ void Machine::setup_recomp(uint32_t end) {
 void Machine::setup_native() {
   native::g_machine = this;
   native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
+  // FA18_NATIVE_SKIP=name1,name2 disables individual native routines
+  // (FA18_NATIVE_ONLY=... enables only the listed ones); for bisecting.
   native::for_each([](const native::Def& d) {
     amiga::Machine& m = *native::g_machine;
+    auto listed = [&](const char* env) {
+      const char* v = getenv(env);
+      if (!v) return false;
+      std::string list = std::string(",") + v + ",";
+      return list.find(std::string(",") + d.name + ",") != std::string::npos;
+    };
+    if (listed("FA18_NATIVE_SKIP")) return;
+    if (getenv("FA18_NATIVE_ONLY") && !listed("FA18_NATIVE_ONLY")) return;
     uint32_t idx = (d.addr - LOAD_BASE) >> 1;
     if (idx < m.native_table_.size()) m.native_table_[idx] = &d;
   });
 }
 
 void Machine::invoke_native(const native::Def* d) {
-  m68k::Cpu saved = cpu;
+  m68k::Cpu::Regs saved = cpu.save();
   ++native_stats_[d].calls;
   d->fn();
   if (d->conv == native::Conv::C) {
@@ -283,7 +293,7 @@ void Machine::verify_native(const native::Def* d) {
   }
   bool c_conv = d->conv == native::Conv::C;
   for (int i = 0; i < 8; ++i) {
-    if (c_conv && i == 1) continue;
+    if (c_conv && (i == 1 || (i == 0 && !d->ret_d0))) continue;
     if (ref.cpu.d[i] != nat.cpu.d[i]) note(" d%d ref=%08x nat=%08x", i, ref.cpu.d[i], nat.cpu.d[i]);
   }
   for (int i = c_conv ? 2 : 0; i < 8; ++i)
@@ -361,7 +371,7 @@ bool Machine::line_a(uint16_t op) {
 void Machine::hle(int lib, int lvo) { hle_->call(lib, lvo); }
 
 uint32_t Machine::call68k(uint32_t addr, const uint32_t* d, const uint32_t* a) {
-  m68k::Cpu saved = cpu;
+  m68k::Cpu::Regs saved = cpu.save();
   if (d) for (int i = 0; i < 8; ++i) cpu.d[i] = d[i];
   if (a) for (int i = 0; i < 7; ++i) cpu.a[i] = a[i];
   // Leave some room below the interrupted code's stack.
@@ -382,9 +392,7 @@ uint32_t Machine::call68k(uint32_t addr, const uint32_t* d, const uint32_t* a) {
   --call_depth_;
   uint32_t ret = cpu.d[0];
   last_call_z_ = cpu.fz;
-  int64_t cyc = cpu.cycles;
-  cpu = saved;
-  cpu.cycles = cyc;
+  cpu.restore(saved);
   return ret;
 }
 
@@ -407,7 +415,11 @@ void Machine::run_line() {
 
 void Machine::idle_lines(int n) {
   for (int i = 0; i < n; ++i) {
-    cpu.cycles = line_start_ + line_cycles_;
+    if (det_timing_) {
+      line_start_ = cpu.cycles - line_cycles_;  // run_line() adds line_cycles_
+    } else {
+      cpu.cycles = line_start_ + line_cycles_;
+    }
     run_line();
   }
 }
@@ -422,6 +434,18 @@ void Machine::idle_until(const std::function<bool()>& done) {
 void Machine::end_of_frame() {
   render_frame();
   ++frame_count_;
+  if (ram_dump_frame && frame_count_ == ram_dump_frame) {
+    if (FILE* f = fopen(ram_dump_path.c_str(), "wb")) {
+      fwrite(ram_.data(), 1, heap_hw_, f);
+      fclose(f);
+    }
+  }
+  if (ram_hash_every > 0 && frame_count_ % uint64_t(ram_hash_every) == 0) {
+    // Game memory above the stacks (program image and heap).
+    uint64_t h = 1469598103934665603ull;
+    for (uint32_t a = LOAD_BASE; a < heap_hw_; ++a) h = (h ^ ram_[a]) * 1099511628211ull;
+    log("[ramhash] frame %llu %016llx\n", (unsigned long long)frame_count_, (unsigned long long)h);
+  }
   if (verbose && frame_count_ % 60 == 0) {
     static uint64_t last_lv = 0;
     log("[frame %llu] pc=%06x game fps=%llu\n", (unsigned long long)frame_count_, cpu.pc,

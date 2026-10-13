@@ -1,6 +1,7 @@
-// Generated from tools/functions.txt: calls into original routines by address.
-// sub_XXXXX(args...) uses the C convention (32-bit stack args, result d0) and
-// goes through the dispatcher, so it reaches a native version if one exists.
+// Generated from tools/functions.txt + tools/extra_entries.txt: calls into
+// original routines by address. sub_XXXXX(args...) uses the C convention
+// (32-bit stack args, result d0) and goes through the dispatcher, so it
+// reaches a native version if one exists.
 #pragma once
 
 #include "native/runtime.hpp"
@@ -14,6 +15,7 @@ inline uint32_t sub_201d0(auto... a) { return call_c(0x201d0, {uint32_t(a)...});
 inline uint32_t sub_203d6(auto... a) { return call_c(0x203d6, {uint32_t(a)...}); }
 inline uint32_t sub_207b6(auto... a) { return call_c(0x207b6, {uint32_t(a)...}); }
 inline uint32_t sub_2080e(auto... a) { return call_c(0x2080e, {uint32_t(a)...}); }
+inline uint32_t sub_208e2(auto... a) { return call_c(0x208e2, {uint32_t(a)...}); }
 inline uint32_t sub_20908(auto... a) { return call_c(0x20908, {uint32_t(a)...}); }
 inline uint32_t sub_2099e(auto... a) { return call_c(0x2099e, {uint32_t(a)...}); }
 inline uint32_t sub_20c00(auto... a) { return call_c(0x20c00, {uint32_t(a)...}); }
@@ -31,11 +33,84 @@ inline uint32_t sub_215fe(auto... a) { return call_c(0x215fe, {uint32_t(a)...});
 inline uint32_t sub_21630(auto... a) { return call_c(0x21630, {uint32_t(a)...}); }
 inline uint32_t sub_216c2(auto... a) { return call_c(0x216c2, {uint32_t(a)...}); }
 inline uint32_t sub_21750(auto... a) { return call_c(0x21750, {uint32_t(a)...}); }
+inline uint32_t sub_2196a(auto... a) { return call_c(0x2196a, {uint32_t(a)...}); }
+inline uint32_t sub_21a78(auto... a) { return call_c(0x21a78, {uint32_t(a)...}); }
+inline uint32_t sub_21a9e(auto... a) { return call_c(0x21a9e, {uint32_t(a)...}); }
+inline uint32_t sub_21acc(auto... a) { return call_c(0x21acc, {uint32_t(a)...}); }
+inline uint32_t sub_21aea(auto... a) { return call_c(0x21aea, {uint32_t(a)...}); }
+inline uint32_t sub_21b5c(auto... a) { return call_c(0x21b5c, {uint32_t(a)...}); }
+inline uint32_t sub_21ba4(auto... a) { return call_c(0x21ba4, {uint32_t(a)...}); }
+inline uint32_t sub_21bd8(auto... a) { return call_c(0x21bd8, {uint32_t(a)...}); }
 inline uint32_t sub_21bfc(auto... a) { return call_c(0x21bfc, {uint32_t(a)...}); }
+inline uint32_t sub_21cc8(auto... a) { return call_c(0x21cc8, {uint32_t(a)...}); }
+inline uint32_t sub_21d0e(auto... a) { return call_c(0x21d0e, {uint32_t(a)...}); }
+inline uint32_t sub_21d38(auto... a) { return call_c(0x21d38, {uint32_t(a)...}); }
+inline uint32_t sub_21e0c(auto... a) { return call_c(0x21e0c, {uint32_t(a)...}); }
+inline uint32_t sub_21f8e(auto... a) { return call_c(0x21f8e, {uint32_t(a)...}); }
+inline uint32_t sub_22026(auto... a) { return call_c(0x22026, {uint32_t(a)...}); }
+inline uint32_t sub_222d6(auto... a) { return call_c(0x222d6, {uint32_t(a)...}); }
+inline uint32_t sub_22354(auto... a) { return call_c(0x22354, {uint32_t(a)...}); }
+inline uint32_t sub_22380(auto... a) { return call_c(0x22380, {uint32_t(a)...}); }
+inline uint32_t sub_223ca(auto... a) { return call_c(0x223ca, {uint32_t(a)...}); }
+inline uint32_t sub_223f6(auto... a) { return call_c(0x223f6, {uint32_t(a)...}); }
+inline uint32_t sub_22430(auto... a) { return call_c(0x22430, {uint32_t(a)...}); }
+inline uint32_t sub_2245a(auto... a) { return call_c(0x2245a, {uint32_t(a)...}); }
 inline uint32_t sub_224ba(auto... a) { return call_c(0x224ba, {uint32_t(a)...}); }
+inline uint32_t sub_2253c(auto... a) { return call_c(0x2253c, {uint32_t(a)...}); }
+inline uint32_t sub_22570(auto... a) { return call_c(0x22570, {uint32_t(a)...}); }
+inline uint32_t sub_225b0(auto... a) { return call_c(0x225b0, {uint32_t(a)...}); }
+inline uint32_t sub_2261a(auto... a) { return call_c(0x2261a, {uint32_t(a)...}); }
+inline uint32_t sub_226fe(auto... a) { return call_c(0x226fe, {uint32_t(a)...}); }
+inline uint32_t sub_2274c(auto... a) { return call_c(0x2274c, {uint32_t(a)...}); }
+inline uint32_t sub_2277e(auto... a) { return call_c(0x2277e, {uint32_t(a)...}); }
+inline uint32_t sub_227a4(auto... a) { return call_c(0x227a4, {uint32_t(a)...}); }
+inline uint32_t sub_227d0(auto... a) { return call_c(0x227d0, {uint32_t(a)...}); }
+inline uint32_t sub_22886(auto... a) { return call_c(0x22886, {uint32_t(a)...}); }
+inline uint32_t sub_228b2(auto... a) { return call_c(0x228b2, {uint32_t(a)...}); }
+inline uint32_t sub_228e2(auto... a) { return call_c(0x228e2, {uint32_t(a)...}); }
+inline uint32_t sub_22a32(auto... a) { return call_c(0x22a32, {uint32_t(a)...}); }
+inline uint32_t sub_22a56(auto... a) { return call_c(0x22a56, {uint32_t(a)...}); }
+inline uint32_t sub_22a58(auto... a) { return call_c(0x22a58, {uint32_t(a)...}); }
+inline uint32_t sub_22a9a(auto... a) { return call_c(0x22a9a, {uint32_t(a)...}); }
+inline uint32_t sub_22ac8(auto... a) { return call_c(0x22ac8, {uint32_t(a)...}); }
+inline uint32_t sub_22b04(auto... a) { return call_c(0x22b04, {uint32_t(a)...}); }
+inline uint32_t sub_22b7c(auto... a) { return call_c(0x22b7c, {uint32_t(a)...}); }
+inline uint32_t sub_22c0a(auto... a) { return call_c(0x22c0a, {uint32_t(a)...}); }
+inline uint32_t sub_22c3e(auto... a) { return call_c(0x22c3e, {uint32_t(a)...}); }
+inline uint32_t sub_22c76(auto... a) { return call_c(0x22c76, {uint32_t(a)...}); }
 inline uint32_t sub_22ce8(auto... a) { return call_c(0x22ce8, {uint32_t(a)...}); }
 inline uint32_t sub_22d06(auto... a) { return call_c(0x22d06, {uint32_t(a)...}); }
+inline uint32_t sub_22d60(auto... a) { return call_c(0x22d60, {uint32_t(a)...}); }
+inline uint32_t sub_22dc0(auto... a) { return call_c(0x22dc0, {uint32_t(a)...}); }
+inline uint32_t sub_22e56(auto... a) { return call_c(0x22e56, {uint32_t(a)...}); }
+inline uint32_t sub_22ee2(auto... a) { return call_c(0x22ee2, {uint32_t(a)...}); }
+inline uint32_t sub_22f06(auto... a) { return call_c(0x22f06, {uint32_t(a)...}); }
+inline uint32_t sub_231a4(auto... a) { return call_c(0x231a4, {uint32_t(a)...}); }
+inline uint32_t sub_231d0(auto... a) { return call_c(0x231d0, {uint32_t(a)...}); }
+inline uint32_t sub_231fc(auto... a) { return call_c(0x231fc, {uint32_t(a)...}); }
 inline uint32_t sub_2346a(auto... a) { return call_c(0x2346a, {uint32_t(a)...}); }
+inline uint32_t sub_2353c(auto... a) { return call_c(0x2353c, {uint32_t(a)...}); }
+inline uint32_t sub_23576(auto... a) { return call_c(0x23576, {uint32_t(a)...}); }
+inline uint32_t sub_2359e(auto... a) { return call_c(0x2359e, {uint32_t(a)...}); }
+inline uint32_t sub_235d0(auto... a) { return call_c(0x235d0, {uint32_t(a)...}); }
+inline uint32_t sub_2362a(auto... a) { return call_c(0x2362a, {uint32_t(a)...}); }
+inline uint32_t sub_236f6(auto... a) { return call_c(0x236f6, {uint32_t(a)...}); }
+inline uint32_t sub_23712(auto... a) { return call_c(0x23712, {uint32_t(a)...}); }
+inline uint32_t sub_237f2(auto... a) { return call_c(0x237f2, {uint32_t(a)...}); }
+inline uint32_t sub_23808(auto... a) { return call_c(0x23808, {uint32_t(a)...}); }
+inline uint32_t sub_23826(auto... a) { return call_c(0x23826, {uint32_t(a)...}); }
+inline uint32_t sub_23890(auto... a) { return call_c(0x23890, {uint32_t(a)...}); }
+inline uint32_t sub_238e0(auto... a) { return call_c(0x238e0, {uint32_t(a)...}); }
+inline uint32_t sub_23988(auto... a) { return call_c(0x23988, {uint32_t(a)...}); }
+inline uint32_t sub_239ca(auto... a) { return call_c(0x239ca, {uint32_t(a)...}); }
+inline uint32_t sub_239f8(auto... a) { return call_c(0x239f8, {uint32_t(a)...}); }
+inline uint32_t sub_23a3e(auto... a) { return call_c(0x23a3e, {uint32_t(a)...}); }
+inline uint32_t sub_23a54(auto... a) { return call_c(0x23a54, {uint32_t(a)...}); }
+inline uint32_t sub_23a8c(auto... a) { return call_c(0x23a8c, {uint32_t(a)...}); }
+inline uint32_t sub_23ab0(auto... a) { return call_c(0x23ab0, {uint32_t(a)...}); }
+inline uint32_t sub_23b2c(auto... a) { return call_c(0x23b2c, {uint32_t(a)...}); }
+inline uint32_t sub_23b7e(auto... a) { return call_c(0x23b7e, {uint32_t(a)...}); }
+inline uint32_t sub_23ba8(auto... a) { return call_c(0x23ba8, {uint32_t(a)...}); }
 inline uint32_t sub_23c24(auto... a) { return call_c(0x23c24, {uint32_t(a)...}); }
 inline uint32_t sub_23c66(auto... a) { return call_c(0x23c66, {uint32_t(a)...}); }
 inline uint32_t sub_23c9c(auto... a) { return call_c(0x23c9c, {uint32_t(a)...}); }

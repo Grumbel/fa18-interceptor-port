@@ -135,6 +135,11 @@ public:
     uint64_t lines = vbl_time ? total_lines_ / LINES_PER_FRAME * LINES_PER_FRAME : total_lines_;
     return uint64_t(double(lines) * 1e6 / (LINES_PER_FRAME * 60.0));
   }
+  // Deterministic timing for comparing code variants: CPU instructions take
+  // no time, every OS call takes one scanline (time only advances in OS
+  // calls, so equivalent code produces identical runs).
+  void set_det_timing(bool on) { det_timing_ = on; if (on) line_cycles_ = int64_t(1) << 50; }
+  bool det_timing() const { return det_timing_; }
   // Quantise OS time to whole frames (deterministic comparisons between
   // code variants that take different numbers of CPU cycles).
   bool vbl_time = false;
@@ -167,6 +172,9 @@ public:
   void write_coverage();
 
   uint64_t loadview_count = 0;  // game frames presented (stats)
+  int ram_hash_every = 0;       // log a hash of game memory every N frames
+  uint64_t ram_dump_frame = 0;  // dump RAM to ram_dump_path at this frame
+  std::string ram_dump_path;
 
   // Exposed for debugging tools.
   std::vector<uint32_t> hunk_addrs;
@@ -214,6 +222,7 @@ private:
   // time
   int64_t line_start_ = 0;   // cpu.cycles at start of current line
   int64_t line_cycles_ = CYCLES_PER_LINE;
+  bool det_timing_ = false;
   uint64_t total_lines_ = 0;
   int vpos_ = 0;
   uint64_t frame_count_ = 0;

@@ -166,6 +166,18 @@ void Hle::unknown(int lib, int lvo) {
 }
 
 void Hle::call(int lib, int lvo) {
+  if (m.det_timing()) {
+    // In deterministic timing mode only waiting/polling calls take time
+    // (one scanline), so code that does I/O differently stays comparable.
+    bool waits = false;
+    if (lib == LIB_EXEC)
+      waits = lvo == 318 || lvo == 372 || lvo == 384 || lvo == 456 || lvo == 468 || lvo == 474;
+    else if (lib == LIB_GFX)
+      waits = lvo == 402 || lvo == 270;
+    else if (lib == LIB_DOS)
+      waits = lvo == 198;
+    if (waits) m.idle_lines(1);
+  }
   if (m.verbose && !(lib == LIB_GFX && (lvo == 228 || lvo == 402)))
     m.log("[hle] %s -%d from %06x\n", lib_name(lib), lvo, m.r32(m.cpu.a[7]));
   switch (lib) {
