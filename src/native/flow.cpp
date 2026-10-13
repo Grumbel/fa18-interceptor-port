@@ -274,7 +274,7 @@ static void mouse_chord_check() {
   if ((uint16_t(w_5aa78) & 3) != 3) return;
   if (rd16(0x5b47e) & 8)
     b_5ab68 = 119;
-  else if (rd8(0x5b4a7) >= 120)
+  else if (int8_t(rd8(0x5b4a7)) >= 120)
     b_5ab68 = 121;
   w_5aa78 = 0;
 }
