@@ -79,7 +79,8 @@ Done (all verified by the gate):
   $269ce/$269fa/$26a3a; engine.cpp, scenario eng_poke), altitude/
   ground-contact update ($26b16 with $27290; vertical.cpp, scenario
   ground_poke), effect slots ($272e4/$27554/$277e0/$27b06/$27c2c;
-  effects.cpp, scenario effects_poke; $27a30 is never called)
+  effects.cpp, scenario effects_poke; $27a30 is never called), gun burst
+  sound ($2a2f8, sound_api.cpp)
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
@@ -88,7 +89,14 @@ Open:
 - [ ] C runtime library parts that are executed (hunks 80+)
 - [ ] assembly subsystems: hunks 4-40 (3D engine, flight model, HUD,
       objects; ~22000 executed instructions), blitter primitives (73),
-      sound driver (74-77). Most are pure memory/register routines: use
+      sound driver (74-77). Backlog measured with --interpret --coverage:
+      422 executed non-native functions, ~26000 distinct instructions
+      (236 of <=30 insns, 125 of 31-100, 61 larger; the biggest are the
+      3D object renderer $33fda, $3223e, $33160, $40136, $31494, $31c50).
+      Suggested first cluster: math helpers $308cc, $39bba-$39f74 (leaf
+      routines, easy to verify). Counts include embedded data tables.
+      `$201b8` (startup tail) is intentionally left original.
+      Most are pure memory/register routines: use
       NATIVE_ASM and --native verify routine by routine.
 - [ ] extend tests/scenarios when translating code the scenarios do not
       reach (check with --coverage in --interpret mode)
