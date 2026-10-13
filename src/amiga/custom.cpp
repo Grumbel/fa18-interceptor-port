@@ -64,7 +64,7 @@ void Machine::io_write16(uint32_t addr, uint16_t v) {
 uint16_t Machine::custom_read(uint32_t reg) {
   switch (reg) {
     case 0x002:  // DMACONR (blitter is always done)
-      return uint16_t((dmacon_ & 0x07FF) | (blt_zero_ ? 0x2000 : 0));
+      return uint16_t((cs_.dmacon_ & 0x07FF) | (cs_.blt_zero_ ? 0x2000 : 0));
     case 0x004: {  // VPOSR: NTSC Agnus, V8
       return uint16_t(0x1000 | ((vpos_ >> 8) & 1));
     }
@@ -84,7 +84,7 @@ uint16_t Machine::custom_read(uint32_t reg) {
       if (joy_left_ != joy_up_) v |= 0x0100;
       return v;
     }
-    case 0x010: return adkcon_;
+    case 0x010: return cs_.adkcon_;
     case 0x012: case 0x014: return 0;
     case 0x016: {  // POTGOR: right mouse button = DATLY (bit 10), active low
       uint16_t v = 0xFF00;
@@ -92,72 +92,72 @@ uint16_t Machine::custom_read(uint32_t reg) {
       return v;
     }
     case 0x018: return 0x3000;  // SERDATR: TBE, TSRE
-    case 0x01C: return intena_;
-    case 0x01E: return intreq_;
+    case 0x01C: return cs_.intena_;
+    case 0x01E: return cs_.intreq_;
   }
   return 0;
 }
 
 void Machine::custom_write(uint32_t reg, uint16_t v) {
-  regs_[reg >> 1] = v;
+  cs_.regs_[reg >> 1] = v;
   auto setclr = [](uint16_t& r, uint16_t v) {
     if (v & 0x8000) r |= v & 0x7FFF; else r &= ~v;
   };
   switch (reg) {
-    case 0x034: potgo_ = v; return;
-    case 0x040: bltcon0_ = v; return;
-    case 0x042: bltcon1_ = v; return;
-    case 0x044: bltafwm_ = v; return;
-    case 0x046: bltalwm_ = v; return;
-    case 0x048: bltpt_[2] = (bltpt_[2] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x04A: bltpt_[2] = (bltpt_[2] & 0xFFFF0000) | (v & 0xFFFE); return;
-    case 0x04C: bltpt_[1] = (bltpt_[1] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x04E: bltpt_[1] = (bltpt_[1] & 0xFFFF0000) | (v & 0xFFFE); return;
-    case 0x050: bltpt_[0] = (bltpt_[0] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x052: bltpt_[0] = (bltpt_[0] & 0xFFFF0000) | (v & 0xFFFE); return;
-    case 0x054: bltpt_[3] = (bltpt_[3] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x056: bltpt_[3] = (bltpt_[3] & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x034: cs_.potgo_ = v; return;
+    case 0x040: cs_.bltcon0_ = v; return;
+    case 0x042: cs_.bltcon1_ = v; return;
+    case 0x044: cs_.bltafwm_ = v; return;
+    case 0x046: cs_.bltalwm_ = v; return;
+    case 0x048: cs_.bltpt_[2] = (cs_.bltpt_[2] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x04A: cs_.bltpt_[2] = (cs_.bltpt_[2] & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x04C: cs_.bltpt_[1] = (cs_.bltpt_[1] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x04E: cs_.bltpt_[1] = (cs_.bltpt_[1] & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x050: cs_.bltpt_[0] = (cs_.bltpt_[0] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x052: cs_.bltpt_[0] = (cs_.bltpt_[0] & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x054: cs_.bltpt_[3] = (cs_.bltpt_[3] & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x056: cs_.bltpt_[3] = (cs_.bltpt_[3] & 0xFFFF0000) | (v & 0xFFFE); return;
     case 0x058: blit(); return;
-    case 0x060: bltmod_[2] = int16_t(v & 0xFFFE); return;
-    case 0x062: bltmod_[1] = int16_t(v & 0xFFFE); return;
-    case 0x064: bltmod_[0] = int16_t(v & 0xFFFE); return;
-    case 0x066: bltmod_[3] = int16_t(v & 0xFFFE); return;
-    case 0x070: bltdat_[2] = v; return;
-    case 0x072: bltdat_[1] = v; return;
-    case 0x074: bltdat_[0] = v; return;
-    case 0x080: cop1lc_ = (cop1lc_ & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x082: cop1lc_ = (cop1lc_ & 0xFFFF0000) | (v & 0xFFFE); return;
-    case 0x084: cop2lc_ = (cop2lc_ & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
-    case 0x086: cop2lc_ = (cop2lc_ & 0xFFFF0000) | (v & 0xFFFE); return;
-    case 0x088: coppc_ = cop1lc_; cop_waiting_ = false; cop_done_ = false; return;
-    case 0x08A: coppc_ = cop2lc_; cop_waiting_ = false; cop_done_ = false; return;
-    case 0x08E: diwstrt_ = v; return;
-    case 0x090: diwstop_ = v; return;
-    case 0x092: ddfstrt_ = v & 0xFC; return;
-    case 0x094: ddfstop_ = v & 0xFC; return;
+    case 0x060: cs_.bltmod_[2] = int16_t(v & 0xFFFE); return;
+    case 0x062: cs_.bltmod_[1] = int16_t(v & 0xFFFE); return;
+    case 0x064: cs_.bltmod_[0] = int16_t(v & 0xFFFE); return;
+    case 0x066: cs_.bltmod_[3] = int16_t(v & 0xFFFE); return;
+    case 0x070: cs_.bltdat_[2] = v; return;
+    case 0x072: cs_.bltdat_[1] = v; return;
+    case 0x074: cs_.bltdat_[0] = v; return;
+    case 0x080: cs_.cop1lc_ = (cs_.cop1lc_ & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x082: cs_.cop1lc_ = (cs_.cop1lc_ & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x084: cs_.cop2lc_ = (cs_.cop2lc_ & 0xFFFF) | uint32_t(v & 0x1F) << 16; return;
+    case 0x086: cs_.cop2lc_ = (cs_.cop2lc_ & 0xFFFF0000) | (v & 0xFFFE); return;
+    case 0x088: cs_.coppc_ = cs_.cop1lc_; cs_.cop_waiting_ = false; cs_.cop_done_ = false; return;
+    case 0x08A: cs_.coppc_ = cs_.cop2lc_; cs_.cop_waiting_ = false; cs_.cop_done_ = false; return;
+    case 0x08E: cs_.diwstrt_ = v; return;
+    case 0x090: cs_.diwstop_ = v; return;
+    case 0x092: cs_.ddfstrt_ = v & 0xFC; return;
+    case 0x094: cs_.ddfstop_ = v & 0xFC; return;
     case 0x096: {
-      uint16_t old = dmacon_;
-      setclr(dmacon_, v);
+      uint16_t old = cs_.dmacon_;
+      setclr(cs_.dmacon_, v);
       for (int ch = 0; ch < 4; ++ch) {
         bool was = (old & 0x200) && (old & (1 << ch));
-        bool now = (dmacon_ & 0x200) && (dmacon_ & (1 << ch));
+        bool now = (cs_.dmacon_ & 0x200) && (cs_.dmacon_ & (1 << ch));
         if (now && !was) audio_dma_start(ch);
-        if (!now && was) aud_[ch].active = false;
+        if (!now && was) cs_.aud_[ch].active = false;
       }
       return;
     }
-    case 0x09A: setclr(intena_, v); check_interrupts(); return;
-    case 0x09C: setclr(intreq_, v); check_interrupts(); return;
-    case 0x09E: setclr(adkcon_, v); return;
-    case 0x100: bplcon0_ = v; return;
-    case 0x102: bplcon1_ = v; return;
-    case 0x104: bplcon2_ = v; return;
-    case 0x108: bpl1mod_ = int16_t(v & 0xFFFE); return;
-    case 0x10A: bpl2mod_ = int16_t(v & 0xFFFE); return;
+    case 0x09A: setclr(cs_.intena_, v); check_interrupts(); return;
+    case 0x09C: setclr(cs_.intreq_, v); check_interrupts(); return;
+    case 0x09E: setclr(cs_.adkcon_, v); return;
+    case 0x100: cs_.bplcon0_ = v; return;
+    case 0x102: cs_.bplcon1_ = v; return;
+    case 0x104: cs_.bplcon2_ = v; return;
+    case 0x108: cs_.bpl1mod_ = int16_t(v & 0xFFFE); return;
+    case 0x10A: cs_.bpl2mod_ = int16_t(v & 0xFFFE); return;
   }
   if (reg >= 0x0A0 && reg < 0x0E0) {
     int ch = (reg - 0x0A0) >> 4;
-    AudioChannel& a = aud_[ch];
+    AudioChannel& a = cs_.aud_[ch];
     switch (reg & 0xF) {
       case 0x0: a.lc = (a.lc & 0xFFFF) | uint32_t(v & 0x1F) << 16; break;
       case 0x2: a.lc = (a.lc & 0xFFFF0000) | (v & 0xFFFE); break;
@@ -170,12 +170,12 @@ void Machine::custom_write(uint32_t reg, uint16_t v) {
   }
   if (reg >= 0x0E0 && reg < 0x0F8) {
     int p = (reg - 0x0E0) >> 2;
-    if (reg & 2) bplpt_[p] = (bplpt_[p] & 0xFFFF0000) | (v & 0xFFFE);
-    else bplpt_[p] = (bplpt_[p] & 0xFFFF) | uint32_t(v & 0x1F) << 16;
+    if (reg & 2) cs_.bplpt_[p] = (cs_.bplpt_[p] & 0xFFFF0000) | (v & 0xFFFE);
+    else cs_.bplpt_[p] = (cs_.bplpt_[p] & 0xFFFF) | uint32_t(v & 0x1F) << 16;
     return;
   }
   if (reg >= 0x180 && reg < 0x1C0) {
-    color_[(reg - 0x180) >> 1] = v & 0xFFF;
+    cs_.color_[(reg - 0x180) >> 1] = v & 0xFFF;
     return;
   }
 }
@@ -204,48 +204,48 @@ void Machine::key_event(uint8_t rawkey, bool down) { hle_->key_event(rawkey, dow
 // ---- copper + display -------------------------------------------------------
 
 void Machine::copper_reset() {
-  coppc_ = cop1lc_;
-  cop_waiting_ = false;
-  cop_done_ = false;
+  cs_.coppc_ = cs_.cop1lc_;
+  cs_.cop_waiting_ = false;
+  cs_.cop_done_ = false;
 }
 
 void Machine::copper_run_until(int vpos, int hpos) {
-  if (!(dmacon_ & 0x200) || !(dmacon_ & 0x80)) return;
-  for (int guard = 0; guard < 4096 && !cop_done_; ++guard) {
-    if (cop_waiting_) {
-      int vmask = (cop_wait_mv_ | 0x80);
+  if (!(cs_.dmacon_ & 0x200) || !(cs_.dmacon_ & 0x80)) return;
+  for (int guard = 0; guard < 4096 && !cs_.cop_done_; ++guard) {
+    if (cs_.cop_waiting_) {
+      int vmask = (cs_.cop_wait_mv_ | 0x80);
       int cv = vpos & 0xFF;
       // Beam position comparison (V7 always compared, V8 never).
-      int beam = ((cv & vmask) << 8) | (hpos & cop_wait_mh_);
-      int want = ((cop_wait_v_ & vmask) << 8) | (cop_wait_h_ & cop_wait_mh_);
+      int beam = ((cv & vmask) << 8) | (hpos & cs_.cop_wait_mh_);
+      int want = ((cs_.cop_wait_v_ & vmask) << 8) | (cs_.cop_wait_h_ & cs_.cop_wait_mh_);
       // Lines >= 256 compare as their low 8 bits; treat them as past any
       // wait for an earlier (low) line to avoid re-triggering.
-      if (vpos > 255 && cop_wait_v_ < 0x80) beam = 0xFFFF;
+      if (vpos > 255 && cs_.cop_wait_v_ < 0x80) beam = 0xFFFF;
       if (beam < want) return;
-      cop_waiting_ = false;
+      cs_.cop_waiting_ = false;
     }
-    uint16_t ir1 = read16(coppc_);
-    uint16_t ir2 = read16(coppc_ + 2);
-    coppc_ += 4;
+    uint16_t ir1 = read16(cs_.coppc_);
+    uint16_t ir2 = read16(cs_.coppc_ + 2);
+    cs_.coppc_ += 4;
     if (!(ir1 & 1)) {  // MOVE
       uint32_t reg = ir1 & 0x1FE;
-      if (reg < 0x40) { cop_done_ = true; return; }  // illegal: copper stops
+      if (reg < 0x40) { cs_.cop_done_ = true; return; }  // illegal: copper stops
       custom_write(reg, ir2);
       continue;
     }
-    if (ir1 == 0xFFFF && ir2 == 0xFFFE) { cop_done_ = true; return; }
-    cop_wait_v_ = ir1 >> 8;
-    cop_wait_h_ = ir1 & 0xFE;
-    cop_wait_mv_ = (ir2 >> 8) & 0x7F;
-    cop_wait_mh_ = ir2 & 0xFE;
+    if (ir1 == 0xFFFF && ir2 == 0xFFFE) { cs_.cop_done_ = true; return; }
+    cs_.cop_wait_v_ = ir1 >> 8;
+    cs_.cop_wait_h_ = ir1 & 0xFE;
+    cs_.cop_wait_mv_ = (ir2 >> 8) & 0x7F;
+    cs_.cop_wait_mh_ = ir2 & 0xFE;
     if (ir2 & 1) {  // SKIP
-      int vmask = (cop_wait_mv_ | 0x80);
-      int beam = (((vpos & 0xFF) & vmask) << 8) | (hpos & cop_wait_mh_);
-      int want = ((cop_wait_v_ & vmask) << 8) | (cop_wait_h_ & cop_wait_mh_);
-      if (beam >= want) coppc_ += 4;
+      int vmask = (cs_.cop_wait_mv_ | 0x80);
+      int beam = (((vpos & 0xFF) & vmask) << 8) | (hpos & cs_.cop_wait_mh_);
+      int want = ((cs_.cop_wait_v_ & vmask) << 8) | (cs_.cop_wait_h_ & cs_.cop_wait_mh_);
+      if (beam >= want) cs_.coppc_ += 4;
       continue;
     }
-    cop_waiting_ = true;
+    cs_.cop_waiting_ = true;
   }
 }
 
@@ -254,50 +254,50 @@ void Machine::render_line(int line) {
   int fy = line - FB_VSTART;
   if (fy >= 0 && fy < FB_H) out = &fb_[size_t(fy) * FB_W];
 
-  int vstart = diwstrt_ >> 8;
-  int vstop = (diwstop_ >> 8) | ((diwstop_ & 0x8000) ? 0 : 0x100);
-  int hstart = diwstrt_ & 0xFF;
-  int hstop = (diwstop_ & 0xFF) | 0x100;
-  int nplanes = (bplcon0_ >> 12) & 7;
-  bool hires = bplcon0_ & 0x8000;
-  bool ham = bplcon0_ & 0x0800;
-  bool dpf = bplcon0_ & 0x0400;
+  int vstart = cs_.diwstrt_ >> 8;
+  int vstop = (cs_.diwstop_ >> 8) | ((cs_.diwstop_ & 0x8000) ? 0 : 0x100);
+  int hstart = cs_.diwstrt_ & 0xFF;
+  int hstop = (cs_.diwstop_ & 0xFF) | 0x100;
+  int nplanes = (cs_.bplcon0_ >> 12) & 7;
+  bool hires = cs_.bplcon0_ & 0x8000;
+  bool ham = cs_.bplcon0_ & 0x0800;
+  bool dpf = cs_.bplcon0_ & 0x0400;
   if (hires) nplanes = std::min(nplanes, 4);
-  bool dma = (dmacon_ & 0x200) && (dmacon_ & 0x100);
+  bool dma = (cs_.dmacon_ & 0x200) && (cs_.dmacon_ & 0x100);
   bool active = dma && nplanes > 0 && line >= vstart && line < vstop;
 
-  uint32_t bg = rgb12(color_[0]);
+  uint32_t bg = rgb12(cs_.color_[0]);
   if (!out) {
     // Still consume bitplane data so pointers advance correctly.
     if (active) {
-      int nwords = hires ? (ddfstop_ - ddfstrt_) / 4 + 2 : (ddfstop_ - ddfstrt_) / 8 + 1;
+      int nwords = hires ? (cs_.ddfstop_ - cs_.ddfstrt_) / 4 + 2 : (cs_.ddfstop_ - cs_.ddfstrt_) / 8 + 1;
       for (int p = 0; p < nplanes; ++p)
-        bplpt_[p] += uint32_t(nwords * 2 + ((p & 1) ? bpl2mod_ : bpl1mod_));
+        cs_.bplpt_[p] += uint32_t(nwords * 2 + ((p & 1) ? cs_.bpl2mod_ : cs_.bpl1mod_));
     }
     return;
   }
   for (int x = 0; x < FB_W; ++x) out[x] = bg;
   if (!active) return;
 
-  int nwords = hires ? (ddfstop_ - ddfstrt_) / 4 + 2 : (ddfstop_ - ddfstrt_) / 8 + 1;
+  int nwords = hires ? (cs_.ddfstop_ - cs_.ddfstrt_) / 4 + 2 : (cs_.ddfstop_ - cs_.ddfstrt_) / 8 + 1;
   if (nwords <= 0 || nwords > 64) nwords = 20;
   static uint8_t pix[64 * 16 + 32];
   int npix = nwords * 16;
   std::memset(pix, 0, sizeof pix);
-  int delay1 = bplcon1_ & 15, delay2 = (bplcon1_ >> 4) & 15;
+  int delay1 = cs_.bplcon1_ & 15, delay2 = (cs_.bplcon1_ >> 4) & 15;
   for (int p = 0; p < nplanes; ++p) {
-    uint32_t pt = bplpt_[p];
+    uint32_t pt = cs_.bplpt_[p];
     int delay = (p & 1) ? delay2 : delay1;
     for (int w = 0; w < nwords; ++w) {
       uint16_t data = read16(pt + uint32_t(w * 2));
       for (int b = 0; b < 16; ++b)
         if (data & (0x8000 >> b)) pix[w * 16 + b + delay] |= uint8_t(1 << p);
     }
-    bplpt_[p] = pt + uint32_t(nwords * 2 + ((p & 1) ? bpl2mod_ : bpl1mod_));
+    cs_.bplpt_[p] = pt + uint32_t(nwords * 2 + ((p & 1) ? cs_.bpl2mod_ : cs_.bpl1mod_));
   }
   // first displayed pixel position (lores pixels, beam coordinates)
-  int x0 = hires ? ddfstrt_ * 2 + 9 : ddfstrt_ * 2 + 17;
-  uint32_t ham_col = color_[0];
+  int x0 = hires ? cs_.ddfstrt_ * 2 + 9 : cs_.ddfstrt_ * 2 + 17;
+  uint32_t ham_col = cs_.color_[0];
   int step = hires ? 2 : 1;
   for (int i = 0; i < npix; i += step) {
     int hx = x0 + (hires ? i / 2 : i);
@@ -306,7 +306,7 @@ void Machine::render_line(int line) {
     if (ham && !hires && nplanes >= 6) {
       int ctl = (c >> 4) & 3, val = c & 15;
       switch (ctl) {
-        case 0: ham_col = color_[val]; break;
+        case 0: ham_col = cs_.color_[val]; break;
         case 1: ham_col = (ham_col & 0xFF0) | uint32_t(val); break;
         case 2: ham_col = (ham_col & 0x0FF) | uint32_t(val) << 8; break;
         case 3: ham_col = (ham_col & 0xF0F) | uint32_t(val) << 4; break;
@@ -315,19 +315,19 @@ void Machine::render_line(int line) {
     } else if (dpf) {
       int pf1 = (c & 1) | ((c >> 1) & 2) | ((c >> 2) & 4);
       int pf2 = ((c >> 1) & 1) | ((c >> 2) & 2) | ((c >> 3) & 4);
-      bool pf2pri = bplcon2_ & 0x40;
+      bool pf2pri = cs_.bplcon2_ & 0x40;
       int idx;
       if (pf1 && pf2) idx = pf2pri ? pf2 + 8 : pf1;
       else if (pf1) idx = pf1;
       else if (pf2) idx = pf2 + 8;
       else idx = 0;
-      rgb = rgb12(color_[idx]);
+      rgb = rgb12(cs_.color_[idx]);
     } else if (nplanes == 6 && !hires) {  // EHB
-      uint16_t col = color_[c & 31];
+      uint16_t col = cs_.color_[c & 31];
       if (c & 32) col = (col >> 1) & 0x777;
       rgb = rgb12(col);
     } else {
-      rgb = rgb12(color_[c & 31]);
+      rgb = rgb12(cs_.color_[c & 31]);
     }
     if (hx < hstart || hx >= hstop) continue;
     int fx = hx - FB_HSTART;
@@ -362,48 +362,48 @@ inline uint16_t minterm(uint8_t lf, uint16_t a, uint16_t b, uint16_t c) {
 }  // namespace
 
 void Machine::blit() {
-  uint16_t size = regs_[0x058 >> 1];
+  uint16_t size = cs_.regs_[0x058 >> 1];
   int h = size >> 6;
   int w = size & 0x3F;
   if (h == 0) h = 1024;
   if (w == 0) w = 64;
-  if (bltcon1_ & 1) {
+  if (cs_.bltcon1_ & 1) {
     blit_line();
   } else {
-    bool useA = bltcon0_ & 0x800, useB = bltcon0_ & 0x400;
-    bool useC = bltcon0_ & 0x200, useD = bltcon0_ & 0x100;
-    uint8_t lf = uint8_t(bltcon0_);
-    int ash = bltcon0_ >> 12, bsh = bltcon1_ >> 12;
-    bool desc = bltcon1_ & 2;
-    bool fill = bltcon1_ & 0x18;
-    bool ife = bltcon1_ & 0x08, efe = bltcon1_ & 0x10;
+    bool useA = cs_.bltcon0_ & 0x800, useB = cs_.bltcon0_ & 0x400;
+    bool useC = cs_.bltcon0_ & 0x200, useD = cs_.bltcon0_ & 0x100;
+    uint8_t lf = uint8_t(cs_.bltcon0_);
+    int ash = cs_.bltcon0_ >> 12, bsh = cs_.bltcon1_ >> 12;
+    bool desc = cs_.bltcon1_ & 2;
+    bool fill = cs_.bltcon1_ & 0x18;
+    bool ife = cs_.bltcon1_ & 0x08, efe = cs_.bltcon1_ & 0x10;
     int inc = desc ? -2 : 2;
     uint16_t aold = 0, bold = 0;
     bool zero = true;
-    uint32_t& apt = bltpt_[0];
-    uint32_t& bpt = bltpt_[1];
-    uint32_t& cpt = bltpt_[2];
-    uint32_t& dpt = bltpt_[3];
+    uint32_t& apt = cs_.bltpt_[0];
+    uint32_t& bpt = cs_.bltpt_[1];
+    uint32_t& cpt = cs_.bltpt_[2];
+    uint32_t& dpt = cs_.bltpt_[3];
     for (int y = 0; y < h; ++y) {
-      bool fc = bltcon1_ & 4;  // FCI
+      bool fc = cs_.bltcon1_ & 4;  // FCI
       for (int x = 0; x < w; ++x) {
-        if (useA) { bltdat_[0] = read16(apt); apt += uint32_t(inc); }
-        if (useB) { bltdat_[1] = read16(bpt); bpt += uint32_t(inc); }
-        if (useC) { bltdat_[2] = read16(cpt); cpt += uint32_t(inc); }
-        uint16_t a = bltdat_[0];
-        if (x == 0) a &= bltafwm_;
-        if (x == w - 1) a &= bltalwm_;
+        if (useA) { cs_.bltdat_[0] = read16(apt); apt += uint32_t(inc); }
+        if (useB) { cs_.bltdat_[1] = read16(bpt); bpt += uint32_t(inc); }
+        if (useC) { cs_.bltdat_[2] = read16(cpt); cpt += uint32_t(inc); }
+        uint16_t a = cs_.bltdat_[0];
+        if (x == 0) a &= cs_.bltafwm_;
+        if (x == w - 1) a &= cs_.bltalwm_;
         uint16_t as, bs;
         if (!desc) {
           as = uint16_t(((uint32_t(aold) << 16) | a) >> ash);
-          bs = uint16_t(((uint32_t(bold) << 16) | bltdat_[1]) >> bsh);
+          bs = uint16_t(((uint32_t(bold) << 16) | cs_.bltdat_[1]) >> bsh);
         } else {
           as = uint16_t(((uint32_t(a) << 16) | aold) >> (16 - ash));
-          bs = uint16_t(((uint32_t(bltdat_[1]) << 16) | bold) >> (16 - bsh));
+          bs = uint16_t(((uint32_t(cs_.bltdat_[1]) << 16) | bold) >> (16 - bsh));
         }
         aold = a;
-        bold = bltdat_[1];
-        uint16_t d = minterm(lf, as, bs, bltdat_[2]);
+        bold = cs_.bltdat_[1];
+        uint16_t d = minterm(lf, as, bs, cs_.bltdat_[2]);
         if (fill) {
           uint16_t r = 0;
           for (int bit = 0; bit < 16; ++bit) {
@@ -417,12 +417,12 @@ void Machine::blit() {
         if (d) zero = false;
         if (useD) { write16(dpt, d); dpt += uint32_t(inc); }
       }
-      if (useA) apt += uint32_t(desc ? -bltmod_[0] : bltmod_[0]);
-      if (useB) bpt += uint32_t(desc ? -bltmod_[1] : bltmod_[1]);
-      if (useC) cpt += uint32_t(desc ? -bltmod_[2] : bltmod_[2]);
-      if (useD) dpt += uint32_t(desc ? -bltmod_[3] : bltmod_[3]);
+      if (useA) apt += uint32_t(desc ? -cs_.bltmod_[0] : cs_.bltmod_[0]);
+      if (useB) bpt += uint32_t(desc ? -cs_.bltmod_[1] : cs_.bltmod_[1]);
+      if (useC) cpt += uint32_t(desc ? -cs_.bltmod_[2] : cs_.bltmod_[2]);
+      if (useD) dpt += uint32_t(desc ? -cs_.bltmod_[3] : cs_.bltmod_[3]);
     }
-    blt_zero_ = zero;
+    cs_.blt_zero_ = zero;
   }
   raise(INT_BLIT);
   // The blit happens instantly; charge a rough DMA cost to the CPU.
@@ -430,30 +430,30 @@ void Machine::blit() {
 }
 
 void Machine::blit_line() {
-  uint16_t size = regs_[0x058 >> 1];
+  uint16_t size = cs_.regs_[0x058 >> 1];
   int len = size >> 6;
   if (len == 0) len = 1024;
-  uint8_t lf = uint8_t(bltcon0_);
-  int ashift = bltcon0_ >> 12;
-  int bshift = bltcon1_ >> 12;
-  bool sing = bltcon1_ & 2;
-  bool sud = bltcon1_ & 0x10, sul = bltcon1_ & 0x08, aul = bltcon1_ & 0x04;
-  bool sign = bltcon1_ & 0x40;
-  int16_t err = int16_t(bltpt_[0] & 0xFFFF);
-  uint32_t cpt = bltpt_[2];
-  uint32_t dpt = bltpt_[3];
-  uint16_t texture = bltdat_[1];
+  uint8_t lf = uint8_t(cs_.bltcon0_);
+  int ashift = cs_.bltcon0_ >> 12;
+  int bshift = cs_.bltcon1_ >> 12;
+  bool sing = cs_.bltcon1_ & 2;
+  bool sud = cs_.bltcon1_ & 0x10, sul = cs_.bltcon1_ & 0x08, aul = cs_.bltcon1_ & 0x04;
+  bool sign = cs_.bltcon1_ & 0x40;
+  int16_t err = int16_t(cs_.bltpt_[0] & 0xFFFF);
+  uint32_t cpt = cs_.bltpt_[2];
+  uint32_t dpt = cs_.bltpt_[3];
+  uint16_t texture = cs_.bltdat_[1];
   bool onedot = false;
   bool zero = true;
-  uint16_t ahold = bltdat_[0] & bltafwm_;
+  uint16_t ahold = cs_.bltdat_[0] & cs_.bltafwm_;
 
   auto incx = [&]() { if (++ashift == 16) { ashift = 0; cpt += 2; } };
   auto decx = [&]() { if (ashift-- == 0) { ashift = 15; cpt -= 2; } };
-  auto incy = [&]() { cpt += uint32_t(bltmod_[2]); onedot = false; };
-  auto decy = [&]() { cpt -= uint32_t(bltmod_[2]); onedot = false; };
+  auto incy = [&]() { cpt += uint32_t(cs_.bltmod_[2]); onedot = false; };
+  auto decy = [&]() { cpt -= uint32_t(cs_.bltmod_[2]); onedot = false; };
 
   for (int i = 0; i < len; ++i) {
-    uint16_t c = (bltcon0_ & 0x200) ? read16(cpt) : bltdat_[2];
+    uint16_t c = (cs_.bltcon0_ & 0x200) ? read16(cpt) : cs_.bltdat_[2];
     uint16_t a = uint16_t(ahold >> ashift);
     bool draw = !(sing && onedot);
     uint16_t b = ((texture >> bshift) & 1) ? 0xFFFF : 0;
@@ -463,8 +463,8 @@ void Machine::blit_line() {
     if (d) zero = false;
     uint32_t write_at = dpt;
     // step
-    if (!sign) err = int16_t(err + bltmod_[0]);
-    else err = int16_t(err + bltmod_[1]);
+    if (!sign) err = int16_t(err + cs_.bltmod_[0]);
+    else err = int16_t(err + cs_.bltmod_[1]);
     if (!sign) {
       if (sud) { if (sul) decy(); else incy(); }
       else { if (sul) decx(); else incx(); }
@@ -473,21 +473,21 @@ void Machine::blit_line() {
     else { if (aul) decy(); else incy(); }
     sign = err < 0;
     bshift = (bshift - 1) & 15;
-    if ((bltcon0_ & 0x100) && draw) write16(write_at, d);
+    if ((cs_.bltcon0_ & 0x100) && draw) write16(write_at, d);
     dpt = cpt;
   }
-  bltpt_[0] = (bltpt_[0] & 0xFFFF0000) | uint16_t(err);
-  bltpt_[2] = cpt;
-  bltpt_[3] = dpt;
-  bltcon0_ = uint16_t((bltcon0_ & 0x0FFF) | (ashift << 12));
-  bltcon1_ = uint16_t((bltcon1_ & 0x0FBF) | (bshift << 12) | (sign ? 0x40 : 0));
-  blt_zero_ = zero;
+  cs_.bltpt_[0] = (cs_.bltpt_[0] & 0xFFFF0000) | uint16_t(err);
+  cs_.bltpt_[2] = cpt;
+  cs_.bltpt_[3] = dpt;
+  cs_.bltcon0_ = uint16_t((cs_.bltcon0_ & 0x0FFF) | (ashift << 12));
+  cs_.bltcon1_ = uint16_t((cs_.bltcon1_ & 0x0FBF) | (bshift << 12) | (sign ? 0x40 : 0));
+  cs_.blt_zero_ = zero;
 }
 
 // ---- Paula --------------------------------------------------------------------
 
 void Machine::audio_dma_start(int ch) {
-  AudioChannel& a = aud_[ch];
+  AudioChannel& a = cs_.aud_[ch];
   a.active = true;
   a.pt = a.lc;
   a.remaining = a.len ? a.len : 0x10000;
@@ -500,7 +500,7 @@ void Machine::audio_advance(double ticks, int16_t* out, int frames) {
   for (int f = 0; f < frames; ++f) {
     int l = 0, r = 0;
     for (int ch = 0; ch < 4; ++ch) {
-      AudioChannel& a = aud_[ch];
+      AudioChannel& a = cs_.aud_[ch];
       if (a.active) {
         int per = a.per < 124 ? 124 : a.per;
         a.phase += ticks;

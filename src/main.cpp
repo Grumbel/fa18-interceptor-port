@@ -340,6 +340,8 @@ void usage() {
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
+          "  --native MODE    on (default): use hand-translated C++ routines;\n"
+          "                   off: original code only; verify: run both and compare\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
           "keys: F12 grab mouse (port 1), F11 fullscreen,\n"
@@ -358,6 +360,7 @@ int main(int argc, char** argv) {
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false;
+  std::string native_mode = "on";
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
@@ -372,6 +375,7 @@ int main(int argc, char** argv) {
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
     else if (a == "--interpret") interpret = true;
+    else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
     else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -404,6 +408,9 @@ int main(int argc, char** argv) {
   machine.bypass_protection = !protection;
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
+  machine.native_mode = native_mode == "off"      ? amiga::Machine::NativeMode::Off
+                        : native_mode == "verify" ? amiga::Machine::NativeMode::Verify
+                                                  : amiga::Machine::NativeMode::On;
   if (!machine.boot(data_dir)) return 1;
   fprintf(stderr, "%s\n", machine.recomp_active() ? "running recompiled code"
                                                    : "running in interpreter mode");
@@ -421,6 +428,7 @@ int main(int argc, char** argv) {
   if (!wav_path.empty()) host.open_wav(wav_path);
   int rc = machine.run();
   host.close_wav();
+  if (native_mode == "verify" || machine.verbose) machine.print_native_stats();
   if (!misses_path.empty() && machine.recomp_misses()) {
     FILE* f = fopen(misses_path.c_str(), "w");
     if (f) {

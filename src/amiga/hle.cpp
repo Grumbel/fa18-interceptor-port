@@ -268,7 +268,7 @@ void Hle::interrupt(int level) {
   int saved = cur_level_;
   cur_level_ = level;
   uint32_t exec = libs_[LIB_EXEC];
-  uint16_t pending = m.intena_ & m.intreq_;
+  uint16_t pending = m.cs_.intena_ & m.cs_.intreq_;
   for (int bit = 0; bit < 14; ++bit) {
     static const int lvl[14] = {1, 1, 1, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 6};
     if (lvl[bit] != level || !(pending & (1 << bit))) continue;
@@ -283,7 +283,7 @@ void Hle::interrupt(int level) {
       m.call68k(a[5], d, a);  // handler clears INTREQ itself
       continue;
     }
-    m.intreq_ &= uint16_t(~(1 << bit));
+    m.cs_.intreq_ &= uint16_t(~(1 << bit));
     for (uint32_t is : servers_[bit]) {
       a[1] = m.r32(is + IS_DATA);
       a[5] = m.r32(is + IS_CODE);
@@ -526,7 +526,7 @@ void Hle::exec(int lvo) {
       auto it = v.begin();
       while (it != v.end() && int8_t(m.r8(*it + LN_PRI)) >= pri) ++it;
       v.insert(it, A(1));
-      m.intena_ |= uint16_t((1 << n) | INT_INTEN);
+      m.cs_.intena_ |= uint16_t((1 << n) | INT_INTEN);
       return;
     }
     case 174: {  // RemIntServer
@@ -1026,7 +1026,7 @@ void Hle::build_copper(uint32_t view) {
   m.w32(hdr + 4, start);
   m.w16(hdr + 8, uint16_t((p - start) / 4));
   m.w32(view + 4, hdr);  // LOFCprList
-  if (view == active_view_) m.cop1lc_ = start;
+  if (view == active_view_) m.cs_.cop1lc_ = start;
 }
 
 void Hle::poke_colors(uint32_t vp) {
@@ -1076,12 +1076,12 @@ void Hle::gfx(int lvo) {
       ++m.loadview_count;
       active_view_ = A(1);
       m.w32(gfxbase + 34, active_view_);
-      if (!active_view_) { m.cop1lc_ = 0; m.bplcon0_ = 0x200; return; }
+      if (!active_view_) { m.cs_.cop1lc_ = 0; m.cs_.bplcon0_ = 0x200; return; }
       uint32_t cpr = m.r32(active_view_ + 4);
       if (!cprlists_.count(cpr)) build_copper(active_view_), cpr = m.r32(active_view_ + 4);
-      m.cop1lc_ = m.r32(cpr + 4);
-      m.w32(gfxbase + 50, m.cop1lc_);  // LOFlist
-      m.dmacon_ |= 0x0200 | 0x0100 | 0x0080;
+      m.cs_.cop1lc_ = m.r32(cpr + 4);
+      m.w32(gfxbase + 50, m.cs_.cop1lc_);  // LOFlist
+      m.cs_.dmacon_ |= 0x0200 | 0x0100 | 0x0080;
       return;
     }
     case 228: return;  // WaitBlit

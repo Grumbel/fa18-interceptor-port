@@ -886,10 +886,14 @@ def main():
     exe = sys.argv[1]
     outdir = sys.argv[2]
     seed_files = []
+    func_file = None
     args = sys.argv[3:]
     while args:
         if args[0] == "--seeds":
             seed_files.append(args[1])
+            args = args[2:]
+        elif args[0] == "--functions":
+            func_file = args[1]
             args = args[2:]
         else:
             args = args[1:]
@@ -936,6 +940,12 @@ def main():
                     pass
     insns = discover(seeds)
     order = sorted(insns)
+    # Subroutine entry points: targets of JSR/BSR with a constant address.
+    entries = {t for i in insns.values() for t in i.calls if isinstance(t, int) and t in insns}
+    if func_file:
+        with open(func_file, "w") as f:
+            for t in sorted(entries):
+                f.write(f"{t:06x}\n")
     native = sum(1 for a in order if insns[a].native)
     print(f"recomp: {len(order)} instructions, {native} native", file=sys.stderr)
 
@@ -988,7 +998,9 @@ namespace recomp {
                     if "JUMP(" in line:
                         pre, rest = line.split("JUMP(", 1)
                         tgt = int(rest.split(")")[0].rstrip("u"), 16)
-                        if tgt in labels:
+                        # Function entries always go through the dispatcher so
+                        # native C++ replacements (src/native) take effect.
+                        if tgt in labels and tgt not in entries:
                             line = f"{pre}goto L_{tgt:X};"
                         else:
                             line = f"{pre}{{ c.pc = {hx(tgt)}; return; }}"
@@ -998,7 +1010,9 @@ namespace recomp {
                     nxt = a + ins.length
                     out.append(f"  if (c.cycles >= dl) {{ c.pc = {hx(nxt)}; return; }}")
                     following = ch[k + 1] if k + 1 < len(ch) else None
-                    if following != nxt:
+                    if nxt in entries:
+                        out.append(f"  c.pc = {hx(nxt)}; return;")
+                    elif following != nxt:
                         if nxt in labels:
                             out.append(f"  goto L_{nxt:X};")
                         else:

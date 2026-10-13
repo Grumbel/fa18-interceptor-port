@@ -2,6 +2,9 @@
 #include "amiga/machine.hpp"
 #include "amiga/hle.hpp"
 #include "amiga/hunk.hpp"
+#include "native/runtime.hpp"
+
+#include <algorithm>
 
 #include <cstdarg>
 #include <cstring>
@@ -61,6 +64,7 @@ uint32_t Machine::alloc(uint32_t size, bool clear) {
     free_list_.erase(it);
     if (rest) free_list_[a + size] = rest;
     if (clear) std::memset(&ram_[a], 0, size);
+    heap_hw_ = std::max(heap_hw_, a + size);
     return a;
   }
   return 0;
@@ -143,7 +147,9 @@ bool Machine::boot(const std::string& dir) {
   write16(patch_address(0x008da), uint16_t(0xA000 | (HOST_LIB << 8) | TRAP_DELAY));
   free_list_.clear();
   free_list_[end] = RAM_SIZE - end;
+  heap_hw_ = end;
   setup_recomp(end);
+  setup_native();
   hle_->boot(hunk_addrs[0], (hunk_addrs[0] - 4) >> 2);
   return true;
 }
@@ -164,6 +170,140 @@ void Machine::setup_recomp(uint32_t end) {
   recomp_table_.assign(img->size / 2, nullptr);
   for (size_t i = 0; i < img->count; ++i)
     recomp_table_[(img->entries[i].addr - LOAD_BASE) >> 1] = img->entries[i].fn;
+}
+
+// ---- native code -------------------------------------------------------------
+
+void Machine::setup_native() {
+  native::g_machine = this;
+  native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
+  native::for_each([](const native::Def& d) {
+    amiga::Machine& m = *native::g_machine;
+    uint32_t idx = (d.addr - LOAD_BASE) >> 1;
+    if (idx < m.native_table_.size()) m.native_table_[idx] = &d;
+  });
+}
+
+void Machine::invoke_native(const native::Def* d) {
+  m68k::Cpu saved = cpu;
+  ++native_stats_[d].calls;
+  d->fn();
+  if (d->conv == native::Conv::C) {
+    // Callee-saved registers of the C convention.
+    for (int i = 2; i < 8; ++i) cpu.d[i] = saved.d[i];
+    for (int i = 2; i < 7; ++i) cpu.a[i] = saved.a[i];
+    cpu.a[7] = saved.a[7];
+  }
+  cpu.pc = cpu.pop32();
+}
+
+void Machine::call_sub(uint32_t addr) {
+  cpu.push32(hle_->ret_stub);
+  cpu.pc = addr;
+  cpu.stopped = false;
+  try {
+    for (;;) {
+      execute(line_start_ + line_cycles_);
+      if (exit_) throw QuitRequested{};
+      if (cpu.cycles >= line_start_ + line_cycles_) run_line();
+    }
+  } catch (ReturnFromCall&) {
+  }
+}
+
+struct Machine::Snapshot {
+  std::vector<uint8_t> ram;
+  m68k::Cpu cpu;
+  CustomState cs;
+};
+
+void Machine::take_snapshot(Snapshot& s) {
+  s.ram.assign(ram_.begin(), ram_.begin() + heap_hw_);
+  s.cpu = cpu;
+  std::memcpy(static_cast<void*>(&s.cs), &cs_, sizeof cs_);
+}
+
+void Machine::restore_snapshot(const Snapshot& s) {
+  std::copy(s.ram.begin(), s.ram.end(), ram_.begin());
+  cpu = s.cpu;
+  std::memcpy(static_cast<void*>(&cs_), &s.cs, sizeof cs_);
+}
+
+void Machine::verify_native(const native::Def* d) {
+  NativeStats& st = native_stats_[d];
+  uint32_t entry_sp = cpu.a[7];
+  uint32_t ret = read32(entry_sp);
+  Snapshot s0, ref, nat;
+  take_snapshot(s0);
+  suppress_irq_ = true;
+
+  // Reference: the original (recompiled/interpreted) routine.
+  write32(entry_sp, hle_->ret_stub);
+  in_reference_ = true;
+  bool returned = false;
+  try {
+    execute(cpu.cycles + 200'000'000);
+  } catch (ReturnFromCall&) {
+    returned = true;
+  }
+  in_reference_ = false;
+  if (!returned || exit_) {
+    // Too long or blocking; just run the native version.
+    restore_snapshot(s0);
+    suppress_irq_ = false;
+    ++st.skipped;
+    invoke_native(d);
+    return;
+  }
+  cpu.pc = ret;
+  write32(entry_sp, ret);
+  take_snapshot(ref);
+
+  // Native version from the same state.
+  restore_snapshot(s0);
+  invoke_native(d);
+  take_snapshot(nat);
+  suppress_irq_ = false;
+  ++st.verified;
+
+  // Compare. Stack memory below the entry SP is scratch.
+  std::string diff;
+  int ndiff = 0;
+  auto note = [&](const char* fmt, auto... a) {
+    if (ndiff++ < 12) {
+      char b[160];
+      snprintf(b, sizeof b, fmt, a...);
+      diff += b;
+    }
+  };
+  uint32_t stack_lo = entry_sp >= 0x10000 && entry_sp < 0x20000 ? 0x10000 : entry_sp;
+  for (uint32_t a = 0; a < heap_hw_; ++a) {
+    if (a >= stack_lo && a < entry_sp) continue;
+    if (ref.ram[a] != nat.ram[a]) note(" [%06x] ref=%02x nat=%02x", a, ref.ram[a], nat.ram[a]);
+  }
+  bool c_conv = d->conv == native::Conv::C;
+  for (int i = 0; i < 8; ++i) {
+    if (c_conv && i == 1) continue;
+    if (ref.cpu.d[i] != nat.cpu.d[i]) note(" d%d ref=%08x nat=%08x", i, ref.cpu.d[i], nat.cpu.d[i]);
+  }
+  for (int i = c_conv ? 2 : 0; i < 8; ++i)
+    if (ref.cpu.a[i] != nat.cpu.a[i]) note(" a%d ref=%08x nat=%08x", i, ref.cpu.a[i], nat.cpu.a[i]);
+  if (ref.cpu.pc != nat.cpu.pc) note(" pc ref=%06x nat=%06x", ref.cpu.pc, nat.cpu.pc);
+  if (std::memcmp(&ref.cs, &nat.cs, sizeof ref.cs) != 0) note(" custom chip state differs%s", "");
+  if (ndiff) {
+    ++st.mismatches;
+    if (st.mismatches <= 5)
+      log("native verify MISMATCH %s (%06x), %d differences:%s\n", d->name, d->addr, ndiff, diff.c_str());
+    // Continue with the original's results.
+    restore_snapshot(ref);
+  }
+}
+
+void Machine::print_native_stats() {
+  for (auto& [d, st] : native_stats_)
+    log("native %-28s %06x calls=%llu verified=%llu mismatches=%llu skipped=%llu\n", d->name,
+        d->addr, (unsigned long long)st.calls, (unsigned long long)st.verified,
+        (unsigned long long)st.mismatches, (unsigned long long)st.skipped);
 }
 
 uint32_t Machine::patch_address(uint32_t offset) const {
@@ -297,8 +437,9 @@ void Machine::end_of_frame() {
 }
 
 void Machine::check_interrupts() {
-  if (!(intena_ & INT_INTEN)) return;
-  uint16_t pending = intena_ & intreq_ & 0x3FFF;
+  if (suppress_irq_) return;
+  if (!(cs_.intena_ & INT_INTEN)) return;
+  uint16_t pending = cs_.intena_ & cs_.intreq_ & 0x3FFF;
   if (!pending) return;
   if (hle_->interrupts_disabled()) return;
   // Highest level first.
@@ -315,6 +456,15 @@ void Machine::execute(int64_t until) {
   while (cpu.cycles < until && !exit_) {
     if (cpu.stopped) { cpu.cycles = until; return; }
     uint32_t pc = cpu.pc;
+    if (native_mode != NativeMode::Off && !in_reference_) {
+      uint32_t idx = (pc - LOAD_BASE) >> 1;
+      if (idx < native_table_.size() && native_table_[idx] && !(pc & 1)) {
+        const native::Def* d = native_table_[idx];
+        if (native_mode == NativeMode::Verify && d->verify) verify_native(d);
+        else invoke_native(d);
+        continue;
+      }
+    }
     if (!recomp_table_.empty()) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
       if (idx < recomp_table_.size() && recomp_table_[idx] && !(pc & 1)) {

@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace native { struct Def; }
+
 namespace amiga {
 
 constexpr uint32_t RAM_SIZE = 8 * 1024 * 1024;
@@ -136,6 +138,14 @@ public:
   // Map a WHDLoad PatchSeg offset (concatenated hunk payloads) to an address.
   uint32_t patch_address(uint32_t offset) const;
 
+  // Hand-translated C++ replacements of game routines (src/native).
+  enum class NativeMode { Off, On, Verify };
+  NativeMode native_mode = NativeMode::On;
+  // Run the routine at addr with the current registers/stack until it
+  // returns (RTS to a host trap). Used by native code to call original code.
+  void call_sub(uint32_t addr);
+  void print_native_stats();
+
   // Use statically recompiled code when available (else interpret).
   bool use_recomp = true;
   bool recomp_active() const { return !recomp_table_.empty(); }
@@ -166,7 +176,7 @@ private:
   void end_of_frame();
   void check_interrupts();
   void dispatch_interrupt(int level);
-  void raise(uint16_t bits) { intreq_ |= bits; }
+  void raise(uint16_t bits) { cs_.intreq_ |= bits; }
 
   // custom chips
   uint16_t custom_read(uint32_t reg);
@@ -183,6 +193,12 @@ private:
 
   bool line_a(uint16_t op);
   void setup_recomp(uint32_t end);
+  void setup_native();
+  void invoke_native(const native::Def* d);
+  void verify_native(const native::Def* d);
+  struct Snapshot;
+  void take_snapshot(Snapshot& s);
+  void restore_snapshot(const Snapshot& s);
   void hle(int lib, int lvo);
 
   std::vector<uint8_t> ram_;
@@ -200,31 +216,34 @@ private:
   int call_depth_ = 0;
   bool last_call_z_ = false;
 
-  // custom registers
-  uint16_t regs_[256] = {};
-  uint16_t dmacon_ = 0, intena_ = 0, intreq_ = 0;
-  uint16_t adkcon_ = 0;
-  uint32_t cop1lc_ = 0, cop2lc_ = 0;
-  uint32_t bplpt_[6] = {};
-  uint16_t color_[32] = {};
-  uint16_t bplcon0_ = 0, bplcon1_ = 0, bplcon2_ = 0;
-  int16_t bpl1mod_ = 0, bpl2mod_ = 0;
-  uint16_t diwstrt_ = 0x2C81, diwstop_ = 0xF4C1, ddfstrt_ = 0x38, ddfstop_ = 0xD0;
-  // copper
-  uint32_t coppc_ = 0;
-  bool cop_waiting_ = false;
-  bool cop_done_ = false;
-  uint16_t cop_wait_v_ = 0, cop_wait_h_ = 0, cop_wait_mv_ = 0, cop_wait_mh_ = 0;
-  // blitter
-  uint16_t bltcon0_ = 0, bltcon1_ = 0, bltafwm_ = 0xFFFF, bltalwm_ = 0xFFFF;
-  uint32_t bltpt_[4] = {};  // A B C D
-  int16_t bltmod_[4] = {};
-  uint16_t bltdat_[3] = {};  // A B C
-  bool blt_zero_ = true;
+  // Custom chip state (one struct so it can be snapshotted).
+  struct CustomState {
+    uint16_t regs_[256] = {};
+    uint16_t dmacon_ = 0, intena_ = 0, intreq_ = 0;
+    uint16_t adkcon_ = 0;
+    uint32_t cop1lc_ = 0, cop2lc_ = 0;
+    uint32_t bplpt_[6] = {};
+    uint16_t color_[32] = {};
+    uint16_t bplcon0_ = 0, bplcon1_ = 0, bplcon2_ = 0;
+    int16_t bpl1mod_ = 0, bpl2mod_ = 0;
+    uint16_t diwstrt_ = 0x2C81, diwstop_ = 0xF4C1, ddfstrt_ = 0x38, ddfstop_ = 0xD0;
+    // copper
+    uint32_t coppc_ = 0;
+    bool cop_waiting_ = false;
+    bool cop_done_ = false;
+    uint16_t cop_wait_v_ = 0, cop_wait_h_ = 0, cop_wait_mv_ = 0, cop_wait_mh_ = 0;
+    // blitter
+    uint16_t bltcon0_ = 0, bltcon1_ = 0, bltafwm_ = 0xFFFF, bltalwm_ = 0xFFFF;
+    uint32_t bltpt_[4] = {};  // A B C D
+    int16_t bltmod_[4] = {};
+    uint16_t bltdat_[3] = {};  // A B C
+    bool blt_zero_ = true;
+    uint16_t potgo_ = 0;
+    AudioChannel aud_[4];
+  } cs_;
   // display
   std::vector<uint32_t> fb_;
   // audio
-  AudioChannel aud_[4];
   std::vector<int16_t> audio_buf_;
   double audio_frac_ = 0;
   double lp_l_ = 0, lp_r_ = 0, lp_k_ = 0.4;
@@ -232,10 +251,17 @@ private:
   int mouse_x_ = 0, mouse_y_ = 0;
   bool lmb_ = false, rmb_ = false;
   bool joy_up_ = false, joy_down_ = false, joy_left_ = false, joy_right_ = false, joy_fire_ = false;
-  uint16_t potgo_ = 0;
 
   // heap
   std::map<uint32_t, uint32_t> free_list_;  // addr → size
+
+  // native code
+  std::vector<const native::Def*> native_table_;
+  bool in_reference_ = false;   // running original code for --native verify
+  bool suppress_irq_ = false;
+  uint32_t heap_hw_ = 0;        // highest heap address handed out
+  struct NativeStats { uint64_t calls = 0, verified = 0, mismatches = 0, skipped = 0; };
+  std::map<const native::Def*, NativeStats> native_stats_;
 
   // recompiled code
   std::vector<recomp::Fn> recomp_table_;

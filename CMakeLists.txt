@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(fa18-interceptor LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -61,7 +61,13 @@ target_include_directories(recomp PUBLIC src)
 target_link_libraries(recomp PUBLIC m68k)
 target_link_libraries(amiga PUBLIC recomp)
 
-add_executable(fa18 src/main.cpp)
+# Hand-translated C++ versions of game routines. OBJECT library so the
+# static registrations are always linked in.
+file(GLOB NATIVE_SRCS CONFIGURE_DEPENDS src/native/*.cpp src/native/*.hpp)
+add_library(native OBJECT ${NATIVE_SRCS})
+target_link_libraries(native PUBLIC amiga)
+
+add_executable(fa18 src/main.cpp $<TARGET_OBJECTS:native>)
 target_link_libraries(fa18 PRIVATE amiga SDL2::SDL2)
 target_compile_definitions(fa18 PRIVATE
   FA18_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/fa18-interceptor")
