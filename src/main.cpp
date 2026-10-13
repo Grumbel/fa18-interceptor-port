@@ -182,7 +182,7 @@ public:
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP: {
           bool down = e.type == SDL_MOUSEBUTTONDOWN;
-          if (!mouse_grab && down && e.button.button == SDL_BUTTON_LEFT) { set_grab(true); break; }
+          // Mouse grab is opt-in (--grab or F12); do not steal the pointer on click.
           if (e.button.button == SDL_BUTTON_LEFT) machine->mouse_button(0, down);
           if (e.button.button == SDL_BUTTON_RIGHT) machine->mouse_button(1, down);
           break;
@@ -344,7 +344,8 @@ void usage() {
           "                   off: original code only; verify: run both and compare\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
-          "keys: F12 grab mouse (port 1), F11 fullscreen,\n"
+          "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
+          "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward; a game controller acts as joystick in port 2.\n"
           "      All other keys go to the game (see manual: cursor keys fly,\n"
           "      F1-F10/=/- throttle, SPACE fire, RETURN weapon, numpad views).\n");
@@ -363,6 +364,7 @@ int main(int argc, char** argv) {
   int ram_hash = 0, ram_dump_frame = 0;
   std::string ram_dump_path;
   std::string native_mode = "on";
+  bool grab_mouse = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
@@ -384,6 +386,8 @@ int main(int argc, char** argv) {
     else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
+    else if (a == "--grab") grab_mouse = true;
+    else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
     else data_dir = a;
   }
@@ -435,6 +439,7 @@ int main(int argc, char** argv) {
   host.fast = fast;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
+  if (grab_mouse) host.set_grab(true);
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);
   int rc = machine.run();
