@@ -14,6 +14,7 @@
 //   $39e34  step the pan/tilt angle toward the commanded direction
 //   $39eec  rounded quotient $5adc4 / $5adc8 -> $5adca
 //   $39f2e / $39f74  8-digit BCD <-> binary conversion ($5ae1a <-> $5ae16)
+#include "native/asmregs.hpp"
 #include "native/orig.hpp"
 #include "native/vars.hpp"
 
@@ -22,42 +23,7 @@ using namespace v;
 
 namespace {
 
-uint32_t& D(int n) { return cpu().d[n]; }
-uint16_t lo(int n) { return uint16_t(cpu().d[n]); }
-void setw(int n, uint32_t v) { cpu().d[n] = (cpu().d[n] & 0xFFFF0000u) | (v & 0xFFFF); }
-void setb(int n, uint32_t v) { cpu().d[n] = (cpu().d[n] & 0xFFFFFF00u) | (v & 0xFF); }
-int32_t ext(uint16_t v) { return int16_t(v); }
-
-// N and Z from the last data move; V and C cleared (move/ext/tst/clr).
-void flags(uint32_t v, int bits) {
-  m68k::Cpu& c = cpu();
-  uint32_t mask = bits == 32 ? 0xFFFFFFFFu : (1u << bits) - 1;
-  c.fn = (v >> (bits - 1)) & 1;
-  c.fz = (v & mask) == 0;
-  c.fv = false;
-  c.fc = false;
-}
-
-// 68000 shifts by a register count use count mod 64.
-int32_t asr32(int32_t v, uint32_t n) {
-  n &= 63;
-  return n > 31 ? (v < 0 ? -1 : 0) : v >> n;
-}
-int32_t asl32(int32_t v, uint32_t n) {
-  n &= 63;
-  return n > 31 ? 0 : int32_t(uint32_t(v) << n);
-}
-
-// divu.w: overflow (quotient > $ffff) leaves the destination unchanged.
-void divuw(uint32_t& dn, uint16_t divisor) {
-  if (divisor == 0) {
-    mach().log("native math: division by zero at %06x\n", cpu().op_pc);
-    abort();
-  }
-  uint32_t q = dn / divisor;
-  if (q > 0xFFFF) return;
-  dn = ((dn % divisor) << 16) | q;
-}
+using namespace asmr;
 
 // ---- $308cc ---------------------------------------------------------------
 // In: d2, d3, d4 (non-negative words).  Out: d1 = ~sqrt-like combination,

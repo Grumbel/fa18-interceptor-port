@@ -85,6 +85,10 @@ Done (all verified by the gate):
   $308cc, isqrt $39bba, vector scaling $39cb6/$39cc0/$39d58, matrix rotate
   $39de2, rounded divide $39eec, BCD <-> binary $39f2e/$39f74, view pan
   $39e34, view sequence $39b06, command flags $39c70, list reset $39dd0.
+- per-frame scene update asm (flight.cpp): $39a54, $2f4a6, $2f74e,
+  $2f596, $2f9da, $2f7b8, $3127c (with $313fa), stubs $3a310/$3a312.
+  $2f596 and $2f7b8 are not verified per call ($36b88 uses a beam-position
+  random number / many callees); equivalence run covers them.
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
