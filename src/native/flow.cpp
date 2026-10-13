@@ -242,6 +242,18 @@ static void mouse_chord_check() {
 }
 NATIVE_C(0x25e8c, mouse_chord_check, true);
 
+// $28d4a: pull one raw keyboard event byte from keyboard.device (0 if none).
+static int8_t fetch_key_byte() {
+  uint32_t msg = os::GetMsg(rd32(0x2a580));
+  if (msg == 0) return 0;
+  uint32_t ie = rd32(0x2d074);
+  int8_t code = int8_t(rd16(ie + 6));
+  wr16(ie + 6, 0);
+  os::SendIO(rd32(0x2a558));
+  return code;
+}
+NATIVE_C(0x28d4a, fetch_key_byte, true);
+
 // $28dae: next keyboard event as a signed rawkey, or -1 if none.
 // Sticky-shift path ($2a5a6) returns the previously latched key.
 static int16_t read_rawkey() {
@@ -249,7 +261,7 @@ static int16_t read_rawkey() {
     wr16(0x2a5a6, 0);
     return int16_t(rd16(0x2d090));
   }
-  int8_t raw = int8_t(sub_28d4a());
+  int8_t raw = fetch_key_byte();
   if (raw == 0) return -1;
   uint8_t code = uint8_t(raw) & 0x7f;
   if ((code & 0x70) == 0x70) return -1;
@@ -273,6 +285,35 @@ static void refresh_system_time() {
 }
 NATIVE_C(0x28e5c, refresh_system_time, false);
 
+// $29074: sample JOY1DAT and fire edge helpers for each axis.
+static void sample_joystick() {
+  uint16_t joy = rd16(0xdff00c);
+  w_5ac48 = int16_t(joy);
+  // Axis A: X1^X0 → 2e26c, Y1^Y0 → 2e268, else release 2e270
+  if ((((joy & 0x200) >> 1) ^ (joy & 0x100)) != 0) {
+    sub_2e26c();
+    b_5ab29 = 1;
+  } else if ((((joy & 2) >> 1) ^ (joy & 1)) != 0) {
+    sub_2e268();
+    b_5ab29 = 1;
+  } else if (b_5ab29 != 0) {
+    sub_2e270();
+    b_5ab29 = 0;
+  }
+  // Axis B: X1 → 2e2b4, Y1 → 2e2b8, else release 2e2bc
+  if (joy & 0x200) {
+    sub_2e2b4();
+    b_5ab2a = 1;
+  } else if (joy & 2) {
+    sub_2e2b8();
+    b_5ab2a = 1;
+  } else if (b_5ab2a != 0) {
+    sub_2e2bc();
+    b_5ab2a = 0;
+  }
+}
+NATIVE_C(0x29074, sample_joystick, true);
+
 // $29006: drain gameport.device fire-button events, then sample the stick.
 static void poll_gameport() {
   uint32_t msg = os::GetMsg(rd32(0x2d0b4));
@@ -286,7 +327,7 @@ static void poll_gameport() {
     wr16(ie + 6, 0);
     os::SendIO(rd32(0x2d096));
   }
-  call_c(0x29074);  // JOY1DAT sample / edge helpers (still original)
+  sample_joystick();
 }
 NATIVE_C(0x29006, poll_gameport, false);
 
@@ -782,8 +823,8 @@ static void st_22026() {
   if (state_timer >= 0) return;
 
   b_5aacf = 0;  // title_flag_5ab47
-  sub_29c60(0);
-  sub_29c60(1);
+  stop_sound_channel(0);
+  stop_sound_channel(1);
   music_volume = 0x3f0000;
 
   if (sel >= 3 && sel <= 8) {
