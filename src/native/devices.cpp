@@ -152,6 +152,24 @@ static void init_mouse(int32_t, int32_t) {
 }
 NATIVE_C(0x29284, init_mouse, false);
 
+// $295e4: remove the mouse server again.
+static void remove_mouse_server() { os::RemIntServer(5, mouse_server); }
+NATIVE_C(0x295e4, remove_mouse_server, false);
+
+// $295f8: amiga.lib MakePort-style initialisation of a MsgPort in place
+// (signal bit allocated, owner task, empty message list).
+static void make_port(uint32_t port) {
+  wr8(port + 14, 0);                          // mp_Flags = PA_SIGNAL
+  wr8(port + 9, 0);                           // ln_Pri
+  wr32(port + 10, 0);                         // ln_Name
+  wr8(port + 8, 4);                           // ln_Type = NT_MSGPORT
+  int32_t sig = int32_t(sub_69150(uint32_t(-1)));   // AllocSignal(-1)
+  wr8(port + 15, uint8_t(sig));               // mp_SigBit
+  wr32(port + 16, os::FindTask(0));           // mp_SigTask
+  sub_69260(port + 20);                       // NewList(&mp_MsgList)
+}
+NATIVE_C(0x295f8, make_port, false);
+
 // ---- picture planes ------------------------------------------------------------
 
 // $28a38: free the 5th plane of the front and cockpit pictures.

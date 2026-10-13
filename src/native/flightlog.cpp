@@ -6,9 +6,27 @@
 namespace native {
 using namespace g;
 
-int32_t check_log_disk();   // $21060, still original
-
-int32_t check_log_disk() { return int32_t(call_c(0x21060)); }
+// $21060: inspect the disk in DF0: (Lock/Info on "df0:"): 0 = writable DOS
+// disk, 1 = no disk, 2 = not a DOS disk ("BAD"), 3 = write protected.
+// (Like the original it frees the 4-byte aligned pointer, not the one
+// AllocMem returned; both are equal with our 8-byte aligned heap.)
+int32_t check_log_disk() {
+  uint32_t raw = os::AllocMem(40, 0x10001);
+  uint32_t info = (raw + 3) & ~3u;
+  wr32(0x650b4, info);
+  int32_t lock = os::Lock(0x2a408, -2);
+  os::Info(lock, info);
+  os::UnLock(lock);
+  int32_t result;
+  int32_t disk_type = rds32(info + 24);
+  if (disk_type < 0) result = 1;
+  else if (disk_type == 0x42414400) result = 2;
+  else if (rd32(info + 8) == 0x50) result = 3;
+  else result = 0;
+  if (info != 0) os::FreeMem(info, 40);
+  return result;
+}
+NATIVE_C(0x21060, check_log_disk, false);
 
 // $28474: create df0:config from the in-memory log.
 static int32_t write_new_config() {
@@ -98,5 +116,27 @@ static uint16_t codewheel_hash(int16_t a, int16_t b, int16_t idx, int16_t d) {
   return x;
 }
 NATIVE_C(0x2885c, codewheel_hash, true);
+
+// $288e8: codewheel answer for the current wheel position/selection.
+static uint32_t codewheel_answer() {
+  int16_t d = wheel_d;
+  int16_t entry = wheel_table.at(d);
+  int16_t t1 = int16_t(entry & 7);
+  int16_t t2 = int16_t(entry >> 4);
+  int16_t a = wheel_a;
+  if ((d ^ a) & 1) {
+    int16_t idx = int16_t((t1 << 1) + (wheel_b & 1));
+    wheel_b = int16_t((wheel_table2.at(idx) + a - t2) & 15);
+  }
+  int16_t i = int16_t(t1 << 1);
+  int16_t u = int16_t((int16_t(wheel_b - a) + t2) & 15);
+  uint16_t r;
+  if (int16_t(wheel_table2.at(i)) == u || u == int16_t(wheel_table2.at(i + 1)))
+    r = codewheel_hash(wheel_c, 8, d, a);
+  else
+    r = codewheel_hash(wheel_b, 0, d, a);
+  return uint32_t(uint16_t(wheel_mask.at(wheel_sel)) & r);
+}
+NATIVE_C(0x288e8, codewheel_answer, true);
 
 }  // namespace native
