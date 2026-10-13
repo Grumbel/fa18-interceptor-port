@@ -78,7 +78,8 @@ Done (all verified by the gate):
   ($23d54/$241f0/$2439a/$243fa), engine/airspeed update ($25edc with
   $269ce/$269fa/$26a3a; engine.cpp, scenario eng_poke), altitude/
   ground-contact update ($26b16 with $27290; vertical.cpp, scenario
-  ground_poke)
+  ground_poke), effect slots ($272e4/$27554/$277e0/$27b06/$27c2c;
+  effects.cpp, scenario effects_poke; $27a30 is never called)
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX

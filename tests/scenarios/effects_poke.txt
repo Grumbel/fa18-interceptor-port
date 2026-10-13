@@ -1,0 +1,81 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+4200 key 0c
+4205 key 0c
+4210 key 0c
+4215 key 0c
+4220 key 0c
+4225 key 0c
+4230 key 0c
+4235 key 0c
+4240 key 0c
+4245 key 0c
+4250 key 0c
+4255 key 0c
+4260 key 0c
+4265 key 0c
+4270 key 0c
+4275 key 0c
+4500 poke 5af6e 00001000 l
+4500 poke 5af6a ffffff00 l
+4500 poke 5af90 0001 w
+4500 poke 5af92 0100 w
+4510 poke 5af6a 00500000 l
+4510 poke 5af90 0001 w
+4510 poke 5af92 0100 w
+4520 poke 5af6a 00001000 l
+4520 poke 5af72 ffffff00 l
+4520 poke 5af6e 00001000 l
+4520 poke 5af90 0001 w
+4520 poke 5af92 0100 w
+4530 poke 5af72 00500000 l
+4530 poke 5af6e 00001000 l
+4530 poke 5af90 0001 w
+4530 poke 5af92 0100 w
+4540 poke 5af72 00001000 l
+4540 poke 5af6e 00001000 l
+4540 poke 5af90 0103 w
+4540 poke 5af92 0100 w
+4550 poke 5af6e fffff000 l
+4550 poke 5af7a 00001000 l
+4550 poke 5af90 0001 w
+4550 poke 5af92 0100 w
+4560 poke 5af6e 00001000 l
+4560 poke 5af90 0001 w
+4560 poke 5af92 0100 w
+4600 poke 5afea 00001000 l
+4601 poke 5afee 00001000 l
+4602 poke 5aff2 00001000 l
+4603 poke 5b010 3001 w
+4604 poke 5b012 0010 w
+4605 poke 5b4de 11
+4700 poke 5b4de 00
+4800 poke 5ab83 02
+4900 poke 5ab83 01
+4790 poke 5b4dc 0005 w
+4790 poke 5b4f9 50
+4800 poke 5abd2 0001 w
+4900 poke 5abd2 0002 w
+4999 poke 5b4dc 0005 w
+5000 poke 5abbe 0008 w
+5100 poke 5abd2 0000 w
+5100 poke 5b4dc 0005 w
+5101 poke 5abbe 0008 w
+5200 poke 5abd2 0003 w
+5200 poke 5b4dc 0005 w
+5201 poke 5abbe 0008 w
+5300 poke 5ae53 20
+5300 poke 5b4dc 0005 w
+5301 poke 5abbe 0008 w
+5400 poke 5aa7d 01
+5400 poke 5b4dc 0005 w
+5401 poke 5abbe 0008 w
+5500 poke 5b4de 11
+5500 poke 5b4dc 0005 w
+5501 poke 5abbe 0008 w
+7000 quit
