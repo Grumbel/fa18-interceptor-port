@@ -71,7 +71,12 @@ Done (all verified by the gate):
 - hunk-0 game state machine: all handlers in tools/extra_entries.txt,
   game_frame ($2112c), run_game_state, poll_input, keyboard/joystick/
   gameport/mouse input helpers, fades, messages, world-origin/display
-  resets (see the NATIVE_* registrations in flow.cpp)
+  resets (see the NATIVE_* registrations in flow.cpp); the handlers were
+  reviewed line by line against the patched asm
+- control-stick/surface deflections ($25584), per-frame sound update
+  ($24aa8), aim angles ($24552), cockpit command/view toggles
+  ($23d54/$241f0/$2439a/$243fa), engine/airspeed update ($25edc with
+  $269ce/$269fa/$26a3a; engine.cpp, scenario eng_poke)
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
