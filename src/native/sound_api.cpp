@@ -354,4 +354,19 @@ static void flap_sound(int32_t level) {
 }
 NATIVE_C(0x2a260, flap_sound, false);
 
+// $2a2f8: one-shot sample 10 on channel 2 with parameters (a, b): $66054 = a,
+// $6605c = b << 16 (used for the gun burst: a = 6, b = 22/30).
+static void gun_burst_sound(int32_t a, int32_t b) {
+  if (rd32(0x65bd4) == 0) return;
+  sub_29c60(2);
+  uint32_t o = rd32(0x65bd4);
+  wr32(o + 44, 0);
+  wr32(0x66054, uint32_t(a));
+  wr32(0x6605c, uint32_t(b) << 16);
+  wr32(o + 52, 0);
+  wr32(o + 44, 1);
+  play_sample(10, 2, 0);
+}
+NATIVE_C(0x2a2f8, gun_burst_sound, false);
+
 }  // namespace native
