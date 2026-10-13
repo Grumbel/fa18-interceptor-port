@@ -92,6 +92,8 @@ Done (all verified by the gate):
 - 3D scene list builder (scene.cpp): $30064 with its internal subroutines
   ($3034c/$3043c/$30478/$30530/$3067a and the tail $30b5c-$3127a) and the
   projection step $30872 (falls through into the $308cc hypot).
+- visibility classification of the object list (visibility.cpp): $31494
+  with helpers $31b04-$31c28.
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
