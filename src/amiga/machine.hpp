@@ -276,7 +276,8 @@ private:
  public:
   uint32_t native_entry_sp_ = 0;  // a7 at entry of the running native C function
  private:
-  bool calltrace_ = false;   // running original code for --native verify
+  bool calltrace_ = false;
+  uint32_t watch_addr_ = 0, watch_val_ = 0;   // running original code for --native verify
   bool suppress_irq_ = false;
   uint32_t heap_hw_ = 0;        // highest heap address handed out
   struct NativeStats { uint64_t calls = 0, verified = 0, mismatches = 0, skipped = 0; };

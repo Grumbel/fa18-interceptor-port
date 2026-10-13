@@ -177,6 +177,12 @@ void Machine::setup_recomp(uint32_t end) {
 void Machine::setup_native() {
   native::g_machine = this;
   calltrace_ = getenv("FA18_CALLTRACE") != nullptr;
+  // FA18_WATCH=hexaddr: log every change of the long at addr (needs
+  // --interpret so every instruction is visible).
+  if (const char* w = getenv("FA18_WATCH")) {
+    watch_addr_ = uint32_t(strtoul(w, nullptr, 16));
+    watch_val_ = read32(watch_addr_);
+  }
   native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
   // FA18_NATIVE_SKIP=name1,name2 disables individual native routines
   // (FA18_NATIVE_ONLY=... enables only the listed ones); for bisecting.
@@ -232,6 +238,10 @@ void Machine::invoke_native(const native::Def* d) {
   uint32_t entry_sp = link ? cpu.a[6] + 4 : save_area + uint32_t(nsaved * 4);
   native_entry_sp_ = entry_sp;  // c_adapter reads the arguments from here
   d->fn();
+  if (watch_addr_ && read32(watch_addr_) != watch_val_) {
+    log("[watch] %06x changed during native %s\n", watch_addr_, d->name);
+    watch_val_ = read32(watch_addr_);
+  }
   // Epilogue: movem.l (sp)+,regs ; unlk a6 ; rts
   p = save_area;
   for (int r = 0; r < 16; ++r) {
@@ -535,7 +545,7 @@ void Machine::execute(int64_t until) {
         f = fopen(path, "w");
         if (!f) calltrace_ = false;
       }
-      if (f && frame_count_ >= from && frame_count_ <= to) fprintf(f, "%llu %06x\n", (unsigned long long)frame_count_, pc);
+      if (f && frame_count_ >= from && frame_count_ <= to) fprintf(f, "%llu %06x %08x %08x %08x\n", (unsigned long long)frame_count_, pc, read32(cpu.a[7] + 4), read32(cpu.a[7] + 8), read32(cpu.a[7] + 12));
     }
     if (native_mode != NativeMode::Off && !in_reference_) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
@@ -562,6 +572,14 @@ void Machine::execute(int64_t until) {
     if (!executed.empty() && pc < executed.size()) executed[pc] = 1;
     if (trace) log("%06x  %04x  d0=%08x d1=%08x a0=%08x a7=%08x\n", pc, read16(pc), cpu.d[0], cpu.d[1], cpu.a[0], cpu.a[7]);
     cpu.step();
+    if (watch_addr_) {
+      uint32_t v = read32(watch_addr_);
+      if (v != watch_val_) {
+        log("[watch] %06x: %08x -> %08x at pc=%06x (op_pc=%06x) frame %llu\n", watch_addr_,
+            watch_val_, v, cpu.pc, cpu.op_pc, (unsigned long long)frame_count_);
+        watch_val_ = v;
+      }
+    }
   }
 }
 
