@@ -169,12 +169,28 @@ static void post_game_event(uint32_t code) {
 }
 NATIVE_C(0x23d08, post_game_event, true);
 
+// $2d178: copy rank byte from the flight-log record into ab9f/aba0.
+static void load_rank_from_log() {
+  uint32_t cfg = uint32_t(config_buf);
+  uint8_t rank = uint8_t(rd16(cfg + 2));
+  b_5ab9f = int8_t(rank);
+  b_5aba0 = int8_t(rank);
+}
+NATIVE_C(0x2d178, load_rank_from_log, true);
+
+// $2d190: write ab9f back into the flight-log rank word.
+static void save_rank_to_log() {
+  uint32_t cfg = uint32_t(config_buf);
+  wr16(cfg + 2, uint16_t(int16_t(int8_t(b_5ab9f))));
+}
+NATIVE_C(0x2d190, save_rank_to_log, true);
+
 // $234a8: bump per-scenario and global mission-complete counters in the
 // flight log after a successful sortie.
 static void count_mission_complete() {
   uint32_t cfg = uint32_t(config_buf);
   uint32_t slot = cfg + 18 + uint32_t(int32_t(int8_t(scenario)));
-  sub_2d190();  // persist helper used by the original before the bumps
+  save_rank_to_log();  // persist helper used by the original before the bumps
   wr8(cfg + 6, uint8_t(scenario));
   wr8(cfg + 7, rd8(slot));
   wr16(cfg + 0x38, uint16_t(rd16(cfg + 0x38) + 1));
@@ -506,7 +522,7 @@ static void init_game() {
   sub_29284(160, 100);                                     // mouse centre
   b_5ab43 = 0;
   reset_display_state();
-  sub_2d178();
+  load_rank_from_log();
   game_state = st_boot_check_addr;
 }
 NATIVE_C(0x21630, init_game, false);
