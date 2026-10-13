@@ -364,12 +364,10 @@ NATIVE_C(0x2e2bc, stick_h_rel, true);
 static void stub_2f216() {}
 NATIVE_C(0x2f216, stub_2f216, true);
 
-// $2d408: initialise the world-origin / camera offset vectors used by the
-// 3-D transform (positive set + negated set).
-static void init_world_origin() {
-  int32_t x = 0x0f248000;  // 254050304
-  int32_t y = 0x00005000;  // 20480
-  int32_t z = 0x0fccf000;  // 265089024
+// $2d3e0 / $2d3f4 / $2d408: initialise world-origin / camera offset vectors
+// (positive set + negated set).  Three entry points load different constants
+// then share the same store tail.
+static void store_world_origin(int32_t x, int32_t y, int32_t z) {
   wr32(0x5af36, uint32_t(x));
   wr32(0x5af3a, uint32_t(y));
   wr32(0x5af3e, uint32_t(z));
@@ -380,7 +378,25 @@ static void init_world_origin() {
   wr32(0x5af2e, uint32_t(y));
   wr32(0x5af32, uint32_t(z));
 }
+static void init_world_origin_a() { store_world_origin(0x10800000, 0x03000000, 0x10c00000); }
+static void init_world_origin_b() { store_world_origin(0x10546800, 0x00005000, 0x10a36700); }
+static void init_world_origin()   { store_world_origin(0x0f248000, 0x00005000, 0x0fccf000); }
+NATIVE_C(0x2d3e0, init_world_origin_a, true);
+NATIVE_C(0x2d3f4, init_world_origin_b, true);
 NATIVE_C(0x2d408, init_world_origin, true);
+
+// $2d1a4: reset display / fade state for a fresh scenario.
+static void reset_display_state() {
+  wr16(0x65708 + 42, uint16_t(int16_t(-4)));
+  b_5ab9c = 0;
+  b_5aacd = 0;
+  b_5ab98 = 15;
+  b_5ab99 = 15;
+  b_5aba5 = 1;
+  b_5aacc = 1;
+  b_5ab41 = 17;
+}
+NATIVE_C(0x2d1a4, reset_display_state, true);
 
 // $2d50a: clear taxi/menu flags then fall into the flight-start reset at
 // $2d526.  Shared tail stays original for now.
@@ -489,7 +505,7 @@ static void init_game() {
   sub_2925c(uint32_t(-960), uint32_t(-960), 960, 960);   // mouse limits
   sub_29284(160, 100);                                     // mouse centre
   b_5ab43 = 0;
-  sub_2d1a4();
+  reset_display_state();
   sub_2d178();
   game_state = st_boot_check_addr;
 }
@@ -963,7 +979,7 @@ static void st_22026() {
     b_5aaa6 = 1;
     game_state = st_21b5c_addr;
   } else if (sel == 1) {
-    sub_2d3e0();
+    init_world_origin_a();
     b_5ab8f = 5;
     game_state = st_22354_addr;
   } else if (sel == 2) {
