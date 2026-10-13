@@ -1,0 +1,17 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3300 key 1
+3700 key KP_Enter
+3800 key F10
+4300 key down down
+4500 key down up
+6000 poke 5ab22 02
+7800 key return
+9000 poke 5ab22 03
+10800 key return
+12000 quit

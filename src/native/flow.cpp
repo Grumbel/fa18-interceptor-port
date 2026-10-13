@@ -2081,6 +2081,8 @@ static void st_231fc() {
       wr16(q, 66); q += 2;
     }
     if (b_5aa90 != -16) {
+      // (the original skips one slot first: the word at q keeps its value)
+      q += 2;
       wr16(q, 0x8056); q += 2;
       wr16(q, 0x8053); q += 2;
     }

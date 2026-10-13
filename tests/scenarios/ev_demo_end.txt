@@ -1,0 +1,7 @@
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 1
+8000 poke 5aaa6 ff
+9500 quit

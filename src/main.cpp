@@ -17,6 +17,7 @@ namespace {
 // Scripted input for automated runs:  <frame> <command> [args]
 //   key <SDL key name> [down|up|tap]   joy <subset of "udlrf">
 //   mouse <dx> <dy>   lmb|rmb <0|1>   shot <file.ppm>   quit
+//   poke <hexaddr> <hexvalue> [b|w|l]   (force a game variable)
 struct ScriptEvent {
   int frame;
   std::string cmd;
@@ -406,6 +407,15 @@ public:
         machine->mouse_move(std::atoi(e.args[0].c_str()), std::atoi(e.args[1].c_str()));
       } else if ((e.cmd == "lmb" || e.cmd == "rmb") && !e.args.empty()) {
         machine->mouse_button(e.cmd == "lmb" ? 0 : 1, e.args[0] != "0");
+      } else if (e.cmd == "poke" && e.args.size() >= 2) {
+        // poke <hexaddr> <hexvalue> [b|w|l]: force a game variable (test
+        // scenarios use it to reach states that are hard to play into)
+        uint32_t a = uint32_t(std::strtoul(e.args[0].c_str(), nullptr, 16));
+        uint32_t v = uint32_t(std::strtoul(e.args[1].c_str(), nullptr, 16));
+        char sz = e.args.size() > 2 ? e.args[2][0] : 'b';
+        if (sz == 'l') machine->w32(a, v);
+        else if (sz == 'w') machine->w16(a, uint16_t(v));
+        else machine->w8(a, uint8_t(v));
       } else if (e.cmd == "shot" && !e.args.empty()) {
         pending_shot = e.args[0];
       } else if (e.cmd == "quit") {
