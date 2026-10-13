@@ -24,8 +24,42 @@ add_library(amiga STATIC
   src/amiga/hle.cpp
   src/amiga/hle.hpp
   src/amiga/hunk.hpp
+  src/recomp/recomp.hpp
+  src/recomp/runtime.hpp
 )
 target_link_libraries(amiga PUBLIC m68k)
+
+# Static recompilation of the game code (tools/recomp.py) at build time.
+option(FA18_RECOMP "Build with statically recompiled game code" ON)
+set(FA18_EXE "${CMAKE_SOURCE_DIR}/assets/F-18 Interceptor")
+if(FA18_RECOMP)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set(RECOMP_DIR ${CMAKE_BINARY_DIR}/recomp)
+  set(RECOMP_SRCS ${RECOMP_DIR}/entries.cpp)
+  foreach(i RANGE 0 15)
+    if(i LESS 10)
+      list(APPEND RECOMP_SRCS ${RECOMP_DIR}/code_0${i}.cpp)
+    else()
+      list(APPEND RECOMP_SRCS ${RECOMP_DIR}/code_${i}.cpp)
+    endif()
+  endforeach()
+  add_custom_command(
+    OUTPUT ${RECOMP_SRCS}
+    COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/recomp.py ${FA18_EXE} ${RECOMP_DIR}
+            --seeds ${CMAKE_SOURCE_DIR}/tools/recomp_seeds.txt
+    DEPENDS ${FA18_EXE} ${CMAKE_SOURCE_DIR}/tools/recomp.py ${CMAKE_SOURCE_DIR}/tools/loadseg.py
+            ${CMAKE_SOURCE_DIR}/tools/hunks.py ${CMAKE_SOURCE_DIR}/tools/recomp_seeds.txt
+    COMMENT "Recompiling 68000 game code to C++")
+  add_library(recomp STATIC ${RECOMP_SRCS})
+  # The generated functions are huge goto-based state machines; -O1 keeps
+  # build times reasonable while still producing fast code.
+  target_compile_options(recomp PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-O1 -w>)
+else()
+  add_library(recomp STATIC src/recomp/stub.cpp)
+endif()
+target_include_directories(recomp PUBLIC src)
+target_link_libraries(recomp PUBLIC m68k)
+target_link_libraries(amiga PUBLIC recomp)
 
 add_executable(fa18 src/main.cpp)
 target_link_libraries(fa18 PRIVATE amiga SDL2::SDL2)

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "m68k/cpu.hpp"
+#include "recomp/recomp.hpp"
 
 #include <array>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -132,6 +134,20 @@ public:
   // Map a WHDLoad PatchSeg offset (concatenated hunk payloads) to an address.
   uint32_t patch_address(uint32_t offset) const;
 
+  // Use statically recompiled code when available (else interpret).
+  bool use_recomp = true;
+  bool recomp_active() const { return !recomp_table_.empty(); }
+  // Collect addresses inside the program that had to be interpreted.
+  void track_recomp_misses(bool on) { recomp_misses_ = on ? std::make_unique<std::set<uint32_t>>() : nullptr; }
+  const std::set<uint32_t>* recomp_misses() const { return recomp_misses_.get(); }
+
+  // Coverage: record executed instruction addresses (debug/recompiler seeds)
+  // and report bytes of code hunks that changed since load.
+  std::string coverage_path;
+  std::vector<uint8_t> executed;  // per byte of RAM below the heap
+  std::vector<uint8_t> original;  // loaded image for SMC detection
+  void write_coverage();
+
   // Exposed for debugging tools.
   std::vector<uint32_t> hunk_addrs;
   std::vector<uint32_t> hunk_sizes;
@@ -141,6 +157,7 @@ public:
 private:
   friend struct Hle;
   // scheduler
+  void execute(int64_t until);
   void run_line();
   void end_of_frame();
   void check_interrupts();
@@ -161,6 +178,7 @@ private:
   void audio_line();
 
   bool line_a(uint16_t op);
+  void setup_recomp(uint32_t end);
   void hle(int lib, int lvo);
 
   std::vector<uint8_t> ram_;
@@ -211,6 +229,10 @@ private:
 
   // heap
   std::map<uint32_t, uint32_t> free_list_;  // addr → size
+
+  // recompiled code
+  std::vector<recomp::Fn> recomp_table_;
+  std::unique_ptr<std::set<uint32_t>> recomp_misses_;
 };
 
 }  // namespace amiga

@@ -124,6 +124,10 @@ bool Machine::boot(const std::string& dir) {
     for (auto& [target, offs] : h.relocs)
       for (uint32_t o : offs) write32(base + o, read32(base + o) + hunk_addrs[target]);
   }
+  if (!coverage_path.empty()) {
+    executed.assign(end, 0);
+    original.assign(ram_.begin(), ram_.begin() + end);
+  }
   if (bypass_protection) {
     // Codewheel protection, as patched by JOTD's WHDLoad slave (offsets are
     // relative to the concatenated hunk payloads):
@@ -136,8 +140,27 @@ bool Machine::boot(const std::string& dir) {
   }
   free_list_.clear();
   free_list_[end] = RAM_SIZE - end;
+  setup_recomp(end);
   hle_->boot(hunk_addrs[0], (hunk_addrs[0] - 4) >> 2);
   return true;
+}
+
+void Machine::setup_recomp(uint32_t end) {
+  recomp_table_.clear();
+  const recomp::Image* img = recomp::image();
+  if (!use_recomp || !img || !bypass_protection) return;
+  // The generated code embeds absolute addresses and the patched code
+  // bytes; only use it if the loaded image is identical.
+  uint32_t h = 2166136261u;
+  for (uint32_t a = img->base; a < img->base + img->size && a < end; ++a)
+    h = (h ^ ram_[a]) * 16777619u;
+  if (h != img->checksum || img->base != LOAD_BASE) {
+    log("recompiled code does not match the loaded executable; interpreting\n");
+    return;
+  }
+  recomp_table_.assign(img->size / 2, nullptr);
+  for (size_t i = 0; i < img->count; ++i)
+    recomp_table_[(img->entries[i].addr - LOAD_BASE) >> 1] = img->entries[i].fn;
 }
 
 uint32_t Machine::patch_address(uint32_t offset) const {
@@ -146,6 +169,20 @@ uint32_t Machine::patch_address(uint32_t offset) const {
     offset -= hunk_sizes[i];
   }
   return 0;
+}
+
+void Machine::write_coverage() {
+  if (coverage_path.empty() || executed.empty()) return;
+  FILE* f = fopen(coverage_path.c_str(), "w");
+  if (!f) return;
+  for (uint32_t a = 0; a < executed.size(); ++a)
+    if (executed[a]) fprintf(f, "x %06x\n", a);
+  // Changed bytes inside hunks (self-modifying code / data in code hunks)
+  for (size_t h = 0; h < hunk_addrs.size(); ++h) {
+    for (uint32_t a = hunk_addrs[h]; a < hunk_addrs[h] + hunk_sizes[h]; ++a)
+      if (ram_[a] != original[a]) fprintf(f, "w %06x %zu\n", a, h);
+  }
+  fclose(f);
 }
 
 // ---- 68k <-> host calls ----------------------------------------------------
@@ -183,12 +220,9 @@ uint32_t Machine::call68k(uint32_t addr, const uint32_t* d, const uint32_t* a) {
   ++call_depth_;
   try {
     for (;;) {
-      int64_t until = line_start_ + CYCLES_PER_LINE;
-      while (cpu.cycles < until) {
-        cpu.step();
-        if (cpu.stopped) break;
-      }
+      execute(line_start_ + CYCLES_PER_LINE);
       if (cpu.stopped) { log("call68k: cpu stopped in callback %06x\n", addr); break; }
+      if (exit_) break;
       if (cpu.cycles >= line_start_ + CYCLES_PER_LINE) run_line();
     }
   } catch (ReturnFromCall&) {
@@ -260,21 +294,35 @@ void Machine::check_interrupts() {
 
 void Machine::dispatch_interrupt(int level) { hle_->interrupt(level); }
 
+void Machine::execute(int64_t until) {
+  while (cpu.cycles < until && !exit_) {
+    if (cpu.stopped) { cpu.cycles = until; return; }
+    uint32_t pc = cpu.pc;
+    if (!recomp_table_.empty()) {
+      uint32_t idx = (pc - LOAD_BASE) >> 1;
+      if (idx < recomp_table_.size() && recomp_table_[idx] && !(pc & 1)) {
+        recomp_table_[idx](cpu, until);
+        continue;
+      }
+      if (recomp_misses_ && pc >= LOAD_BASE && pc < LOAD_BASE + recomp_table_.size() * 2)
+        recomp_misses_->insert(pc);
+    }
+    if (!executed.empty() && pc < executed.size()) executed[pc] = 1;
+    if (trace) log("%06x  %04x  d0=%08x d1=%08x a0=%08x a7=%08x\n", pc, read16(pc), cpu.d[0], cpu.d[1], cpu.a[0], cpu.a[7]);
+    cpu.step();
+  }
+}
+
 int Machine::run() {
   try {
     while (!exit_) {
-      int64_t until = line_start_ + CYCLES_PER_LINE;
-      while (cpu.cycles < until && !exit_) {
-        if (cpu.stopped) { cpu.cycles = until; break; }
-        if (trace) log("%06x  %04x  d0=%08x d1=%08x a0=%08x a7=%08x\n", cpu.pc, read16(cpu.pc), cpu.d[0], cpu.d[1], cpu.a[0], cpu.a[7]);
-        cpu.step();
-      }
+      execute(line_start_ + CYCLES_PER_LINE);
       if (exit_) break;
-      run_line();
+      if (cpu.cycles >= line_start_ + CYCLES_PER_LINE) run_line();
     }
   } catch (QuitRequested&) {
-    return 0;
   }
+  write_coverage();
   return exit_code_;
 }
 

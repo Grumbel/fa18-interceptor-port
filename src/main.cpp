@@ -338,6 +338,8 @@ void usage() {
           "  --fast           run unthrottled\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
+          "  --interpret      use the 68000 interpreter instead of recompiled code\n"
+          "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
           "keys: F12 grab mouse, F11 fullscreen, Pause fast-forward,\n"
           "      numpad 8/2/4/6 + 0 = joystick\n");
@@ -351,7 +353,8 @@ int main(int argc, char** argv) {
   double speed = 1.0;
   bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
-  std::string shot_path, script_path, wav_path;
+  std::string shot_path, script_path, wav_path, coverage_path, misses_path;
+  bool interpret = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--scale" && i + 1 < argc) scale = std::atoi(argv[++i]);
@@ -364,6 +367,9 @@ int main(int argc, char** argv) {
     else if (a == "--fast") fast = true;
     else if (a == "--protection") protection = true;
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
+    else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
+    else if (a == "--interpret") interpret = true;
+    else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
     else if (a == "-h" || a == "--help") { usage(); return 0; }
     else data_dir = a;
@@ -385,7 +391,12 @@ int main(int argc, char** argv) {
   machine.cpu_speed = speed;
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
+  machine.coverage_path = coverage_path;
+  machine.use_recomp = !interpret;
   if (!machine.boot(data_dir)) return 1;
+  fprintf(stderr, "%s\n", machine.recomp_active() ? "running recompiled code"
+                                                   : "running in interpreter mode");
+  if (!misses_path.empty()) machine.track_recomp_misses(true);
 
   SdlHost host;
   host.machine = &machine;
@@ -399,6 +410,13 @@ int main(int argc, char** argv) {
   if (!wav_path.empty()) host.open_wav(wav_path);
   int rc = machine.run();
   host.close_wav();
+  if (!misses_path.empty() && machine.recomp_misses()) {
+    FILE* f = fopen(misses_path.c_str(), "w");
+    if (f) {
+      for (uint32_t a : *machine.recomp_misses()) fprintf(f, "%06x\n", a);
+      fclose(f);
+    }
+  }
   SDL_Quit();
   return rc;
 }
