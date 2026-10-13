@@ -99,6 +99,11 @@ Done (all verified by the gate):
   subroutines ($3223e, $328ea, $32adc/$32aec, $32b92, $32f6e), polygon
   ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Still original: the
   op handlers behind the jump table at $33478 ($33160, $33fda, ...).
+- Next in the scene path: $2f220 (camera position) and $2fc14 (object list
+  draw loop with helpers $2fffc/$3000e). A first translation failed the
+  equivalence gate (diverges ~frame 2250-2950); not committed. Bisect with
+  FA18_NATIVE_SKIP per routine ($2f220 first), then the op handlers
+  behind $33478, $33160, $33fda.
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
