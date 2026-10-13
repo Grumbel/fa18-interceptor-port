@@ -68,13 +68,18 @@ Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
 FA18_POISON, `--native verify` (per-call comparison for pure routines).
 
 Done: startup (main, picture loader, delay, Workbench), flight log/config,
-codewheel hash, game state machine part 1 ($2151c-$22026: input poll,
-run_game_state, menu/flight-log states, demo start).
+codewheel hash, game state machine part 1 ($2151c-$21f8e: input poll,
+run_game_state, menu/flight-log states, demo start), and $22026 (scenario
+setup / mission-start dispatch after menu selection).
 Open:
 - [ ] game_frame ($2112c) is translated but not registered: enabling it
       gives a 1-byte divergence ($5ab55) around frame 2250 of free1
-- [ ] rest of hunk 0 state machine from $22026 (see Ghidra + asm)
+- [ ] rest of hunk 0 state machine after $22026 ($222d6, $22354, $223ca,
+      $2253c, $22d60, …) — see Ghidra + asm
 - [ ] hunk 0 remaining C functions, C runtime, asm hunks 4-40 (3D, flight
       model, HUD), sound driver (hunks 74-77)
 Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
 Ghidra drops code and mis-types switches - translate from the assembly).
+Next tip work: either chase the $5ab55 divergence so game_frame can be
+enabled, or continue translating the post-$22026 state handlers
+($2253c is the immediate next address written by st_22026).

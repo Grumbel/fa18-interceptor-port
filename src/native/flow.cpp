@@ -39,7 +39,10 @@ NATIVE_STATE(0x21d0e, st_21d0e);
 NATIVE_STATE(0x21d38, st_mission_menu);
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
-constexpr uint32_t st_22026_addr = 0x22026, st_222d6_addr = 0x222d6, st_22d60_addr = 0x22d60;
+NATIVE_STATE(0x22026, st_22026);
+constexpr uint32_t st_222d6_addr = 0x222d6, st_22d60_addr = 0x22d60;
+constexpr uint32_t st_22354_addr = 0x22354, st_223ca_addr = 0x223ca;
+constexpr uint32_t st_2253c_addr = 0x2253c;
 constexpr uint32_t st_2359e_addr = 0x2359e, st_2353c_addr = 0x2353c, st_2362a_addr = 0x2362a;
 
 // $2346a: clear the message queue / text state.
@@ -536,6 +539,96 @@ static void st_flight_log() {
     game_state = st_mission_menu_addr;
   }
   scenario = 0;
+}
+
+// $22026: after a positive mission selection, set up the scenario and hand
+// off to the in-flight state chain.  Runs once when state_timer expires.
+static void st_22026() {
+  int16_t sel = int16_t(int8_t(scenario));
+  if (state_timer >= 0) return;
+
+  b_5aacf = 0;  // title_flag_5ab47
+  sub_29c60(0);
+  sub_29c60(1);
+  music_volume = 0x3f0000;
+
+  if (sel >= 3 && sel <= 8) {
+    sub_29d82(40);
+  } else if (rd8(0x5ae53) & 0x10) {
+    sub_29fa2(8);
+  } else {
+    sub_29e4e(8, 0x300);
+  }
+
+  w_5ac7c = 179;
+  clear_messages();
+  state_timer = 4;
+  b_5ab8f = 3;
+  b_5ab90 = 2;
+  sub_3cf0e();
+  b_5aaa6 = 0;
+  in_flight = 1;
+  b_5ab2e = 3;
+  b_5ab99 = b_5ab98;
+  sub_23c66();
+  game_state = st_2253c_addr;
+  b_5ab40 = 3;
+  b_5ab41 = 17;
+
+  // Switch on the selected scenario.
+  if (sel == 127) {
+    b_5aaa6 = 1;
+    game_state = st_21b5c_addr;
+  } else if (sel == 1) {
+    sub_2d3e0();
+    b_5ab8f = 5;
+    game_state = st_22354_addr;
+  } else if (sel == 2) {
+    w_5ac7c = 167;
+    b_5aaac = -1;
+    sub_3dc7c();
+    b_5aaa5 = 0;
+    b_5aa7d = 1;
+    b_5aba6 = 0;
+    b_5aaad = 1;
+    w_5abd4 = 4;
+    w_5abd6 = 2048;
+    b_5abaa = 3;
+    w_5bc7e = int16_t(uint16_t(w_5bc7e) | 0x100);
+    game_state = st_223ca_addr;
+  } else if (sel == 3) {
+    b_5ab40 = 0;
+  } else if (sel == 125) {
+    b_5ab8f = 1;
+    w_5ac7c = 167;
+    b_5aaac = -1;
+    b_5aaae = 3;
+    b_5ab40 = 2;
+    sub_22ce8();
+    sub_3dc86();
+    sub_2d408();
+    sub_3cf0e();
+    b_5aaa5 = 0;
+    game_state = st_223ca_addr;
+  } else if (sel == 9) {
+    b_5ab40 = 3;
+    b_5aba6 = 0;
+    b_5aaa5 = 0;
+    sub_3cf0e();
+    sub_2d50a();
+    clear_messages();
+    b_5aba5 = 1;
+    in_flight = 1;
+    w_5ac7e = 0;
+    w_5ac80 = 0;
+    sub_2f024();
+    b_5ab50 = -1;
+    b_5aa7d = 0;
+    game_state = st_22354_addr;
+  }
+
+  if (b_5ab40 == 3) b_5ab41 = 17;
+  sub_2f7b8();
 }
 
 }  // namespace native

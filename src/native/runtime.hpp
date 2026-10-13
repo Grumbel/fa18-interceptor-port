@@ -73,7 +73,7 @@ struct Var {
   // The variable's address (a Var converts implicitly to its *value*).
   uint32_t ptr() const { return addr; }
   // Element access for arrays starting at addr.
-  Var at(int i) const { return Var{addr + uint32_t(i) * sizeof(T)}; }
+  Var at(int i) const { return Var{uint32_t(addr + uint32_t(i) * sizeof(T))}; }
 };
 
 // ---- calling original (68k) code ------------------------------------------
