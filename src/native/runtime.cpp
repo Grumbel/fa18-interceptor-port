@@ -47,26 +47,29 @@ static void poison(uint32_t addr, m68k::Cpu& c) {
 }
 
 uint32_t call_c(uint32_t addr, std::initializer_list<uint32_t> args) {
+  // Like a jsr from compiled C code: the callee's register changes stay
+  // visible (compiled code does not restore what a callee clobbers, and
+  // some original routines depend on such leftovers); only the arguments
+  // are popped again.
   m68k::Cpu& c = cpu();
-  m68k::Cpu::Regs saved = c.save();
+  uint32_t sp = c.a[7];
   poison(addr, c);
   const uint32_t* a = args.begin();
   for (size_t i = args.size(); i-- > 0;) c.push32(a[i]);
   g_machine->call_sub(addr);
-  uint32_t ret = c.d[0];
-  c.restore(saved);
-  return ret;
+  c.a[7] = sp;
+  return c.d[0];
 }
 
 Regs call_asm(uint32_t addr, const Regs& in) {
   m68k::Cpu& c = cpu();
-  m68k::Cpu::Regs saved = c.save();
+  uint32_t sp = c.a[7];
   for (int i = 0; i < 8; ++i) c.d[i] = in.d[i];
   for (int i = 0; i < 7; ++i) c.a[i] = in.a[i];
   g_machine->call_sub(addr);
+  c.a[7] = sp;
   Regs out;
   for (int i = 0; i < 8; ++i) { out.d[i] = c.d[i]; out.a[i] = c.a[i]; }
-  c.restore(saved);
   return out;
 }
 

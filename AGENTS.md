@@ -59,6 +59,45 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
 ## Workflow
 - See TODO.md for current status and next steps.
 - Commit directly to the git repository (small, descriptive commits).
+- Only one agent works in this repository at a time (or use separate git
+  worktrees); uncommitted changes of another agent leak into your builds.
+
+## Native C++ translation rules (src/native/)
+The goal is readable C++ that is *exactly* equivalent to the original
+routines. Every commit touching src/native/ must pass the gate:
+
+    tests/check_native.sh            # must print PASS
+
+It runs all scenarios with `--native on` and `--native off` in
+deterministic timing and compares memory hashes every 50 frames, then runs
+`--native verify` (per-call comparison). Never commit on a failure; never
+commit with a routine disabled "for now" without saying so in TODO.md.
+
+- Translate from the assembly (`tools/disasm.py`); Ghidra pseudo-C
+  (tools/ghidra) is only a reading aid — it drops code after calls it
+  thinks never return and cannot read Lattice switch tables.
+- Exact 68000 semantics: `bset/bclr/bchg/btst` on memory are byte
+  operations (bit n of the byte at the address = high byte of a word
+  variable); `cmp`/branch signedness (bcs/bhi/bls unsigned, blt/bgt signed);
+  `move.w` into d0 keeps the upper word; Lattice passes shorts as 32-bit
+  stack slots.
+- Translate the whole routine. No placeholders like "rest stays original
+  for now" unless the remaining part is called as original code.
+- Conventions: compiled C routines (`link a6`) use `NATIVE_C` with typed
+  parameters; invoke_native reproduces their link/movem frame and saved
+  registers, and `call_c` leaves registers as the callee left them, so
+  leftover-register and caller-frame tricks of the original keep working.
+  Assembly routines that change registers their callers can see must use
+  `NATIVE_ASM` and set those registers (see stick_v/joy_fire_down).
+  Mark a routine `verify = true` only if it has no OS side effects.
+- Name game variables in globals.hpp (`Var<T>`); `vars.hpp` has raw
+  size-typed accessors. A `Var` converts to its *value*; use `.ptr()` for
+  its address.
+- Debugging a failure: `tests/ramdiff.sh SCENARIO FRAME DIR` (first
+  differing bytes), `FA18_NATIVE_ONLY=name1,...` / `FA18_NATIVE_SKIP=...`
+  to bisect routines, `FA18_CALLTRACE=from,to,file` to diff the order of
+  routine entries, `FA18_POISON` to find routines reading registers they
+  were not given.
 
 ## Build
 

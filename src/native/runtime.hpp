@@ -91,7 +91,8 @@ struct Regs {
 Regs call_asm(uint32_t addr, const Regs& in);
 
 // Arguments of the currently executing native C-convention function.
-inline uint32_t arg(int i) { return rd32(cpu().a[7] + 4 + uint32_t(i) * 4); }
+// (Read when the native function starts, relative to its entry a7.)
+inline uint32_t arg(int i) { return rd32(g_machine->native_entry_sp_ + 4 + uint32_t(i) * 4); }
 
 // ---- registration ---------------------------------------------------------
 

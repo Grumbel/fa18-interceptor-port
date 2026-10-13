@@ -62,30 +62,25 @@ Verified with scripted runs (`--script`):
 
 Hand-translated routines live in src/native/ and replace the original code
 by address (`--native on`, default); `--native off` runs only the
-recompiled original. Equivalence oracle:
-`tests/compare_native.sh DIR` (deterministic timing `--det-timing`, memory
-hash every 50 frames, all scenarios) must report "same" for all.
-Debug aids: tests/ramdiff.sh, FA18_NATIVE_SKIP / FA18_NATIVE_ONLY,
-FA18_POISON, `--native verify` (per-call comparison for pure routines).
+recompiled original. Gate: `tests/check_native.sh` must PASS (see the
+rules in AGENTS.md).
 
-Done: the entire hunk-0 game state machine from extra_entries.txt,
-  plus non-state helpers:
-  $2151c/$215fe/$21630/$216c2/$21750/$21bfc/$2346a/$234a8/
-  $22ce8/$23c24/$23c66/$23c9c/$23d08/$25e8c/$28d4a/$28dae/
-  $28e5c/$29006/$29074/$292b4/$29c60/$29d82/$2d178/$2d190/
-  $2d1a4/$2d382/$2d3b2/$2d3e0/$2d3f4/$2d408/$2d50a/
-  $2e268-$2e2bc/$2f024/$2f02c/$2f0b2/$2f108/$2f216/$2fa6c/$2fa7e.
-  All NATIVE_STATE handlers are registered; see the list in flow.cpp.
+Done (all verified by the gate):
+- startup: main, picture loader, delay, Workbench close, splash reuse
+- flight log / config, codewheel hash
+- hunk-0 game state machine: all handlers in tools/extra_entries.txt,
+  game_frame ($2112c), run_game_state, poll_input, keyboard/joystick/
+  gameport/mouse input helpers, fades, messages, world-origin/display
+  resets (see the NATIVE_* registrations in flow.cpp)
+
 Open:
-- [ ] game_frame ($2112c) is translated but not registered: enabling it
-      gives a 1-byte divergence ($5ab55) around frame 2250 of free1.
-      Investigation: $5ab55 is owned by the object system at $310c0+;
-      condition audit of game_frame found no mismatch.  Likely a
-      not-yet-native callee.  $23c9c is now native.
-- [ ] remaining hunk-0 C helpers still called via call_c (input, audio
-      channel, view setup, etc.), C runtime, asm hunks 4-40 (3D, flight
-      model, HUD), sound driver (hunks 74-77)
-Workflow: tools/ghidra/DecompileAll.java gives pseudo-C (reading aid only;
-Ghidra drops code and mis-types switches - translate from the assembly).
-Next tip work: more hunk-0 helpers (input $29xxx, audio $29c60), or
-bisect $5ab55 with FA18_NATIVE_SKIP.
+- [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
+      (audio channel set-up, view set-up $27f0c/$27d50, menus/text
+      $393f6/$396e2/$39510, flight-log screens, ...)
+- [ ] C runtime library parts that are executed (hunks 80+)
+- [ ] assembly subsystems: hunks 4-40 (3D engine, flight model, HUD,
+      objects; ~22000 executed instructions), blitter primitives (73),
+      sound driver (74-77). Most are pure memory/register routines: use
+      NATIVE_ASM and --native verify routine by routine.
+- [ ] extend tests/scenarios when translating code the scenarios do not
+      reach (check with --coverage in --interpret mode)

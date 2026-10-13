@@ -757,11 +757,12 @@ static void game_frame() {
   debug_stage = 544;
   sub_478f2();
 }
-// Not registered yet: with this enabled, tests/compare_native.sh shows a one-byte
-// divergence ($5ab55) around frame 2250 of free1 that is not yet explained
-// (not a register dependency: FA18_POISON test is clean).
-// NATIVE_C(0x2112c, game_frame, false);
-[[maybe_unused]] static auto* game_frame_unused = &game_frame;
+// Note: $2f7b8 (called from here) stores a flag at -44(a6), i.e. in this
+// function's stack area, and $3127c later reads it back after its movem has
+// overwritten it with the saved a4. This only works out like the original
+// because invoke_native reproduces the link/movem frame and call_c does not
+// restore registers.
+NATIVE_C(0x2112c, game_frame, false);
 
 // ---- states ---------------------------------------------------------------------
 

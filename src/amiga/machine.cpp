@@ -176,6 +176,7 @@ void Machine::setup_recomp(uint32_t end) {
 
 void Machine::setup_native() {
   native::g_machine = this;
+  calltrace_ = getenv("FA18_CALLTRACE") != nullptr;
   native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
   // FA18_NATIVE_SKIP=name1,name2 disables individual native routines
   // (FA18_NATIVE_ONLY=... enables only the listed ones); for bisecting.
@@ -195,14 +196,55 @@ void Machine::setup_native() {
 }
 
 void Machine::invoke_native(const native::Def* d) {
-  m68k::Cpu::Regs saved = cpu.save();
   ++native_stats_[d].calls;
+  if (d->conv != native::Conv::C) {
+    d->fn();
+    cpu.pc = cpu.pop32();
+    return;
+  }
+  // Reproduce the original's prologue/epilogue (link a6,#n and movem save
+  // of the registers it preserves) so that the 68k stack layout and the
+  // register values seen by original callees, and by our caller afterwards,
+  // are exactly those of the compiled code. Some original routines depend on
+  // them (e.g. reading -n(a6) of their caller, or leftover registers).
+  uint32_t pc = d->addr;
+  bool link = read16(pc) == 0x4E56;
+  int16_t frame = 0;
+  if (link) { frame = int16_t(read16(pc + 2)); pc += 4; }
+  uint16_t mask = 0;
+  if (read16(pc) == 0x48E7) mask = read16(pc + 2);  // movem.l regs,-(sp)
+  if (link) {
+    cpu.push32(cpu.a[6]);
+    cpu.a[6] = cpu.a[7];
+    cpu.a[7] += uint32_t(int32_t(frame));
+  }
+  // -(An) mask: bit 0 = a7 ... bit 15 = d0; store in register order.
+  int nsaved = 0;
+  for (int i = 0; i < 16; ++i) if (mask & (1 << i)) ++nsaved;
+  cpu.a[7] -= uint32_t(nsaved * 4);
+  uint32_t save_area = cpu.a[7], p = save_area;
+  for (int r = 0; r < 16; ++r) {
+    if (!(mask & (1 << (15 - r)))) continue;
+    write32(p, r < 8 ? cpu.d[r] : cpu.a[r - 8]);
+    p += 4;
+  }
+  // Arguments are read relative to the entry stack pointer.
+  uint32_t entry_sp = link ? cpu.a[6] + 4 : save_area + uint32_t(nsaved * 4);
+  native_entry_sp_ = entry_sp;  // c_adapter reads the arguments from here
   d->fn();
-  if (d->conv == native::Conv::C) {
-    // Callee-saved registers of the C convention.
-    for (int i = 2; i < 8; ++i) cpu.d[i] = saved.d[i];
-    for (int i = 2; i < 7; ++i) cpu.a[i] = saved.a[i];
-    cpu.a[7] = saved.a[7];
+  // Epilogue: movem.l (sp)+,regs ; unlk a6 ; rts
+  p = save_area;
+  for (int r = 0; r < 16; ++r) {
+    if (!(mask & (1 << (15 - r)))) continue;
+    uint32_t v = read32(p);
+    if (r < 8) cpu.d[r] = v; else cpu.a[r - 8] = v;
+    p += 4;
+  }
+  if (link) {
+    cpu.a[7] = cpu.a[6];
+    cpu.a[6] = cpu.pop32();
+  } else {
+    cpu.a[7] = save_area + uint32_t(nsaved * 4);
   }
   cpu.pc = cpu.pop32();
 }
@@ -483,6 +525,18 @@ void Machine::execute(int64_t until) {
   while (cpu.cycles < until && !exit_) {
     if (cpu.stopped) { cpu.cycles = until; return; }
     uint32_t pc = cpu.pc;
+    if (calltrace_) {
+      static uint64_t from = 0, to = 0;
+      static FILE* f = nullptr;
+      if (!f) {
+        const char* v = getenv("FA18_CALLTRACE");  // from,to,file
+        char path[512] = {};
+        sscanf(v, "%lu,%lu,%511s", &from, &to, path);
+        f = fopen(path, "w");
+        if (!f) calltrace_ = false;
+      }
+      if (f && frame_count_ >= from && frame_count_ <= to) fprintf(f, "%llu %06x\n", (unsigned long long)frame_count_, pc);
+    }
     if (native_mode != NativeMode::Off && !in_reference_) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
       if (idx < native_table_.size() && native_table_[idx] && !(pc & 1)) {
