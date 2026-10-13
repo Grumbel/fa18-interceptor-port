@@ -327,7 +327,8 @@ void usage() {
           "  --scale N        window scale (default 3)\n"
           "  --save DIR       directory for config/pilot log\n"
           "                   (default: $XDG_DATA_HOME/fa18-interceptor)\n"
-          "  --speed X        CPU speed multiplier (default 1.0)\n"
+          "  --speed X        CPU speed multiplier (default 4: smooth 15 fps;\n"
+          "                   1 = stock A500 speed, 6-8 fps in flight)\n"
           "  --verbose        log OS calls\n"
           "  --trace          trace every instruction (very slow)\n"
           "  --screenshot N FILE  save frame N as PPM\n"
@@ -338,7 +339,7 @@ void usage() {
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
-          "keys: F12 grab mouse (mouse = flight stick in port 1), F11 fullscreen,\n"
+          "keys: F12 grab mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward; a game controller acts as joystick in port 2.\n"
           "      All other keys go to the game (see manual: cursor keys fly,\n"
           "      F1-F10/=/- throttle, SPACE fire, RETURN weapon, numpad views).\n");
@@ -349,7 +350,7 @@ void usage() {
 int main(int argc, char** argv) {
   std::string data_dir, save_dir;
   int scale = 3;
-  double speed = 1.0;
+  double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;

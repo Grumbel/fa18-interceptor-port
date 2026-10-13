@@ -1,72 +1,94 @@
-# FA-18 Interceptor – Modern Port
+# F/A-18 Interceptor – Modern Port
 
-Reverse-engineering and port of the classic 1988 Amiga flight simulator
-**F/A-18 Interceptor** (Electronic Arts / Intellisoft) to C++ / SDL2.
+Port of the 1988 Amiga flight simulator **F/A-18 Interceptor**
+(Bob Dinnerman / Intellisoft, Electronic Arts) to C++ and SDL2.
 
-## Build (Nix)
+The game's original 68000 code is statically recompiled to C++ at build time
+and runs on top of a small runtime that provides what the code expects from
+an Amiga 500: the handful of AmigaOS calls it makes (exec, dos, graphics,
+intuition and the keyboard/timer/gameport/audio devices) and the custom
+chips it programs directly (copper/bitplane display, blitter line and fill
+drawing, Paula sound). A 68000 interpreter is kept as fallback and as a
+reference; both produce bit-identical frames and audio.
+
+The complete game works: title, enlistment, demo flight, free flight,
+training, qualification, missions and the flight log (saved to disk).
+
+## Requirements
+
+The original game files, i.e. the contents of the game disk, in `assets/`
+(`F-18 Interceptor`, `config`, `pix/`, `text/`). They can be extracted from
+an ADF with
 
 ```bash
-nix develop          # enter dev shell with SDL2 + cmake
+python3 tools/adf.py extract "FA-18 Interceptor (1988)(Electronic Arts).adf" /tmp/fa18
+cp -r "/tmp/fa18/F-18 Interceptor" /tmp/fa18/{config,pix,text} assets/
+```
+
+The recompiled code is generated from `assets/F-18 Interceptor` during the
+build (needs Python 3); without it (`-DFA18_RECOMP=OFF`) the interpreter is
+used.
+
+## Build
+
+```bash
+nix develop          # or: install cmake, SDL2, python3
 cmake -B build
 cmake --build build
 ./build/fa18
 ```
 
-Or build the package:
+or `nix build && ./result/bin/fa18`.
 
-```bash
-nix build
-./result/bin/fa18
+## Running
+
+```
+fa18 [options] [data-dir]
+  --speed X      CPU speed (default 4: the game caps itself at 15 fps;
+                 1 = stock A500, 6-8 fps in flight and slower simulation)
+  --save DIR     config / flight log directory
+                 (default $XDG_DATA_HOME/fa18-interceptor)
+  --scale N      window scale
+  --protection   keep the codewheel check (default: bypassed like the
+                 WHDLoad install)
+  --interpret    use the 68000 interpreter instead of recompiled code
 ```
 
-## Build (plain CMake)
-
-Requires SDL2 development packages:
-
-```bash
-cmake -B build
-cmake --build build
-./build/fa18
-```
+Developer options: `--fast`, `--frames N`, `--screenshot N file.ppm`,
+`--script file`, `--wav file`, `--coverage file`, `--misses file`,
+`--verbose`, `--trace` (see `fa18 --help` and AGENTS.md).
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| SPACE / ENTER | Advance high-level state (title → flight, …) |
-| BACKSPACE | Previous state |
-| ESC | Quit |
-| UP / W | Pitch up (hold) |
-| DOWN / S | Pitch down (hold) |
-| LEFT / A | Yaw left (hold) |
-| RIGHT / D | Yaw right (hold) |
+Keys are passed to the game as on the Amiga (see `manual.txt`):
 
-Axes return to centre on release (stand-in for JOY0DAT stick).
+| Key | Function |
+|-----|----------|
+| Cursor keys | Fly (up = nose down, down = nose up, left/right = roll) |
+| F1–F10, `=` / `-` | Throttle (F10 twice = afterburner) |
+| Space / Return | Fire / select weapon |
+| `,` `.` | Rudder |
+| G, A, Backspace | Gear, arrestor hook, brakes |
+| H, J, C, F, M, R, T | HUD, ECM, chaff, flare, map, radar range, target |
+| Keypad | View directions; Keypad Enter = outside view |
+| `[` `]` | Zoom |
+| P, Esc, Shift-Esc | Pause, restart, back to mission selection |
 
-## What’s working
+Front end keys: **F11** fullscreen, **Pause** fast-forward, **F12**
+captures the mouse (port 1; the game reads it but flies with joystick or
+keyboard). A game controller acts as the joystick in port 2 (stick/d-pad,
+A = fire).
 
-- High-level state machine (Startup → Title → … → Flight)
-- ILBM loader for `frnt5` / `inst5` (row-interleaved planar, ByteRun1)
-- Flight view: sky/ground split, runway wireframe, horizon, HUD crosshair
-- Attitude filter + integrate driven by held keys
-- Object pool with `$c6`-style motion step and palette-coloured wireframes
-- Recovered Amiga 16-colour palette + copper/display constants in code
+## Project layout
 
-## Recovered (docs/, not fully ported)
-
-- Display: View/ViewPort, ColorMap, live copper list, register-script
-- Audio: 4 Paula channels, sample-block queue from action table
-- 3D: Q2.14 matrix, 7200-circle angles, perspective `(x·160)/z+160`
-- Input: `$155` keyboard path, JOY0DAT accumulators
-- Objects: 64-byte stride pool, dual-tier velocity, damping flags
-
-## Status
-
-See `TODO.md` for tip bundle and open items. Remaining attitude/draw
-work needs live FS-UAE dumps (recipes in TODO).
+- `src/m68k/` – 68000 interpreter and shared ALU semantics
+- `src/amiga/` – machine model, custom chips, OS high-level emulation
+- `src/recomp/` – interface to the generated code
+- `tools/` – ADF/hunk tools, disassembler, recompiler (`recomp.py`)
+- `tests/cpu_sst.cpp` – CPU conformance test (SingleStepTests 68000)
+- `docs/` – reverse-engineering notes
 
 ## License
 
-New code: GPLv3+.
-Original game assets remain under their original copyright; this is an
-educational / clean-room style reverse-engineering effort.
+New code: GPLv3+. The original game remains under its original copyright;
+this is an educational reverse-engineering project.

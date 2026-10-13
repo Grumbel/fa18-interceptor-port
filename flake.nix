@@ -20,6 +20,7 @@
           nativeBuildInputs = with pkgs; [
             cmake
             pkg-config
+            python3   # tools/recomp.py generates the recompiled game code
           ];
 
           buildInputs = with pkgs; [
@@ -29,21 +30,6 @@
           cmakeFlags = [
             "-DCMAKE_BUILD_TYPE=Release"
           ];
-
-          # Assets are copied by the CMake POST_BUILD rule; also install them
-          postInstall = ''
-            mkdir -p $out/share/fa18-interceptor
-            cp -r assets $out/share/fa18-interceptor/
-            # Convenience wrapper that runs from the share dir so relative assets work
-            mkdir -p $out/bin
-            mv $out/bin/fa18 $out/bin/fa18-bin
-            cat > $out/bin/fa18 <<EOF_WRAP
-#!/bin/sh
-cd $out/share/fa18-interceptor
-exec $out/bin/fa18-bin "\$@"
-EOF_WRAP
-            chmod +x $out/bin/fa18
-          '';
 
           meta = with pkgs.lib; {
             description = "Modern port of the 1988 Amiga flight simulator F/A-18 Interceptor";
@@ -61,7 +47,8 @@ EOF_WRAP
             python3
             xxd
             file
-            # optional later: ghidra, vasm, etc.
+            # m68k objdump for tools/disasm.py
+            pkgsCross.m68k.buildPackages.binutils
           ];
           shellHook = ''
             echo "FA-18 Interceptor dev shell"
