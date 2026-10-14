@@ -639,6 +639,80 @@ void sky_ground_33140() {
 NATIVE_ASM(0x33120, sky_ground_33120, true);
 NATIVE_ASM(0x33140, sky_ground_33140, true);
 
+// ---- $33160 -----------------------------------------------------------------------
+// Table lookup in the list at a0: key lists for ac42 and ac40, then the
+// entries whose ad70 range and ab48/ab4c byte lists match. d0 = 1/0.
+void table_match_33160() {
+  setw(0, rd16(0x5ac40));
+  setw(1, rd16(0x5ac42));
+  A(1) = A(0);
+  auto scan = [](uint16_t key) {                      // $33170 / $33188
+    D(3) = 0xFFFFFFFEu;
+    for (;;) {
+      setw(3, lo(3) + 2);
+      setw(2, rd16(A(0)));
+      A(0) += 2;
+      if (int16_t(lo(2)) < 0) return false;
+      if (key == lo(2)) break;
+    }
+    do {
+      A(0) += 2;
+    } while (int16_t(rd16(A(0) - 2)) >= 0);
+    setw(3, rd16(A(0) + uint32_t(ext(lo(3)))));
+    A(0) = A(1) + uint32_t(ext(lo(3)));
+    return true;
+  };
+  if (!scan(lo(1)) || !scan(lo(0))) {
+    D(0) = 0;
+    flags(0, 32);
+    return;
+  }
+  D(4) = uint32_t(-int32_t(rd32(0x5ad70)));
+L331a6:
+  if (int16_t(rd16(A(0))) < 0) goto fail;
+  {
+    uint16_t w = rd16(A(0));
+    A(0) += 2;
+    int32_t v = int32_t(rd32(A(0)));
+    A(0) += 4;
+    if (w != 0) {
+      if (int32_t(D(4)) < v) goto fail;
+    } else if (int32_t(D(4)) > v) {
+      goto fail;
+    }
+  }
+  setb(6, rd8(0x5ab48));                              // $331ba
+L331c0:
+  setb(5, rd8(A(0)));
+  A(0) += 1;
+  if (int8_t(lob(5)) < 0) {                           // $331ce
+    setw(5, A(0));
+    if (lo(5) & 1) A(0) += 1;
+    goto L331a6;
+  }
+  if (lob(6) == lob(5)) {                             // $331da
+    setb(6, rd8(0x5ab4c));
+    for (;;) {
+      setb(5, rd8(A(0)));
+      A(0) += 1;
+      if (int8_t(lob(5)) < 0) goto L331c0;
+      if (lob(6) == lob(5)) {
+        D(0) = 1;
+        flags(1, 32);
+        return;
+      }
+    }
+  }
+  do {
+    A(0) += 1;
+  } while (int8_t(rd8(A(0) - 1)) >= 0);
+  goto L331c0;
+fail:
+  D(0) = 0;
+  flags(0, 32);
+}
+NATIVE_ASM(0x33160, table_match_33160, true);
+
 // ---- $31c50 -----------------------------------------------------------------------
 void view_offset_31c50() {
   D(1) = 0;
