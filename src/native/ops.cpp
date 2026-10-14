@@ -1076,6 +1076,582 @@ void op_34094() {
   setw(0, RW(-126));
 }
 
+// ---- $341d0-$34a26: fans, strips and vertex-list ops ----------------------------
+void sub_words(int r0, int n, uint32_t a) {           // subw (a)+... d<r0>..
+  for (int i = 0; i < n; ++i) setw(r0 + i, lo(r0 + i) - rd16(a + 2u * uint32_t(i)));
+}
+void add_words_frame(int r0, int n, int32_t off) {    // addw fp@(off),d<r0>..
+  for (int i = 0; i < n; ++i) setw(r0 + i, lo(r0 + i) + RW(off + 2 * i));
+}
+void sub_words_frame(int r0, int n, int32_t off) {
+  for (int i = 0; i < n; ++i) setw(r0 + i, lo(r0 + i) - RW(off + 2 * i));
+}
+void asr1(int r0, int n) {
+  for (int i = 0; i < n; ++i) setw(r0 + i, asr16(lo(r0 + i), 1));
+}
+void add_regs(int dst, int src, int n) {              // addw d<src>,d<dst>
+  for (int i = 0; i < n; ++i) setw(dst + i, lo(dst + i) + lo(src + i));
+}
+void sub_regs(int dst, int src, int n) {
+  for (int i = 0; i < n; ++i) setw(dst + i, lo(dst + i) - lo(src + i));
+}
+void copy_regs(int dst, int src, int n) {
+  for (int i = 0; i < n; ++i) setw(dst + i, lo(src + i));
+}
+void or_result() { WW(-126, RW(-126) | lo(0)); }
+void set_5a9de(uint16_t a, uint16_t b, uint16_t c, uint16_t d) {
+  setw(0, a);
+  setw(1, b);
+  setw(2, c);
+  setw(3, d);
+  mstore(0x5a9de, {0, 1, 2, 3});
+}
+
+void fan_34200() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  WW(-56, rd16(A(2)));
+  WW(-58, rd16(A(2)));
+  A(2) += 2;
+  push_a1_a2_a5();
+  movemw(A(3), 1, 6);
+  A(3) += 12;
+  A(4) = A(3) + 6;
+  sub_words(1, 3, A(3));
+  sub_words(4, 3, A(3));
+  mstore(FP() - 70, {1, 2, 3, 4, 5, 6});
+  asr1(4, 3);
+  movemw(A(3), 1, 3);
+  sub_regs(1, 4, 3);
+  add_words_frame(1, 3, -70);
+  mstore(FP() - 76, {1, 2, 3});
+  movemw(A(4), 1, 3);
+  sub_regs(1, 4, 3);
+  add_words_frame(1, 3, -70);
+  mstore(FP() - 82, {1, 2, 3});
+  WW(-126, 0);
+  A(0) = 0x61284;
+  wr32(A(0), 4);
+  A(0) += 4;
+  setw(4, 0);
+  setw(5, 0);
+  setw(6, 0);
+  for (;;) {
+    mstore(FP() - 88, {4, 5, 6});                     // $3429e
+    A(0) = 0x61288;
+    movemw(A(3), 1, 3);
+    asr1(4, 3);
+    add_regs(1, 4, 3);
+    copy_regs(4, 1, 3);
+    add_words_frame(4, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    A(0) += 12;
+    movemw(A(4), 4, 3);
+    movemw(FP() - 88, 1, 3);
+    asr1(1, 3);
+    add_regs(4, 1, 3);
+    copy_regs(1, 4, 3);
+    add_words_frame(1, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    cpu().push32(A(4));
+    cpu().push32(A(3));
+    call_c(0x38c0c);
+    or_result();
+    A(3) = cpu().pop32();
+    A(4) = cpu().pop32();
+    WW(-56, RW(-56) - 1);
+    if (!(int16_t(RW(-56)) > 0)) break;
+    movemw(FP() - 88, 4, 3);                          // $3428c
+    add_words_frame(4, 3, -64);
+  }
+  setw(4, 0);
+  setw(5, 0);
+  setw(6, 0);
+  for (;;) {
+    mstore(FP() - 88, {4, 5, 6});                     // $34334
+    A(0) = 0x61288;
+    movemw(FP() - 76, 1, 3);
+    asr1(4, 3);
+    sub_regs(1, 4, 3);
+    copy_regs(4, 1, 3);
+    sub_words_frame(4, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    A(0) += 12;
+    movemw(FP() - 82, 4, 3);
+    movemw(FP() - 88, 1, 3);
+    asr1(1, 3);
+    sub_regs(4, 1, 3);
+    copy_regs(1, 4, 3);
+    sub_words_frame(1, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    call_c(0x38c0c);
+    WW(-58, RW(-58) - 1);
+    if (!(int16_t(RW(-58)) > 0)) break;
+    movemw(FP() - 88, 4, 3);                          // $34322
+    add_words_frame(4, 3, -64);
+  }
+  pop_a1_a2_a5();
+  setw(0, RW(-126));
+}
+void op_341d0() {
+  wr32(0x5a9de, 0x000FFFFF);
+  wr16(0x5ac4c, next16());
+  fan_34200();
+}
+void op_341e2() {
+  wr16(0x5ac4c, 13);
+  set_5a9de(2, 0, 2, 0);
+  fan_34200();
+}
+
+void strip_343ea() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  WW(-56, next16());
+  movemw(A(3), 1, 6);
+  A(3) += 12;
+  sub_words(1, 3, A(3) + 6);
+  sub_words(4, 3, A(3) + 6);
+  mstore(FP() - 70, {1, 2, 3, 4, 5, 6});
+  movemw(A(3), 1, 3);
+  A(3) += 6;
+  sub_words(1, 3, A(3));
+  mstore(FP() - 82, {1, 2, 3});
+  WW(-126, 0);
+  A(0) = 0x61284;
+  wr32(A(0), 4);
+  A(0) += 4;
+  for (;;) {
+    WW(-58, next16());                                // $34440
+    setw(4, 0);
+    setw(5, 0);
+    setw(6, 0);
+    for (;;) {
+      mstore(FP() - 88, {4, 5, 6});                   // $3445e
+      A(0) = 0x61288;
+      movemw(A(3), 1, 3);
+      asr1(4, 3);
+      add_regs(1, 4, 3);
+      copy_regs(4, 1, 3);
+      add_words_frame(4, 3, -70);
+      mstore(A(0), {1, 2, 3, 4, 5, 6});
+      A(0) += 12;
+      movemw(A(3), 4, 3);
+      add_words_frame(4, 3, -82);
+      movemw(FP() - 88, 1, 3);
+      asr1(1, 3);
+      add_regs(4, 1, 3);
+      copy_regs(1, 4, 3);
+      add_words_frame(1, 3, -70);
+      mstore(A(0), {1, 2, 3, 4, 5, 6});
+      cpu().push32(A(3));
+      cpu().push32(A(2));
+      call_c(0x38c0c);
+      or_result();
+      A(2) = cpu().pop32();
+      A(3) = cpu().pop32();
+      WW(-58, RW(-58) - 1);
+      if (!(int16_t(RW(-58)) > 0)) break;
+      movemw(FP() - 88, 4, 3);                        // $3444c
+      add_words_frame(4, 3, -64);
+    }
+    WW(-56, RW(-56) - 1);
+    if (!(int16_t(RW(-56)) > 0)) break;
+    A(3) += 6;                                        // $3443e
+  }
+  pop_a1_a5();
+  setw(0, RW(-126));
+}
+void op_343b2() {
+  push_a1_a5();
+  wr32(0x5a9de, 0x000FFFFF);
+  wr16(0x5ac4c, next16());
+  strip_343ea();
+}
+void op_343c8() {
+  push_a1_a5();
+  wr16(0x5ac4c, 13);
+  set_5a9de(2, 0, 2, 0);
+  strip_343ea();
+}
+
+void op_344f8() {
+  push_a1_a5();
+  set_5a9de(15, 0xFFFF, 0, 0);
+  wr16(0x5ac4c, next16());
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  WW(-56, next16());
+  movemw(A(3), 1, 6);
+  A(3) += 12;
+  sub_words(1, 3, A(3));
+  mstore(FP() - 64, {1, 2, 3});
+  sub_words(4, 3, A(3));
+  mstore(FP() - 82, {4, 5, 6});
+  WW(-126, 0);
+  for (;;) {
+    WW(-58, next16());                                // $3454e
+    setw(4, 0);
+    setw(5, 0);
+    setw(6, 0);
+    for (;;) {
+      mstore(FP() - 88, {4, 5, 6});                   // $3456c
+      movemw(A(3), 1, 3);
+      asr1(4, 3);
+      add_regs(1, 4, 3);
+      mstore(0x61886, {1, 2, 3});
+      movemw(A(3), 1, 3);
+      add_words_frame(1, 3, -82);
+      add_regs(1, 4, 3);
+      mstore(0x6188c, {1, 2, 3});
+      cpu().push32(A(3));
+      cpu().push32(A(2));
+      call_c(0x43a56);
+      or_result();
+      A(2) = cpu().pop32();
+      A(3) = cpu().pop32();
+      WW(-58, RW(-58) - 1);
+      if (!(int16_t(RW(-58)) > 0)) break;
+      movemw(FP() - 88, 4, 3);                        // $3455a
+      add_words_frame(4, 3, -64);
+    }
+    WW(-56, RW(-56) - 1);
+    if (!(int16_t(RW(-56)) > 0)) break;
+    A(3) += 6;                                        // $3454c
+  }
+  pop_a1_a5();
+  setw(0, RW(-126));
+}
+
+// $345d0 / $345de: one quad from three vertices (v0, v1, v1+v2-v0)
+void quad_345e8() {
+  setw(3, 0);
+  mstore(0x5a9de, {0, 1, 2, 3});
+  wr16(0x5ac4c, next16());
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  push_a1_a2_a5();
+  A(0) = 0x61284;
+  wr32(A(0), 4);
+  A(0) += 4;
+  movemw(A(3), 2, 6);
+  A(3) += 12;
+  mstore(A(0), {2, 3, 4, 5, 6, 7});
+  setw(0, lo(4));
+  setw(0, lo(0) & lo(7));
+  A(0) += 12;
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  movemw(A(3), 2, 3);
+  setw(0, lo(0) & lo(4));
+  mstore(A(0), {2, 3, 4});
+  A(0) += 6;
+  setw(2, lo(2) - lo(5));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  setw(0, lo(0) & lo(4));
+  if (int16_t(lo(0)) < 0) {
+    pop_a1_a2_a5();
+    return ret(0);
+  }
+  mstore(A(0), {2, 3, 4});
+  call_c(0x38c0c);
+  pop_a1_a2_a5();
+}
+void op_345d0() {
+  setw(0, 2);
+  setw(1, 0);
+  setw(2, 2);
+  quad_345e8();
+}
+void op_345de() {
+  setw(0, 8);
+  setw(1, 8);
+  setw(2, 0);
+  quad_345e8();
+}
+
+// $34654-$347de: vertex-list transforms that edit the table at a3 in place
+void shift_d345(int cnt_reg) {                        // asw/asl d3-d5 by count
+  if (int16_t(lo(cnt_reg)) < 0) {
+    negw(cnt_reg);
+    for (int r = 3; r <= 5; ++r) setw(r, asr16(lo(r), D(cnt_reg)));
+  } else {
+    for (int r = 3; r <= 5; ++r) setw(r, asl16(lo(r), D(cnt_reg)));
+  }
+}
+void a4_sub(int r) { A(4) -= uint32_t(e16(lo(r))); }
+void a4_add(int r) { A(4) += uint32_t(e16(lo(r))); }
+void head_34654(uint32_t off, uint32_t st1, uint32_t st2) {
+  movemw(A(3) + off, 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + off + 16)));
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  setw(5, lo(5) - uint16_t(A(4)));
+  swapw(0);
+  setw(0, next16());
+  shift_d345(0);
+  swapw(0);
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  a4_sub(5);
+  mstore(A(3) + st1, {6, 7, 12});
+  setw(6, lo(6) - lo(0));
+  setw(7, lo(7) - lo(1));
+  a4_sub(2);
+  mstore(A(3) + st2, {6, 7, 12});
+}
+void step_6(uint32_t store_off) {                     // movemw (a3)+,d6-d7/a4; +d0..d2
+  movemw(A(3), 6, 2);
+  A(4) = uint32_t(e16(rd16(A(3) + 4)));
+  A(3) += 6;
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + store_off, {6, 7, 12});
+}
+void op_346a8() {
+  movemw(A(3), 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + 16)));
+  A(3) += 18;
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 6, {6, 7, 12});
+  step_6(6);
+  swapw(0);
+  swapw(1);
+  swapw(2);
+  setw(0, lo(3));
+  setw(1, lo(4));
+  setw(2, lo(5));
+  movemw(A(3) - 12, 3, 5);
+  A(4) = uint32_t(e16(rd16(A(3) - 12 + 10)));
+  setw(3, lo(3) - lo(0));
+  setw(4, lo(4) - lo(1));
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) + lo(3));
+  setw(7, lo(7) + lo(4));
+  a4_add(5);
+  mstore(A(3) + 12, {6, 7, 12});
+  swapw(0);
+  swapw(1);
+  swapw(2);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 18, {6, 7, 12});
+  ret(0);
+}
+void op_34654() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  head_34654(6, 48, 54);
+  op_346a8();
+}
+void op_346a0() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  op_346a8();
+}
+void tail_3475c() {
+  movemw(A(3), 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + 16)));
+  A(3) += 18;
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 18, {6, 7, 12});
+  for (int i = 0; i < 3; ++i) step_6(18);
+  swapw(0);
+  swapw(1);
+  swapw(2);
+  setw(0, lo(3));
+  setw(1, lo(4));
+  setw(2, lo(5));
+  movemw(A(3) - 24, 3, 3);
+  movemw(A(3) - 6, 6, 2);
+  A(4) = uint32_t(e16(rd16(A(3) - 6 + 4)));
+  setw(3, lo(3) - lo(0));
+  setw(4, lo(4) - lo(1));
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) + lo(3));
+  setw(7, lo(7) + lo(4));
+  a4_add(5);
+  mstore(A(3) + 24, {6, 7, 12});
+  swapw(0);
+  swapw(1);
+  swapw(2);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 30, {6, 7, 12});
+  ret(0);
+}
+void op_34708() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  head_34654(12, 72, 78);
+  tail_3475c();
+}
+void op_34754() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  tail_3475c();
+}
+
+// $347ec: list of quads (four vertex indices each, list ends with a negative word)
+void op_347ec() {
+  push_a1_a5();
+  wr16(0x5ac4c, 12);
+  set_5a9de(8, 8, 0, 0);
+  WW(-126, 0);
+  wr32(0x61284, 4);
+  for (;;) {
+    setw(1, next16());                                // $3481a
+    if (int16_t(lo(1)) < 0) break;
+    movemw(A(2), 2, 3);
+    A(2) += 6;
+    A(0) = 0x61288;
+    A(3) = 0x5d684;
+    for (int i = 1; i <= 4; ++i) {
+      A(4) = A(3) + uint32_t(e16(lo(i)));
+      wr32(A(0), rd32(A(4)));
+      A(0) += 4;
+      A(4) += 4;
+      wr16(A(0), rd16(A(4)));
+      A(0) += 2;
+      if (i == 1) setw(6, rd16(A(4)));
+      else setw(6, lo(6) & rd16(A(4)));
+    }
+    if (int16_t(lo(6)) < 0) continue;
+    cpu().push32(A(2));
+    call_c(0x38c0c);
+    or_result();
+    A(2) = cpu().pop32();
+  }
+  pop_a1_a5();
+  setw(0, RW(-126));
+}
+
+// $34872: strip of parallelograms along an extrusion vector
+void op_34872() {
+  set_5a9de(2, 0, 2, 0);
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  WW(-56, next16());
+  push_a1_a2_a5();
+  movemw(A(3), 1, 6);
+  A(3) += 12;
+  sub_words(1, 3, A(3) + 6);
+  sub_words(4, 3, A(3) + 6);
+  for (int r = 4; r <= 6; ++r) {
+    setw(7, lo(r));
+    setw(7, lo(7) + lo(7));
+    setw(r, lo(r) + lo(7));
+  }
+  asr1(4, 3);
+  add_regs(4, 1, 3);
+  mstore(FP() - 70, {4, 5, 6});
+  movemw(A(3), 1, 3);
+  A(3) += 6;
+  sub_words(1, 3, A(3));
+  mstore(FP() - 82, {1, 2, 3});
+  WW(-126, 0);
+  A(0) = 0x61284;
+  wr32(A(0), 4);
+  A(0) += 4;
+  for (;;) {
+    A(0) = 0x61288;                                   // $34900
+    movemw(A(3), 1, 3);
+    copy_regs(4, 1, 3);
+    add_words_frame(4, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    A(0) += 12;
+    movemw(A(3), 4, 3);
+    add_words_frame(4, 3, -82);
+    copy_regs(1, 4, 3);
+    add_words_frame(1, 3, -70);
+    mstore(A(0), {1, 2, 3, 4, 5, 6});
+    cpu().push32(A(3));
+    call_c(0x38c0c);
+    or_result();
+    A(3) = cpu().pop32();
+    WW(-56, RW(-56) - 1);
+    if (!(int16_t(RW(-56)) > 0)) break;
+    A(3) += 6;                                        // $348fe
+  }
+  pop_a1_a2_a5();
+  setw(0, RW(-126));
+}
+
+// $34968: n triangles/quads copied straight from the vertex table
+void op_34968() {
+  setw(0, next16());
+  setw(1, lo(0) & 63);
+  wr16(0x5ac4c, lo(1));
+  setw(0, lo(0) >> 8);
+  WW(-48, lo(0));
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  push_a1_a2_a5();
+  WW(-126, 0);
+  do {
+    movemw(A(3), 0, 6);                               // $3498c
+    A(3) += 12;
+    mstore(0x61886, {0, 1, 2, 3, 4, 5});
+    cpu().push32(A(3));
+    call_c(0x43a56);
+    or_result();
+    A(3) = cpu().pop32();
+    WW(-48, RW(-48) - 1);
+  } while (int16_t(RW(-48)) > 0);
+  pop_a1_a2_a5();
+  setw(0, RW(-126));
+}
+void op_349b6() {
+  setw(0, next16());
+  setw(1, lo(0) & 63);
+  wr16(0x5ac4c, lo(1));
+  setw(0, lo(0) >> 8);
+  WW(-48, lo(0));
+  setw(0, next16());
+  A(3) = 0x5d684;
+  movemw(A(3) + uint32_t(e16(lo(0))), 2, 6);
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  A(4) = uint32_t(e16(lo(5)));
+  A(3) += uint32_t(e16(next16()));
+  push_a1_a2_a5();
+  WW(-126, 0);
+  do {
+    movemw(A(3), 0, 6);                               // $349ea
+    A(3) += 12;
+    setw(0, lo(0) - uint16_t(A(4)));
+    setw(1, lo(1) - lo(6));
+    setw(2, lo(2) - lo(7));
+    setw(3, lo(3) - uint16_t(A(4)));
+    setw(4, lo(4) - lo(6));
+    setw(5, lo(5) - lo(7));
+    mstore(0x61886, {0, 1, 2, 3, 4, 5});
+    cpu().push32(A(3));
+    cpu().a[7] -= 6;
+    wr16(cpu().a[7], lo(6));
+    wr16(cpu().a[7] + 2, lo(7));
+    wr16(cpu().a[7] + 4, uint16_t(A(4)));
+    call_c(0x43a56);
+    or_result();
+    movemw(cpu().a[7], 6, 2);
+    A(4) = uint32_t(e16(rd16(cpu().a[7] + 4)));
+    cpu().a[7] += 6;
+    A(3) = cpu().pop32();
+    WW(-48, RW(-48) - 1);
+  } while (int16_t(RW(-48)) > 0);
+  pop_a1_a2_a5();
+  setw(0, RW(-126));
+}
+
 }  // namespace
 
 NATIVE_ASM(0x335b0, op_335b0, true);
@@ -1103,5 +1679,20 @@ NATIVE_ASM(0x33f8e, op_33f8e, true);
 NATIVE_ASM(0x33fb6, op_33fb6, true);
 NATIVE_ASM(0x33fba, op_33fba, true);
 NATIVE_ASM(0x34094, op_34094, true);
+NATIVE_ASM(0x341d0, op_341d0, true);
+NATIVE_ASM(0x341e2, op_341e2, true);
+NATIVE_ASM(0x343b2, op_343b2, true);
+NATIVE_ASM(0x343c8, op_343c8, true);
+NATIVE_ASM(0x344f8, op_344f8, true);
+NATIVE_ASM(0x345d0, op_345d0, true);
+NATIVE_ASM(0x345de, op_345de, true);
+NATIVE_ASM(0x34654, op_34654, true);
+NATIVE_ASM(0x346a0, op_346a0, true);
+NATIVE_ASM(0x34708, op_34708, true);
+NATIVE_ASM(0x34754, op_34754, true);
+NATIVE_ASM(0x347ec, op_347ec, true);
+NATIVE_ASM(0x34872, op_34872, true);
+NATIVE_ASM(0x34968, op_34968, true);
+NATIVE_ASM(0x349b6, op_349b6, true);
 
 }  // namespace native
