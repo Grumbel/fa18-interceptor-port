@@ -28,6 +28,7 @@
 namespace remaster {
 
 namespace {
+inline int pl2(const char* s) { return atoi(s); }
 using native::rd16;
 using native::rd32;
 using native::rd8;
@@ -36,6 +37,7 @@ constexpr int W = 320;
 
 struct PlaneOps {
   uint8_t set = 0, clr = 0, xr = 0;  // per display-plane bit masks
+  int8_t cp_src = -1, cp_dst = -1;   // copy plane cp_src into cp_dst ($45014)
 };
 
 struct Layer {
@@ -56,6 +58,7 @@ std::vector<Layer> layers;      // small ring (double/triple buffering)
 Layer* cur = nullptr;
 bool in_scene = false;
 bool gf_begun = false;    // layer was started by game_frame
+void on_polygon();
 bool pending_3d = false;  // a 3D polygon was rendered; its $44b50 fill follows
 uint64_t stat_poly = 0, stat_line = 0;
 
@@ -80,6 +83,13 @@ PlaneOps poly_ops() {
   PlaneOps o;
   uint16_t mask = uint16_t(rd16(0x5a9de)) & 15;
   int16_t w1 = int16_t(rd16(0x5a9e0));
+  if (w1 >= 0 && rd16(0x5a9e4) != 0) {
+    // $45014: inside the polygon plane tbl[1] (display plane 2) := plane
+    // tbl[0] (display plane 3)
+    o.cp_src = 3;
+    o.cp_dst = 2;
+    return o;
+  }
   uint16_t w2 = rd16(0x5a9e2);
   uint16_t col = rd16(0x5ac4c);
   for (int b = 0; b < 4; ++b) {
@@ -112,6 +122,7 @@ PlaneOps line_ops() {
 
 inline void put(Layer& L, int x, int y, const PlaneOps& o) {
   uint8_t& p = L.px[size_t(y) * size_t(W * L.S) + size_t(x)];
+  if (o.cp_src >= 0) p = uint8_t((p & ~(1 << o.cp_dst)) | (((p >> o.cp_src) & 1) << o.cp_dst));
   p = uint8_t(((p & ~o.clr) | o.set) ^ o.xr);
   L.cover[size_t(y / L.S) * W + size_t(x / L.S)] = 1;
 }
@@ -231,6 +242,20 @@ std::vector<V3> clip_near(const std::vector<V3>& in, double zmin) {
   return out;
 }
 
+bool skip_38c0c = false;  // $38c0a falls into $38c0c: handle a call once
+
+void on_polygon_via_38c0a() {
+  skip_38c0c = true;
+  on_polygon();
+}
+void on_polygon_via_38c0c() {
+  if (skip_38c0c) {
+    skip_38c0c = false;
+    return;
+  }
+  on_polygon();
+}
+
 void on_polygon() {
   pending_3d = false;
   if (!first_prim()) return;
@@ -243,6 +268,13 @@ void on_polygon() {
     auto sh = [&](int16_t v) { return double(int16_t(uint32_t(int32_t(v)) << (shift & 31))); };
     pts.push_back({sh(int16_t(rd16(a))), sh(int16_t(rd16(a + 2))), sh(int16_t(rd16(a + 4)))});
   }
+  if (const char* pl = getenv("FA18_POLYLOG")) {
+    if (native::g_machine->frame_count() / 4 == uint64_t(atoi(pl)) / 4) {
+      std::fprintf(stderr, "[poly] st=%04x %04x %04x %04x col=%04x n=%d shift=%d first=(%d,%d,%d)\n",
+                   rd16(0x5a9de), rd16(0x5a9e0), rd16(0x5a9e2), rd16(0x5a9e4), rd16(0x5ac4c), n,
+                   shift, int(pts[0].x), int(pts[0].y), int(pts[0].z));
+    }
+  }
   auto clipped = clip_near(pts, 1.0);
   if (clipped.size() < 3) return;
   std::vector<V2> sp;
@@ -253,7 +285,21 @@ void on_polygon() {
 }
 
 void on_fill2d() {
-  if (pending_3d) { pending_3d = false; return; }
+  if (const char* pl = getenv("FA18_POLYLOG")) {
+    if (native::g_machine->frame_count() / 4 == uint64_t(atoi(pl)) / 4)
+      std::fprintf(stderr, "[fill2d] pending3d=%d in_scene=%d st=%04x %04x %04x %04x col=%04x n=%d p0=(%d,%d)\n",
+                   pending_3d, in_scene, rd16(0x5a9de), rd16(0x5a9e0), rd16(0x5a9e2), rd16(0x5a9e4),
+                   rd16(0x5ac4c), int16_t(rd16(0x60684)), int16_t(rd16(0x60686)), int16_t(rd16(0x60688)));
+    if (native::g_machine->frame_count() / 4 == uint64_t(pl2(pl)) / 4) {
+      int n2 = int16_t(rd16(0x60684));
+      for (int i = 0; i < n2 && i < 8; ++i)
+        std::fprintf(stderr, "    v%d=(%d,%d)", i, int16_t(rd16(0x60686 + 4u * i)), int16_t(rd16(0x60688 + 4u * i)));
+      std::fprintf(stderr, "\n");
+    }
+  }
+  // the fill of a 3D polygon ($38c0c calls $44b50 from $392cc) was rendered
+  // from the 3D data already; anything else is a 2D polygon of its own
+  if (rd32(native::g_machine->cpu.a[7]) == 0x392d2) return;
   if (!first_prim()) return;
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
@@ -262,6 +308,26 @@ void on_fill2d() {
     sp.push_back({double(int16_t(rd16(0x60686 + 4u * uint32_t(i)))) + 0.5,
                   double(int16_t(rd16(0x60688 + 4u * uint32_t(i)))) + 0.5});
   fill_polygon(*cur, sp, poly_ops());
+}
+
+// $44994 (horizon: sky/ground/sea planes) fills its screen-space polygon
+// through $44dfe directly, not through $44b50: observe the return of $44dfe at $44b00
+void on_fill_horizon() {
+  pending_3d = false;
+  // called at the return of $44dfe (bounds/edge set-up): Z set = polygon is
+  // visible and gets filled (bnes $44b14 otherwise)
+  if (!native::g_machine->cpu.fz) return;
+  if (rd8(0x5ab93) == 0) return;            // no second colour: sky fill only
+  if (!first_prim()) return;
+  int n = int16_t(rd16(0x60684));
+  if (n < 3 || n > 60) return;
+  std::vector<V2> sp;
+  for (int i = 0; i < n; ++i)
+    sp.push_back({double(int16_t(rd16(0x60686 + 4u * uint32_t(i)))) + 0.5,
+                  double(int16_t(rd16(0x60688 + 4u * uint32_t(i)))) + 0.5});
+  PlaneOps o;
+  o.clr = 1 << 1;  // $4506e with d0=8, d3=0: clear display plane 1 inside the polygon
+  fill_polygon(*cur, sp, o);
 }
 
 // $4397c: line between two points that must lie inside the frustum (no clipping)
@@ -406,6 +472,13 @@ void scene_end() {
   for (size_t i = 0; i < cur->snap.size(); ++i)
     cur->unexplained[i] = (cur->snap[i] != cur->s0[i]) && !cur->cover[i];
   cur->done = true;
+  if (getenv("FA18_PIXLOG")) {
+    int x = 40, y = 100;
+    std::fprintf(stderr, "[pix] frame %llu s0=%d snap=%d px=%d cover=%d prims=%d\n",
+                 (unsigned long long)native::g_machine->frame_count(), cur->s0[size_t(y) * W + x],
+                 cur->snap[size_t(y) * W + x], cur->px[size_t(y * cur->S) * size_t(W * cur->S) + size_t(x * cur->S)],
+                 cur->cover[size_t(y) * W + x], cur->prims);
+  }
   if (getenv("FA18_HIRES_STATS")) {
     int u = 0, ch = 0, ex = 0;
     for (size_t i = 0; i < cur->snap.size(); ++i) {
@@ -430,6 +503,7 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x43a56, [] { on_line(); });
   m.add_pc_hook(0x4397c, [] { on_line_noclip(); });
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });
+  m.add_pc_hook(0x44b00, [] { on_fill_horizon(); });
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
   m.add_pc_hook(0x438a8, [] { on_point(-4); });
