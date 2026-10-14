@@ -98,10 +98,12 @@ Done (all verified by the gate):
   $31c9c/$31d64 and the distant variant $32d64/$32d72 with their
   subroutines ($3223e, $328ea, $32adc/$32aec, $32b92, $32f6e), polygon
   ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Still original: the
-  op handlers behind the jump table at $33478 ($33160, $33fda, ...).
+  op handlers behind the jump table at $33478 (see ops.cpp, below).
 - scene draw top (scenedraw.cpp): camera position $2f220 and the object
-  draw loop $2fc14 with helpers $2fffc/$3000e. Next: the op handlers
-  behind the jump table at $33478 ($33160, $33fda), then HUD / object AI.
+  draw loop $2fc14 with helpers $2fffc/$3000e. Op handlers behind
+  the jump table at $33478 are in ops.cpp up to $34a26 (continue at
+  $34a28; read-verified only, no scenario hits them: $335f8, $33de6,
+  $33e74, $34708, $34754); then HUD / object AI.
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
