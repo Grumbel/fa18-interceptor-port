@@ -47,6 +47,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
 - `--analog` (F9 toggles): gamepad left stick drives pitch/rudder
   deflection analog (hook in `process_control_input`, controls.cpp);
   scripted runs ignore real pads; script command `analog <x> <y>|off`.
+- `--hires N` (N=2..8): the 3D view is re-rendered at N times resolution
+  from the original view-space polygons/lines (`src/native/hires.cpp`);
+  the original rasteriser keeps running, so game state is identical.
+  Observed via pc hooks (`Machine::add_pc_hook`) on $38c0c (polygons),
+  $43a56/$4397c (lines), $44b50 (2D fills); compose() uses the hi-res
+  layer where the game did not draw after the scene ended (HUD/cockpit
+  stay low-res) and falls back to low-res for changes it could not
+  explain. `FA18_HIRES_DEBUG=1` paints the fall-back pixels magenta.
 
 ## Tools
 - `tools/adf.py list|extract` — OFS ADF reader

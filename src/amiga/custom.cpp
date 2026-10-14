@@ -277,7 +277,19 @@ void Machine::render_line(int line) {
     return;
   }
   for (int x = 0; x < FB_W; ++x) out[x] = bg;
+  const bool rec = hires_scale > 0;
+  if (rec) {
+    if (idx_.empty()) {
+      idx_.assign(size_t(FB_W) * FB_H, 0);
+      row_key_.assign(FB_H, 0);
+      row_pal_.assign(size_t(FB_H) * 32, 0);
+    }
+    std::fill(idx_.begin() + long(fy) * FB_W, idx_.begin() + long(fy + 1) * FB_W, 0);
+    row_key_[size_t(fy)] = 0;
+    for (int i = 0; i < 32; ++i) row_pal_[size_t(fy) * 32 + size_t(i)] = rgb12(cs_.color_[i]);
+  }
   if (!active) return;
+  if (rec) row_key_[size_t(fy)] = cs_.bplpt_[0];
 
   int nwords = hires ? (cs_.ddfstop_ - cs_.ddfstrt_) / 4 + 2 : (cs_.ddfstop_ - cs_.ddfstrt_) / 8 + 1;
   if (nwords <= 0 || nwords > 64) nwords = 20;
@@ -331,7 +343,10 @@ void Machine::render_line(int line) {
     }
     if (hx < hstart || hx >= hstop) continue;
     int fx = hx - FB_HSTART;
-    if (fx >= 0 && fx < FB_W) out[fx] = rgb;
+    if (fx >= 0 && fx < FB_W) {
+      out[fx] = rgb;
+      if (rec) idx_[size_t(fy) * FB_W + size_t(fx)] = uint8_t(c & 31);
+    }
   }
 }
 

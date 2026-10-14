@@ -8,6 +8,7 @@
 // Register-convention assembly on the live register file.
 #include "native/asmregs.hpp"
 #include "native/orig.hpp"
+#include "native/remaster.hpp"
 #include "native/vars.hpp"
 
 namespace native {
@@ -151,7 +152,7 @@ void h3000e() {
 }
 
 // ---- $2fc14 ---------------------------------------------------------------
-void draw_scene_2fc14() {
+void draw_scene_body() {
   wr8(0x5ab5c, 1);
   wr8(0x5ab53, 4);
   wr8(0x5abb5, 0);
@@ -427,6 +428,11 @@ L2ff2e:
     }
     setw(0, lo(0) + 512);
   } while (int16_t(lo(0)) < 8192);
+}
+void draw_scene_2fc14() {
+  if (remaster::scene_hooks) remaster::scene_begin();
+  draw_scene_body();
+  if (remaster::scene_hooks) remaster::scene_end();
 }
 NATIVE_ASM(0x2fc14, draw_scene_2fc14, true);
 

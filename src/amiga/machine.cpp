@@ -193,6 +193,7 @@ void Machine::setup_native() {
   native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
   // FA18_NATIVE_SKIP=name1,name2 disables individual native routines
   // (FA18_NATIVE_ONLY=... enables only the listed ones); for bisecting.
+  if (hires_scale > 0 || getenv("FA18_PRIMCOUNT")) remaster::install(*this);
   native::for_each([](const native::Def& d) {
     amiga::Machine& m = *native::g_machine;
     auto listed = [&](const char* env) {
@@ -206,6 +207,12 @@ void Machine::setup_native() {
     uint32_t idx = (d.addr - LOAD_BASE) >> 1;
     if (idx < m.native_table_.size()) m.native_table_[idx] = &d;
   });
+}
+
+void Machine::add_pc_hook(uint32_t addr, std::function<void()> fn) {
+  size_t idx = (addr - LOAD_BASE) >> 1;
+  if (pc_hooks_.size() <= idx) pc_hooks_.resize(idx + 1, nullptr);
+  pc_hooks_[idx] = new std::function<void()>(std::move(fn));
 }
 
 void Machine::invoke_native(const native::Def* d) {
@@ -515,7 +522,10 @@ void Machine::end_of_frame() {
     last_lv = loadview_count;
   }
   if (host_) {
-    host_->frame(fb_.data());
+    if (hires_scale > 0 && remaster::compose(*this, hires_fb_))
+      host_->frame_hires(hires_fb_.data(), FB_W * hires_scale, FB_H * hires_scale);
+    else
+      host_->frame(fb_.data());
     host_->audio(audio_buf_.data(), audio_buf_.size() / 2);
   }
   audio_buf_.clear();
@@ -561,6 +571,10 @@ void Machine::execute(int64_t until) {
       log(" a:");
       for (int i = 0; i < 8; ++i) log(" %08x", cpu.a[i]);
       log("\n");
+    }
+    if (!pc_hooks_.empty() && !in_reference_) {
+      uint32_t hidx = (pc - LOAD_BASE) >> 1;
+      if (hidx < pc_hooks_.size() && pc_hooks_[hidx] && !(pc & 1)) (*pc_hooks_[hidx])();
     }
     if (native_mode != NativeMode::Off && !in_reference_) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;

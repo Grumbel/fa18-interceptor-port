@@ -371,9 +371,18 @@ public:
     pad_set_held(0x1B, ry > rdead);   // ]
   }
 
-  void frame(const uint32_t* fb) override {
+  int tex_w = amiga::FB_W, tex_h = amiga::FB_H;
+  void frame(const uint32_t* fb) override { present(fb, amiga::FB_W, amiga::FB_H); }
+  void frame_hires(const uint32_t* fb, int w, int h) override { present(fb, w, h); }
+  void present(const uint32_t* fb, int w, int h) {
     ++frame_no;
-    SDL_UpdateTexture(tex, nullptr, fb, amiga::FB_W * 4);
+    if (w != tex_w || h != tex_h) {
+      SDL_DestroyTexture(tex);
+      tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+      tex_w = w;
+      tex_h = h;
+    }
+    SDL_UpdateTexture(tex, nullptr, fb, w * 4);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
@@ -464,8 +473,8 @@ public:
   void save_screenshot(const uint32_t* fb) {
     FILE* f = fopen(screenshot_path.c_str(), "wb");
     if (!f) return;
-    fprintf(f, "P6\n%d %d\n255\n", amiga::FB_W, amiga::FB_H);
-    for (int i = 0; i < amiga::FB_W * amiga::FB_H; ++i) {
+    fprintf(f, "P6\n%d %d\n255\n", tex_w, tex_h);
+    for (int i = 0; i < tex_w * tex_h; ++i) {
       uint8_t px[3] = {uint8_t(fb[i] >> 16), uint8_t(fb[i] >> 8), uint8_t(fb[i])};
       fwrite(px, 1, 3, f);
     }
@@ -516,6 +525,7 @@ void usage() {
           "  --screenshot N FILE  save frame N as PPM\n"
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
+          "  --hires N        remaster: render the 3D view at N times resolution\n"
           "  --analog         remaster: analog flight stick (left stick); F9 toggles\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
@@ -540,6 +550,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
+  int hires = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
@@ -558,6 +569,7 @@ int main(int argc, char** argv) {
     else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
+    else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
@@ -600,6 +612,7 @@ int main(int argc, char** argv) {
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
   machine.analog_enabled = analog;
+  machine.hires_scale = std::max(0, std::min(8, hires));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
   machine.vbl_time = vbl_time;

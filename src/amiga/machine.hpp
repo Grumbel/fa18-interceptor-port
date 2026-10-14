@@ -19,6 +19,13 @@
 
 namespace native { struct Def; }
 
+namespace amiga { class Machine; }
+namespace remaster {
+void install(amiga::Machine& m);
+// Build the composed hi-res frame; false if not available this frame.
+bool compose(amiga::Machine& m, std::vector<uint32_t>& out);
+}
+
 namespace amiga {
 
 constexpr uint32_t RAM_SIZE = 8 * 1024 * 1024;
@@ -67,6 +74,8 @@ struct Host {
   virtual ~Host() = default;
   // Called once per emulated frame with the 320×200 RGB888 framebuffer.
   virtual void frame(const uint32_t* fb) = 0;
+  // Remaster: same frame at a higher resolution (w x h RGB888).
+  virtual void frame_hires(const uint32_t* fb, int w, int h) { (void)fb; (void)w; (void)h; }
   // Audio samples (interleaved stereo, signed 16-bit) produced this frame.
   virtual void audio(const int16_t* samples, size_t frames) = 0;
   virtual int audio_rate() const { return 48000; }
@@ -120,6 +129,17 @@ public:
   // x: -1 left .. +1 right, y: -1 up .. +1 down (SDL convention).  While
   // analog_active the native control code replaces the digitally ramped
   // elevator/rudder deflections of the player aircraft.
+  // Register an observer for the routine entry at `addr` (see execute()).
+  void add_pc_hook(uint32_t addr, std::function<void()> fn);
+
+  uint64_t frame_count() const { return frame_count_; }
+  uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
+  // Scan-out data of the last rendered frame (see remaster::compose)
+  const uint32_t* frame_rgb() const { return fb_.data(); }
+  const uint8_t* frame_idx() const { return idx_.data(); }
+  const uint32_t* frame_row_key() const { return row_key_.data(); }
+  const uint32_t* frame_row_pal() const { return row_pal_.data(); }
+  int hires_scale = 0;  // remaster: 3D view render scale (0 = off)
   bool analog_enabled = false;
   bool analog_active = false;
   float analog_x = 0.0f, analog_y = 0.0f;
@@ -266,6 +286,11 @@ private:
   } cs_;
   // display
   std::vector<uint32_t> fb_;
+  std::vector<uint32_t> hires_fb_;
+  // Remaster scan-out records (filled only when hires_scale > 0)
+  std::vector<uint8_t> idx_;          // palette index per low-res pixel
+  std::vector<uint32_t> row_key_;     // plane-0 pointer at the start of each row
+  std::vector<uint32_t> row_pal_;     // 32 RGB entries per row
   // audio
   std::vector<int16_t> audio_buf_;
   double audio_frac_ = 0;
@@ -280,6 +305,9 @@ private:
 
   // native code
   std::vector<const native::Def*> native_table_;
+  // Observation hooks (remaster): called when execution reaches an address,
+  // before the routine runs; they must not change machine state.
+  std::vector<std::function<void()>*> pc_hooks_;
   bool in_reference_ = false;
  public:
   uint32_t native_entry_sp_ = 0;  // a7 at entry of the running native C function
