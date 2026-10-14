@@ -2356,6 +2356,285 @@ void op_353ba() {
   sub_353d8();
 }
 
+// ---- $35412-$35878: lattice / subdivision ops --------------------------------
+void ld6a(uint32_t a) {                               // movem.w a,d3-d7/a4
+  movemw(a, 3, 5);
+  A(4) = uint32_t(e16(rd16(a + 10)));
+}
+void ld3a(uint32_t a) {                               // movem.w a,d6-d7/a4
+  movemw(a, 6, 2);
+  A(4) = uint32_t(e16(rd16(a + 4)));
+}
+void add_a4w(int r) { setw(r, lo(r) + uint16_t(A(4))); }
+void sub_a4w(int r) { setw(r, lo(r) - uint16_t(A(4))); }
+void add6_a4(int r) {                                 // d6,d7,a4 += d<r>..d<r+2>
+  setw(6, lo(6) + lo(r));
+  setw(7, lo(7) + lo(r + 1));
+  A(4) += uint32_t(e16(lo(r + 2)));
+}
+void sub6_a4(int r) {                                 // d6,d7,a4 -= d<r>..
+  setw(6, lo(6) - lo(r));
+  setw(7, lo(7) - lo(r + 1));
+  A(4) -= uint32_t(e16(lo(r + 2)));
+}
+void add_a4_to(int r) {                               // d<r>..d<r+2> += d6,d7,a4w
+  setw(r, lo(r) + lo(6));
+  setw(r + 1, lo(r + 1) + lo(7));
+  add_a4w(r + 2);
+}
+void sub_a4_from(int r) {
+  setw(r, lo(r) - lo(6));
+  setw(r + 1, lo(r + 1) - lo(7));
+  sub_a4w(r + 2);
+}
+void st(uint32_t off, std::initializer_list<int> regs) { mstore(A(3) + off, regs); }
+
+void sub_35462() {
+  load9(A(3) + 18);
+  sub6_a4(0);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(150, {3, 4, 5});
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  sub_a4w(5);
+  sub_words(0, 3, A(3) + 48);
+  add_regs(3, 0, 3);
+  st(102, {3, 4, 5});
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(138, {3, 4, 5});
+  ld6a(A(3) + 6);
+  movemw(A(3) + 36, 0, 3);
+  sub_regs(3, 0, 3);
+  negw(3);
+  negw(4);
+  negw(5);
+  add_regs(0, 3, 3);
+  st(162, {0, 1, 2});
+  add6_a4(3);
+  st(108, {6, 7, 12});
+  add6_a4(3);
+  st(168, {6, 7, 12});
+  ld3a(A(3) + 54);
+  add6_a4(3);
+  st(156, {6, 7, 12});
+  setw(6, lo(3));
+  setw(7, lo(4));
+  A(4) = uint32_t(e16(lo(5)));
+  asr1(3, 3);
+  movemw(A(3) + 42, 0, 3);
+  add_regs(0, 3, 3);
+  st(114, {0, 1, 2});
+  movemw(A(3) + 96, 0, 3);
+  add_regs(0, 3, 3);
+  st(120, {0, 1, 2});
+  setw(6, lo(6) + lo(6));
+  setw(7, lo(7) + lo(7));
+  A(4) += uint32_t(e16(uint16_t(A(4))));
+  add6_a4(3);
+  movemw(A(3) + 18, 0, 3);
+  add_words_a3(0, 3, 24);
+  asr1(0, 3);
+  add_a4_to(0);
+  st(126, {0, 1, 2});
+  ld3a(A(3));
+  add_a4_to(0);
+  asr1(0, 3);
+  st(132, {0, 1, 2});
+  add6_a4(3);
+  st(174, {6, 7, 12});
+  movemw(A(3) + 48, 0, 3);
+  add_words_a3(0, 3, 66);
+  asr1(0, 3);
+  st(144, {0, 1, 2});
+}
+void op_35412() {
+  A(3) = 0x5b47c;
+  setw(0, rd16(0x5acae));
+  setw(0, lo(0) + 164);
+  A(3) += uint32_t(e16(lo(0)));
+  sub_35462();
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  sub_35462();
+  movemw(A(3) + 78, 0, 6);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  movemw(A(3) + 60, 0, 3);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(600, {3, 4, 5});
+  ret(0);
+}
+void op_35594() {
+  A(3) = 0x5d684;
+  load9(A(3));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  sub_a4w(5);
+  add_regs(0, 3, 3);
+  st(66, {0, 1, 2});
+  movemw(A(3) + 24, 3, 3);
+  sub6_a4(3);
+  add_a4_to(0);
+  st(72, {0, 1, 2});
+  movemw(A(3), 0, 6);
+  ld3a(A(3) + 18);
+  sub6_a4(3);
+  setw(0, lo(0) - lo(6));
+  setw(1, lo(1) - lo(7));
+  sub_a4w(2);
+  st(78, {0, 1, 2});
+  add_a4_to(0);
+  ld3a(A(3) + 36);
+  sub6_a4(3);
+  add_a4_to(0);
+  st(84, {0, 1, 2});
+  movemw(A(3) + 12, 0, 3);
+  add_a4_to(0);
+  st(90, {0, 1, 2});
+  movemw(A(3) + 66, 0, 3);
+  add_a4_to(0);
+  st(96, {0, 1, 2});
+  movemw(A(3) + 54, 0, 3);
+  ld6a(A(3) + 18);
+  setw(0, lo(0) - lo(6));
+  setw(1, lo(1) - lo(7));
+  sub_a4w(2);
+  add_regs(3, 0, 3);
+  st(102, {3, 4, 5});
+  ld6a(A(3) + 72);
+  add_regs(3, 0, 3);
+  add6_a4(0);
+  st(108, {3, 4, 5, 6, 7, 12});
+  movemw(A(3) + 30, 0, 3);
+  movemw(A(3) + 42, 3, 3);
+  sub_regs(3, 0, 3);
+  sub_regs(0, 3, 3);
+  sub_regs(0, 3, 3);
+  st(120, {0, 1, 2});
+  ret(0);
+}
+void op_35684() {
+  A(3) = 0x5d684;
+  load9(A(3) + 6);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  copy_regs(0, 3, 3);
+  sub6_a4(3);
+  sub_regs(3, 6, 2);
+  setw(5, lo(5) - uint16_t(A(4)));
+  st(30, {0, 1, 2, 3, 4, 5});
+  ld3a(A(3));
+  sub6_a4(0);
+  setw(6, asr16(lo(6), 2));
+  setw(7, asr16(lo(7), 2));
+  setw(0, lo(0) + lo(6));
+  setw(1, lo(1) + lo(7));
+  setw(6, uint16_t(A(4)));
+  setw(6, asr16(lo(6), 2));
+  setw(2, lo(2) + lo(6));
+  st(42, {0, 1, 2});
+  ld3a(A(3) + 24);
+  sub6_a4(3);
+  movemw(A(3) + 6, 0, 6);
+  add_a4_to(0);
+  add_a4_to(3);
+  st(48, {0, 1, 2, 3, 4, 5});
+  movemw(A(3) + 18, 0, 3);
+  add_a4_to(0);
+  st(60, {0, 1, 2});
+  movemw(A(3) + 42, 0, 3);
+  movemw(A(3), 3, 3);
+  sub_regs(3, 0, 3);
+  sub_regs(0, 3, 3);
+  sub_regs(0, 3, 3);
+  st(66, {0, 1, 2});
+  ret(0);
+}
+void sub_3574c() {
+  static const uint32_t offs[] = {0, 18, 42, 60, 78};
+  static const uint32_t dst[] = {96, 102, 108, 114, 120};
+  for (int i = 0; i < 5; ++i) {
+    load9(A(3) + offs[i]);
+    setw(6, lo(6) - lo(3));
+    setw(7, lo(7) - lo(4));
+    A(4) -= uint32_t(e16(lo(5)));
+    add_a4_to(0);
+    st(dst[i], {0, 1, 2});
+  }
+  ret(0);
+}
+void op_35730() {
+  A(3) = 0x5b47c;
+  setw(0, rd16(0x5acae));
+  setw(0, lo(0) + 164);
+  A(3) += uint32_t(e16(lo(0)));
+  sub_3574c();
+  A(3) = 0x5d684;
+  sub_3574c();
+}
+
+// $35832: line from vertex a3 (scaled by fp-8), length class -> $438a8
+void sub_35832() {
+  movemw(A(3), 3, 3);
+  setw(0, RW(-8));
+  for (int r = 3; r <= 5; ++r) setw(r, asl16(lo(r), D(0)));
+  cpu().a[7] -= 8;
+  mstore(cpu().a[7], {3, 4, 5, 6});
+  setw(0, lo(3));
+  if (int16_t(lo(0)) < 0) negw(0);
+  setw(1, lo(4));
+  if (int16_t(lo(1)) < 0) negw(1);
+  setw(2, lo(5));
+  if (int16_t(lo(2)) < 0) negw(2);
+  setw(4, lo(2));
+  setw(3, lo(1));
+  setw(2, lo(0));
+  call_c(0x308cc);
+  setw(7, lo(1));
+  movemw(cpu().a[7], 0, 3);
+  D(6) = uint32_t(e16(rd16(cpu().a[7] + 6)));
+  cpu().a[7] += 8;
+  if (int16_t(lo(7)) <= 0) {
+    setw(6, 127);
+  } else {
+    divuw(D(6), lo(7));
+    if (!(int16_t(lo(6)) <= 127)) setw(6, 127);
+  }
+  call_c(0x438a8);
+}
+void op_357d0() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  wr16(0x5ac4c, next16());
+  setw(6, next16());
+  push_a1_a2_a5();
+  sub_35832();
+  pop_a1_a2_a5();
+}
+void op_357ee() {
+  push_a1_a5();
+  WW(-126, 0);
+  WW(-110, 0);
+  while (RW(-110) == 0) {                             // $357fa
+    A(3) = 0x5d684 + uint32_t(e16(next16()));
+    wr16(0x5ac4c, next16());
+    setw(6, next16());
+    if (int16_t(lo(6)) < 0) {
+      WW(-110, RW(-110) + 1);
+      setw(6, lo(6) & 0x7FFF);
+    }
+    cpu().push32(A(2));
+    sub_35832();
+    or_result();
+    A(2) = cpu().pop32();
+  }
+  pop_a1_a5();
+  ret_fp126();
+}
+
 }  // namespace
 
 NATIVE_ASM(0x335b0, op_335b0, true);
@@ -2418,5 +2697,11 @@ NATIVE_ASM(0x3513a, op_3513a, true);
 NATIVE_ASM(0x351ac, op_351ac, true);
 NATIVE_ASM(0x352c4, op_352c4, true);
 NATIVE_ASM(0x353ba, op_353ba, true);
+NATIVE_ASM(0x35412, op_35412, true);
+NATIVE_ASM(0x35594, op_35594, true);
+NATIVE_ASM(0x35684, op_35684, true);
+NATIVE_ASM(0x35730, op_35730, true);
+NATIVE_ASM(0x357d0, op_357d0, true);
+NATIVE_ASM(0x357ee, op_357ee, true);
 
 }  // namespace native
