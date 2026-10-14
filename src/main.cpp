@@ -3,6 +3,8 @@
 
 #include <SDL.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -150,7 +152,8 @@ public:
     audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
     for (int i = 0; i < SDL_NumJoysticks(); ++i)
-      if (SDL_IsGameController(i)) { pad = SDL_GameControllerOpen(i); break; }
+      if (!script.empty()) break;  // scripted runs are deterministic: no real pad
+      else if (SDL_IsGameController(i)) { pad = SDL_GameControllerOpen(i); break; }
     next_frame = SDL_GetPerformanceCounter();
     return true;
   }
@@ -170,6 +173,11 @@ public:
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
+          if (sc == SDL_SCANCODE_F9 && down) {
+            machine->analog_enabled = !machine->analog_enabled;
+            std::printf("analog stick: %s\n", machine->analog_enabled ? "on (remaster)" : "off (original)");
+            break;
+          }
           if (sc == SDL_SCANCODE_F11 && down) {
             Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
             SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -194,7 +202,7 @@ public:
           break;
         }
         case SDL_CONTROLLERDEVICEADDED:
-          if (!pad) pad = SDL_GameControllerOpen(e.cdevice.which);
+          if (!pad && script.empty()) pad = SDL_GameControllerOpen(e.cdevice.which);
           break;
       }
     }
@@ -269,12 +277,31 @@ public:
     int rt = axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
 
     // --- flight stick (digital JOY1DAT); suppressed while a layer is held ---
+    machine->analog_active = false;
     if (!lb && !rb) {
       constexpr int dead = 12000;
-      up |= ly < -dead || du;
-      down |= ly > dead || dd;
-      left |= lx < -dead || dl;
-      right |= lx > dead || dr;
+      if (machine->analog_enabled) {
+        // Remaster: left stick is analog (radial dead zone, rescaled);
+        // the d-pad stays digital.
+        float fx = float(lx) / 32767.0f, fy = float(ly) / 32767.0f;
+        float m = std::sqrt(fx * fx + fy * fy);
+        constexpr float dz = 0.12f;
+        if (m > dz) {
+          float s = std::min(1.0f, (m - dz) / (1.0f - dz)) / m;
+          machine->analog_x = fx * s;
+          machine->analog_y = fy * s;
+          machine->analog_active = true;
+        }
+      } else {
+        up |= ly < -dead;
+        down |= ly > dead;
+        left |= lx < -dead;
+        right |= lx > dead;
+      }
+      up |= du;
+      down |= dd;
+      left |= dl;
+      right |= dr;
     }
     fire |= a;
 
@@ -386,7 +413,15 @@ public:
     }
     while (script_pos < script.size() && script[script_pos].frame <= frame_no) {
       const ScriptEvent& e = script[script_pos++];
-      if (e.cmd == "key" && !e.args.empty()) {
+      if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
+        if (e.args.size() >= 2) {
+          machine->analog_x = float(std::atof(e.args[0].c_str()));
+          machine->analog_y = float(std::atof(e.args[1].c_str()));
+          machine->analog_active = true;
+        } else {
+          machine->analog_active = false;
+        }
+      } else if (e.cmd == "key" && !e.args.empty()) {
         static const std::pair<const char*, const char*> alias[] = {
             {"lshift", "Left Shift"}, {"rshift", "Right Shift"}, {"ctrl", "Left Ctrl"},
             {"lalt", "Left Alt"}, {"ralt", "Right Alt"}, {"equals", "="}, {"minus", "-"},
@@ -481,6 +516,7 @@ void usage() {
           "  --screenshot N FILE  save frame N as PPM\n"
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
+          "  --analog         remaster: analog flight stick (left stick); F9 toggles\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
@@ -503,7 +539,7 @@ int main(int argc, char** argv) {
   std::string data_dir, save_dir;
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
-  bool verbose = false, trace = false, fast = false, protection = false;
+  bool verbose = false, trace = false, fast = false, protection = false, analog = false;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
@@ -521,6 +557,7 @@ int main(int argc, char** argv) {
     else if (a == "--screenshot" && i + 2 < argc) { shot_frame = std::atoi(argv[++i]); shot_path = argv[++i]; }
     else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
     else if (a == "--fast") fast = true;
+    else if (a == "--analog") analog = true;
     else if (a == "--protection") protection = true;
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
@@ -562,6 +599,7 @@ int main(int argc, char** argv) {
   if (!det_timing) machine.set_cpu_speed(speed);
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
+  machine.analog_enabled = analog;
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
   machine.vbl_time = vbl_time;

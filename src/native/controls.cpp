@@ -9,6 +9,7 @@
 // +32 handling flags, +38 / +102 / +106 / +108 / +110 state words, +40/+41/
 // +42 raw stick (pitch, roll, rudder) bytes, +86 / +88 / +90 elevator,
 // aileron and rudder deflections (words).
+#include <cmath>
 #include "native/globals.hpp"
 #include "native/orig.hpp"
 #include "native/vars.hpp"
@@ -162,6 +163,13 @@ static void process_control_input() {
       }
     }
     rec = R();
+    // Remaster: analog stick replaces the ramped digital deflections of the
+    // player (same ranges as the ramp at $2e128: pitch +-20, rudder +-60).
+    if (idx == 0 && mach().analog_enabled && mach().analog_active) {
+      auto ax = [](float v, int lim) { return int8_t(std::lround(v * float(lim))); };
+      wr8(rec + 40, uint8_t(ax(-mach().analog_y, 20)));   // up = positive
+      wr8(rec + 42, uint8_t(ax(mach().analog_x, 60)));    // right = positive (bits $04)
+    }
     int16_t k24 = int8_t(rd8(rec + 40));
     int16_t k26 = int8_t(rd8(rec + 41));
     int16_t k28 = int8_t(rd8(rec + 42));

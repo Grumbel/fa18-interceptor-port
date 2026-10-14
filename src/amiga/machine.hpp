@@ -116,6 +116,14 @@ public:
   void mouse_button(int button, bool down);  // 0 = left, 1 = right
   void joy_state(bool up, bool down, bool left, bool right, bool fire);
 
+  // Remaster option (default off = original behaviour): analog flight stick.
+  // x: -1 left .. +1 right, y: -1 up .. +1 down (SDL convention).  While
+  // analog_active the native control code replaces the digitally ramped
+  // elevator/rudder deflections of the player aircraft.
+  bool analog_enabled = false;
+  bool analog_active = false;
+  float analog_x = 0.0f, analog_y = 0.0f;
+
   // ---- bus ----------------------------------------------------------------
   uint8_t io_read8(uint32_t addr) override;
   uint16_t io_read16(uint32_t addr) override;

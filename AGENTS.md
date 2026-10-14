@@ -41,6 +41,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   header per hunk); `tools/loadseg.py` and `tools/disasm.py` use the same
   layout, so disassembly addresses equal runtime addresses
 
+## Remaster options (off by default; original behaviour untouched)
+- Enhancements are runtime options, never part of the translated routines'
+  default path, so the gate always runs the original behaviour.
+- `--analog` (F9 toggles): gamepad left stick drives pitch/rudder
+  deflection analog (hook in `process_control_input`, controls.cpp);
+  scripted runs ignore real pads; script command `analog <x> <y>|off`.
+
 ## Tools
 - `tools/adf.py list|extract` — OFS ADF reader
 - `tools/hunks.py` — hunk table; `tools/loadseg.py` — relocated flat image
