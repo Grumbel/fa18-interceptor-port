@@ -29,6 +29,8 @@ template <typename R, typename... A> struct FnArgs<R (*)(A...)> {
 
 extern amiga::Machine* g_machine;
 inline amiga::Machine& mach() { return *g_machine; }
+// Continue in the game's main loop after a state was loaded ($27d50).
+[[noreturn]] void resume_main_loop();
 inline m68k::Cpu& cpu() { return g_machine->cpu; }
 
 inline uint8_t rd8(uint32_t a) { return g_machine->read8(a); }

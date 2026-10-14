@@ -1,5 +1,6 @@
 // F/A-18 Interceptor — SDL2 front end.
 #include "amiga/machine.hpp"
+#include "font6x10.hpp"
 
 #include <SDL.h>
 
@@ -127,6 +128,7 @@ public:
   int pad_prev_hat = -1;      // layered d-pad/stick selection (-1 none, 0-7 dirs, 8 center)
   int pad_throttle_cd = 0;    // frames until next throttle step
   bool pad_held_key[128] = {};
+  bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -173,11 +175,7 @@ public:
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
-          if (sc == SDL_SCANCODE_F9 && down) {
-            machine->analog_enabled = !machine->analog_enabled;
-            std::printf("analog stick: %s\n", machine->analog_enabled ? "on (remaster)" : "off (original)");
-            break;
-          }
+          if (sc == SDL_SCANCODE_INSERT && down) { menu_request = true; break; }
           if (sc == SDL_SCANCODE_F11 && down) {
             Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
             SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -248,7 +246,12 @@ public:
 
   void poll_gamepad(bool& up, bool& down, bool& left, bool& right, bool& fire) {
     auto btn = [&](SDL_GameControllerButton b) {
-      return SDL_GameControllerGetButton(pad, b) != 0;
+      bool down = SDL_GameControllerGetButton(pad, b) != 0;
+      if (pad_blocked[b]) {          // pressed while the menu was open
+        if (!down) pad_blocked[b] = false;
+        return false;
+      }
+      return down;
     };
     auto axis = [&](SDL_GameControllerAxis a) {
       return int(SDL_GameControllerGetAxis(pad, a));
@@ -321,7 +324,7 @@ public:
       if (pressed & (1u << 2)) pad_tap(0x14);       // X = T (target)
       if (pressed & (1u << 3)) pad_tap(0x37);       // Y = M (map)
       if (pressed & (1u << 4)) pad_tap(0x19);       // Start = P (pause)
-      if (pressed & (1u << 5)) pad_tap(0x45);       // Back = Esc
+      if (pressed & (1u << 5)) menu_request = true;  // Back = debug menu
       if (pressed & (1u << 6)) pad_tap(0x41);       // LS click = brakes
       if (pressed & (1u << 7)) pad_tap(0x24);       // RS click = gear
     }
@@ -372,10 +375,194 @@ public:
   }
 
   int tex_w = amiga::FB_W, tex_h = amiga::FB_H;
+
+  // ---- debug menu (Back button / Insert) -------------------------------------
+  bool menu_request = false;
+  int menu_slot = 1;
+  std::string menu_status;
+
+  void draw_text(std::vector<uint32_t>& cv, int w, int h, int x, int y, const std::string& t,
+                 int sc, uint32_t col) {
+    for (size_t i = 0; i < t.size(); ++i) {
+      int c = uint8_t(t[i]);
+      if (c < 32 || c > 126) c = '?';
+      const uint8_t* g = &font6x10::glyphs[(c - 32) * font6x10::H];
+      for (int gy = 0; gy < font6x10::H; ++gy)
+        for (int gx = 0; gx < font6x10::W; ++gx)
+          if (g[gy] & (0x20 >> gx))
+            for (int yy = 0; yy < sc; ++yy)
+              for (int xx = 0; xx < sc; ++xx) {
+                int px = x + (int(i) * font6x10::W + gx) * sc + xx, py = y + gy * sc + yy;
+                if (px >= 0 && px < w && py >= 0 && py < h) cv[size_t(py) * size_t(w) + size_t(px)] = col;
+              }
+    }
+  }
+
+  std::string state_path(int slot) const {
+    return machine->save_dir + "/state" + std::to_string(slot) + ".sav";
+  }
+
+  void run_menu(const uint32_t* bg, int w, int h) {
+    menu_request = false;
+    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
+    int sel = 0;
+    std::vector<uint32_t> cv(size_t(w) * size_t(h));
+    const int sc = std::max(1, w / 320);
+    bool open = true;
+    int axis_cd = 0;
+    // pressed/held controller state needs explicit handling: no SDL events
+    // reach us for held axes
+    auto hires_label = [&] {
+      int s = machine->hires_scale;
+      return s <= 0 ? std::string("original (320x200)") : std::to_string(s) + "x";
+    };
+    const int NITEMS = 8;
+    auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
+      switch (item) {
+        case 0: if (dir == 0) open = false; break;
+        case 1: {
+          int s = machine->hires_scale;
+          int order[] = {0, 2, 3, 4};
+          int idx = 0;
+          for (int i = 0; i < 4; ++i) if (order[i] == s) idx = i;
+          idx = (idx + (dir == 0 ? 1 : dir) + 4) % 4;
+          machine->set_hires_scale(order[idx]);
+          break;
+        }
+        case 2: machine->analog_enabled = !machine->analog_enabled; break;
+        case 3:
+          menu_slot = (menu_slot - 1 + (dir == 0 ? 1 : dir) + 4) % 4 + 1;
+          break;
+        case 4:
+          if (dir == 0) { machine->request_save_state(state_path(menu_slot)); menu_status = "saving..."; open = false; }
+          break;
+        case 5:
+          if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
+          break;
+        case 6:
+          if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
+          break;
+        case 7:
+          if (dir == 0) { quit = true; open = false; }
+          break;
+      }
+    };
+    while (open && !quit) {
+      SDL_Event e;
+      while (SDL_PollEvent(&e)) {
+        switch (e.type) {
+          case SDL_QUIT: quit = true; break;
+          case SDL_KEYDOWN:
+            switch (e.key.keysym.scancode) {
+              case SDL_SCANCODE_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
+              case SDL_SCANCODE_DOWN: sel = (sel + 1) % NITEMS; break;
+              case SDL_SCANCODE_LEFT: activate(sel, -1); break;
+              case SDL_SCANCODE_RIGHT: activate(sel, +1); break;
+              case SDL_SCANCODE_RETURN: activate(sel, 0); break;
+              case SDL_SCANCODE_ESCAPE:
+              case SDL_SCANCODE_INSERT: open = false; break;
+              default: break;
+            }
+            break;
+          case SDL_CONTROLLERBUTTONDOWN:
+            switch (e.cbutton.button) {
+              case SDL_CONTROLLER_BUTTON_DPAD_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
+              case SDL_CONTROLLER_BUTTON_DPAD_DOWN: sel = (sel + 1) % NITEMS; break;
+              case SDL_CONTROLLER_BUTTON_DPAD_LEFT: activate(sel, -1); break;
+              case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: activate(sel, +1); break;
+              case SDL_CONTROLLER_BUTTON_A: activate(sel, 0); break;
+              case SDL_CONTROLLER_BUTTON_B:
+              case SDL_CONTROLLER_BUTTON_BACK:
+              case SDL_CONTROLLER_BUTTON_START: open = false; break;
+              default: break;
+            }
+            break;
+          default: break;
+        }
+      }
+      if (pad && axis_cd-- <= 0) {  // left stick with auto repeat
+        int ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+        int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+        if (ly < -16000) { sel = (sel + NITEMS - 1) % NITEMS; axis_cd = 8; }
+        else if (ly > 16000) { sel = (sel + 1) % NITEMS; axis_cd = 8; }
+        else if (lx < -16000) { activate(sel, -1); axis_cd = 8; }
+        else if (lx > 16000) { activate(sel, +1); axis_cd = 8; }
+        else axis_cd = 0;
+      }
+      // frame: darkened game picture + panel
+      for (size_t i = 0; i < cv.size(); ++i) {
+        uint32_t c = bg[i];
+        cv[i] = ((c >> 1) & 0x7F7F7F) | 0xFF000000u;
+      }
+      const std::string items[NITEMS] = {
+          "Resume",
+          "3D resolution:  " + hires_label(),
+          std::string("Analog stick:   ") + (machine->analog_enabled ? "on" : "off"),
+          "State slot:     " + std::to_string(menu_slot),
+          "Save state",
+          "Load state",
+          "Send ESC to game",
+          "Quit",
+      };
+      int px = 8 * sc, py = 8 * sc;
+      draw_text(cv, w, h, px, py, "DEBUG MENU", sc, 0xFFFFD040u);
+      py += 16 * sc;
+      for (int i = 0; i < NITEMS; ++i) {
+        std::string line = (i == sel ? "> " : "  ") + items[size_t(i)];
+        draw_text(cv, w, h, px, py, line, sc, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
+        py += 14 * sc;
+      }
+      py += 6 * sc;
+      draw_text(cv, w, h, px, py, "Up/Down select  Left/Right change", sc, 0xFF80A0FFu);
+      py += 11 * sc;
+      draw_text(cv, w, h, px, py, "A/Enter do  B/Back close", sc, 0xFF80A0FFu);
+      if (!menu_status.empty()) {
+        py += 16 * sc;
+        draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
+      }
+      if (w != tex_w || h != tex_h) {
+        SDL_DestroyTexture(tex);
+        tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+        tex_w = w;
+        tex_h = h;
+      }
+      if (const char* shot = getenv("FA18_MENU_SHOT")) {  // debugging aid
+        if (FILE* f = fopen(shot, "wb")) {
+          fprintf(f, "P6\n%d %d\n255\n", w, h);
+          for (size_t i = 0; i < cv.size(); ++i) {
+            uint8_t px[3] = {uint8_t(cv[i] >> 16), uint8_t(cv[i] >> 8), uint8_t(cv[i])};
+            fwrite(px, 1, 3, f);
+          }
+          fclose(f);
+        }
+        open = false;
+      }
+      SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
+      SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+      SDL_RenderClear(ren);
+      SDL_RenderCopy(ren, tex, nullptr, nullptr);
+      SDL_RenderPresent(ren);
+      SDL_Delay(16);
+    }
+    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
+    next_frame = SDL_GetPerformanceCounter();
+    // buttons still held from the menu must not reach the game
+    if (pad)
+      for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; ++b)
+        pad_blocked[b] = SDL_GameControllerGetButton(pad, SDL_GameControllerButton(b)) != 0;
+    pad_prev_btns = 0;
+    std::fill(sjoy, sjoy + 5, false);
+  }
+
   void frame(const uint32_t* fb) override { present(fb, amiga::FB_W, amiga::FB_H); }
   void frame_hires(const uint32_t* fb, int w, int h) override { present(fb, w, h); }
   void present(const uint32_t* fb, int w, int h) {
     ++frame_no;
+    {
+      std::string m = machine->take_state_message();
+      if (!m.empty()) menu_status = m;
+    }
+    if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
     if (w != tex_w || h != tex_h) {
       SDL_DestroyTexture(tex);
       tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
@@ -422,7 +609,13 @@ public:
     }
     while (script_pos < script.size() && script[script_pos].frame <= frame_no) {
       const ScriptEvent& e = script[script_pos++];
-      if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
+      if (e.cmd == "menu") {
+        menu_request = true;
+      } else if ((e.cmd == "savestate" || e.cmd == "loadstate") && !e.args.empty()) {
+        std::string path = machine->save_dir + "/state" + e.args[0] + ".sav";
+        if (e.cmd == "savestate") machine->request_save_state(path);
+        else machine->request_load_state(path);
+      } else if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
         if (e.args.size() >= 2) {
           machine->analog_x = float(std::atof(e.args[0].c_str()));
           machine->analog_y = float(std::atof(e.args[1].c_str()));
@@ -526,7 +719,7 @@ void usage() {
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
           "  --hires N        remaster: render the 3D view at N times resolution\n"
-          "  --analog         remaster: analog flight stick (left stick); F9 toggles\n"
+          "  --analog         remaster: analog flight stick (left stick)\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
@@ -612,7 +805,7 @@ int main(int argc, char** argv) {
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
   machine.analog_enabled = analog;
-  machine.hires_scale = std::max(0, std::min(8, hires));
+  machine.set_hires_scale(std::max(0, std::min(8, hires)));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
   machine.vbl_time = vbl_time;

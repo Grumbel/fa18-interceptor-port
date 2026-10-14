@@ -35,6 +35,9 @@ struct Hle {
   void interrupt(int level);
   bool interrupts_disabled() const;
 
+  // Save-state support (see savestate.cpp).
+  void ser(struct Ser& s);
+
   void key_event(uint8_t rawkey, bool down);
   void mouse_button(int button, bool down);
   void joy_fire(bool down);

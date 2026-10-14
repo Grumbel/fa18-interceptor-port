@@ -21,6 +21,8 @@ add_library(amiga STATIC
   src/amiga/machine.cpp
   src/amiga/machine.hpp
   src/amiga/custom.cpp
+  src/amiga/savestate.cpp
+  src/amiga/ser.hpp
   src/amiga/hle.cpp
   src/amiga/hle.hpp
   src/amiga/hunk.hpp

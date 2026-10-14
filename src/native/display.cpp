@@ -179,6 +179,18 @@ static void load_text_tables() {
 }
 NATIVE_C(0x28670, load_text_tables, false);
 
+[[noreturn]] static void main_loop() {
+  mach().in_main_loop = true;
+  for (;;) {
+    mach().apply_state_requests();   // save/load states (remaster/debug menu)
+    sub_44160();
+    os::OwnBlitter();
+    sub_2112c();                                       // game_frame
+    os::DisownBlitter();
+    swap_buffers();
+  }
+}
+
 // $27d50: start of the game proper: picture planes, buffers, devices, the
 // fade-in of the title colours, then the endless main loop.
 static void game_main() {
@@ -209,14 +221,10 @@ static void game_main() {
   setup_second_buffer();
   if (rd32(0x650bc) != 0) os::FreeMem(rd32(0x650bc), 7000);
   sub_208e2(100000);
-  for (;;) {
-    sub_44160();
-    os::OwnBlitter();
-    sub_2112c();                                       // game_frame
-    os::DisownBlitter();
-    swap_buffers();
-  }
+  main_loop();
 }
 NATIVE_C(0x27d50, game_main, false);
+
+[[noreturn]] void resume_main_loop() { main_loop(); }
 
 }  // namespace native

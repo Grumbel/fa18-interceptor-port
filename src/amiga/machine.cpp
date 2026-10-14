@@ -193,7 +193,6 @@ void Machine::setup_native() {
   native_table_.assign(hunk_addrs.empty() ? 0 : (heap_hw_ - LOAD_BASE) / 2, nullptr);
   // FA18_NATIVE_SKIP=name1,name2 disables individual native routines
   // (FA18_NATIVE_ONLY=... enables only the listed ones); for bisecting.
-  if (hires_scale > 0 || getenv("FA18_PRIMCOUNT")) remaster::install(*this);
   native::for_each([](const native::Def& d) {
     amiga::Machine& m = *native::g_machine;
     auto listed = [&](const char* env) {
@@ -530,6 +529,31 @@ void Machine::end_of_frame() {
   }
   audio_buf_.clear();
   hle_->frame_tick();
+  if (!pending_load_.empty() && !in_main_loop) throw LoadRequested{};
+}
+
+void Machine::set_hires_scale(int s) {
+  static bool installed = false;
+  if (s > 0 && !installed) {
+    remaster::install(*this);
+    installed = true;
+  }
+  hires_scale = s < 0 ? 0 : (s > 8 ? 8 : s);
+}
+
+void Machine::apply_state_requests() {
+  if (!pending_save_.empty()) {
+    std::string p;
+    p.swap(pending_save_);
+    save_state_now(p);
+    log("[state] %s\n", state_msg_.c_str());
+  }
+  if (!pending_load_.empty()) {
+    std::string p;
+    p.swap(pending_load_);
+    load_state_now(p);
+    log("[state] %s\n", state_msg_.c_str());
+  }
 }
 
 void Machine::check_interrupts() {
@@ -618,13 +642,29 @@ void Machine::execute(int64_t until) {
 }
 
 int Machine::run() {
-  try {
-    while (!exit_) {
-      execute(line_start_ + line_cycles_);
-      if (exit_) break;
-      if (cpu.cycles >= line_start_ + line_cycles_) run_line();
+  for (;;) {
+    try {
+      if (resume_main_loop_) {
+        // a state was loaded while the C++ stack was in the intro: continue
+        // in the game's main loop, which holds no state of its own
+        resume_main_loop_ = false;
+        native::resume_main_loop();
+      }
+      while (!exit_) {
+        execute(line_start_ + line_cycles_);
+        if (exit_) break;
+        if (cpu.cycles >= line_start_ + line_cycles_) run_line();
+      }
+      break;
+    } catch (QuitRequested&) {
+      break;
+    } catch (LoadRequested&) {
+      std::string p;
+      p.swap(pending_load_);
+      load_state_now(p);
+      log("[state] %s\n", state_msg_.c_str());
+      resume_main_loop_ = true;
     }
-  } catch (QuitRequested&) {
   }
   write_coverage();
   return exit_code_;

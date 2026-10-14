@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -48,11 +49,13 @@ struct Layer {
   std::vector<uint8_t> unexplained;  // changed by the original, not by us
   uint64_t frame = 0;
   bool done = false;
+  int prims = 0;                // primitives drawn so far this frame
 };
 
 std::vector<Layer> layers;      // small ring (double/triple buffering)
 Layer* cur = nullptr;
 bool in_scene = false;
+bool gf_begun = false;    // layer was started by game_frame
 bool pending_3d = false;  // a 3D polygon was rendered; its $44b50 fill follows
 uint64_t stat_poly = 0, stat_line = 0;
 
@@ -113,17 +116,56 @@ inline void put(Layer& L, int x, int y, const PlaneOps& o) {
   L.cover[size_t(y / L.S) * W + size_t(x / L.S)] = 1;
 }
 
+
+// (Re)initialise the layer from the current low-res bitmap.  Called when the
+// frame starts and again just before the first primitive: whatever the game
+// did to the view in between (clear, background blits) is part of the base.
+void init_from_bitmap(Layer& L) {
+  const int S = L.S;
+  uint32_t pl[4];
+  for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
+  L.px.assign(size_t(W * S) * size_t(L.rows * S), 0);
+  L.s0.assign(size_t(W) * size_t(L.rows), 0);
+  L.cover.assign(size_t(W) * size_t(L.rows), 0);
+  L.unexplained.clear();
+  for (int y = 0; y < L.rows; ++y)
+    for (int x = 0; x < W; ++x) {
+      uint8_t c = low_index(pl, x, y);
+      L.s0[size_t(y) * W + size_t(x)] = c;
+      for (int yy = 0; yy < S; ++yy)
+        std::memset(&L.px[size_t(y * S + yy) * size_t(W * S) + size_t(x * S)], c, size_t(S));
+    }
+}
+
+// first primitive of the frame: take the base now
+inline bool first_prim() {
+  if (!in_scene || !cur) return false;
+  if (cur->prims++ == 0) init_from_bitmap(*cur);
+  return true;
+}
+
 struct V3 { double x, y, z; };
 struct V2 { double x, y; };
 
 // view space -> screen (low-res units, x mirrored), see $39294
 inline V2 project(const V3& v) { return {159.0 - 160.0 * v.x / v.z, 89.0 - 90.0 * v.y / v.z}; }
 
+void draw_line(Layer& L, V2 a, V2 b, const PlaneOps& o);
+
 void fill_polygon(Layer& L, const std::vector<V2>& pts, const PlaneOps& o) {
   const int S = L.S, Wp = W * S, Hp = L.rows * S;
   if (pts.size() < 3) return;
-  double ymin = 1e30, ymax = -1e30;
-  for (auto& p : pts) { ymin = std::min(ymin, p.y); ymax = std::max(ymax, p.y); }
+  double ymin = 1e30, ymax = -1e30, xmin = 1e30, xmax = -1e30;
+  for (auto& p : pts) {
+    ymin = std::min(ymin, p.y);
+    ymax = std::max(ymax, p.y);
+    xmin = std::min(xmin, p.x);
+    xmax = std::max(xmax, p.x);
+  }
+  // slivers (cables, struts): the original's edge pixels keep them one
+  // low-res pixel wide, so outline them
+  if (std::min(xmax - xmin, ymax - ymin) < 1.5)
+    for (size_t i = 0; i < pts.size(); ++i) draw_line(L, pts[i], pts[(i + 1) % pts.size()], o);
   int y0 = std::max(0, int(std::floor(ymin * S))), y1 = std::min(Hp - 1, int(std::ceil(ymax * S)));
   std::vector<double> xs;
   for (int y = y0; y <= y1; ++y) {
@@ -140,6 +182,14 @@ void fill_polygon(Layer& L, const std::vector<V2>& pts, const PlaneOps& o) {
       int xa = std::max(0, int(std::floor(xs[k] * S)));
       int xb = std::min(Wp - 1, int(std::ceil(xs[k + 1] * S)) - 1);
       for (int x = xa; x <= xb; ++x) put(L, x, y, o);
+      // the original fills edge pixels our centre-sampling rule leaves out:
+      // treat the neighbouring low-res cells as explained too
+      if (xb >= xa) {
+        int cy = y / S;
+        for (int ry = std::max(0, cy - 1); ry <= std::min(L.rows - 1, cy + 1); ++ry)
+          for (int cx = std::max(0, xa / S - 1); cx <= std::min(W - 1, xb / S + 1); ++cx)
+            L.cover[size_t(ry) * W + size_t(cx)] = 1;
+      }
     }
   }
 }
@@ -153,6 +203,9 @@ void draw_line(Layer& L, V2 a, V2 b, const PlaneOps& o) {
     double fx = (a.x + (b.x - a.x) * t) * S, fy = (a.y + (b.y - a.y) * t) * S;
     // a low-res pixel wide: S x S block anchored on the sample
     int px = int(std::floor(fx)), py = int(std::floor(fy));
+    for (int ry = std::max(0, py / S - 1); ry <= std::min(L.rows - 1, py / S + 1); ++ry)
+      for (int cx = std::max(0, px / S - 1); cx <= std::min(W - 1, px / S + 1); ++cx)
+        L.cover[size_t(ry) * W + size_t(cx)] = 1;
     int bx = px - S / 2, by = py - S / 2;
     for (int yy = 0; yy < S; ++yy)
       for (int xx = 0; xx < S; ++xx) {
@@ -180,7 +233,7 @@ std::vector<V3> clip_near(const std::vector<V3>& in, double zmin) {
 
 void on_polygon() {
   pending_3d = false;
-  if (!in_scene || !cur) return;
+  if (!first_prim()) return;
   int16_t shift = int16_t(rd16(0x61284));
   int n = int16_t(rd16(0x61286));
   if (n < 3 || n > 40) return;
@@ -201,7 +254,7 @@ void on_polygon() {
 
 void on_fill2d() {
   if (pending_3d) { pending_3d = false; return; }
-  if (!in_scene || !cur) return;
+  if (!first_prim()) return;
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
   std::vector<V2> sp;
@@ -213,7 +266,7 @@ void on_fill2d() {
 
 // $4397c: line between two points that must lie inside the frustum (no clipping)
 void on_line_noclip() {
-  if (!in_scene || !cur) return;
+  if (!first_prim()) return;
   V3 p[2];
   for (int i = 0; i < 2; ++i) {
     uint32_t a = 0x61886 + 6u * uint32_t(i);
@@ -223,8 +276,61 @@ void on_line_noclip() {
   draw_line(*cur, project(p[0]), project(p[1]), line_ops());
 }
 
+// Point primitives ($438a0 and variants): d0-d2 = view-space x,y,z, d7 = size
+// selector.  Sizes: 1x1 ($441fc), 2x1 ($44212), 2x2 ($44276), disc of
+// radius d6 ($43dcc).  `sel` is the value the entry point loads into d7
+// (INT_MIN: use $5adb0 like $438a0).
+void fill_rect(Layer& L, double cx, double cy, double w, double h, const PlaneOps& o) {
+  const int S = L.S, Wp = W * S, Hp = L.rows * S;
+  int x0 = int(std::floor((cx - w / 2) * S + 0.5)), x1 = int(std::floor((cx + w / 2) * S + 0.5));
+  int y0 = int(std::floor((cy - h / 2) * S + 0.5)), y1 = int(std::floor((cy + h / 2) * S + 0.5));
+  if (x1 <= x0) x1 = x0 + 1;
+  if (y1 <= y0) y1 = y0 + 1;
+  for (int y = std::max(0, y0); y < std::min(Hp, y1); ++y)
+    for (int x = std::max(0, x0); x < std::min(Wp, x1); ++x) put(L, x, y, o);
+}
+
+void on_point(int sel) {
+  pending_3d = false;
+  if (!first_prim()) return;
+  m68k::Cpu& c = native::g_machine->cpu;
+  int16_t x = int16_t(c.d[0]), y = int16_t(c.d[1]), z = int16_t(c.d[2]);
+  if (z <= 0 || std::abs(int(x)) >= z || std::abs(int(y)) >= z) return;
+  int d7 = sel == INT32_MIN ? int16_t(rd16(0x5adb0)) : sel;
+  V2 sp = project({double(x), double(y), double(z)});
+  // low-res pixel centre of the projected position (the original rounds
+  // to integer screen coordinates; +1 row as at $43902)
+  double cx = sp.x + 0.5, cy = sp.y + 0.5 + 1.0;
+  int kind;  // 0: 1x1, 1: 2x1, 2: 2x2, 3: disc
+  if (d7 >= 0) {
+    int limit = int16_t(rd16(c.a[6] - 40));
+    if ((48 >> d7) >= limit) kind = 2;
+    else if ((80 >> d7) >= limit) kind = 1;
+    else kind = 0;
+  } else if (d7 == -1) kind = 0;
+  else if (d7 == -2) kind = 1;
+  else if (d7 == -3) kind = 2;
+  else if (d7 == -4) kind = 3;
+  else return;
+  PlaneOps o = line_ops();
+  Layer& L = *cur;
+  if (kind == 0) fill_rect(L, cx, cy, 1, 1, o);
+  else if (kind == 1) fill_rect(L, cx - 0.5, cy, 2, 1, o);
+  else if (kind == 2) fill_rect(L, cx, cy, 2, 2, o);
+  else {
+    int r = std::min<int>(127, int16_t(c.d[6]));
+    if (r < 1) r = 1;
+    std::vector<V2> circ;
+    for (int i = 0; i < 48; ++i) {
+      double a = 2 * M_PI * i / 48;
+      circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
+    }
+    fill_polygon(L, circ, poly_ops());
+  }
+}
+
 void on_line() {
-  if (!in_scene || !cur) return;
+  if (!first_prim()) return;
   V3 a{double(int16_t(rd16(0x61886))), double(int16_t(rd16(0x61888))), double(int16_t(rd16(0x6188a)))};
   V3 b{double(int16_t(rd16(0x6188c))), double(int16_t(rd16(0x6188e))), double(int16_t(rd16(0x61890)))};
   auto c = clip_near({a, b}, 1.0);
@@ -236,7 +342,32 @@ void on_line() {
 
 bool scene_hooks = false;
 
+void reset() {
+  layers.clear();
+  gf_begun = false;
+  cur = nullptr;
+  in_scene = false;
+  pending_3d = false;
+}
+
+static void do_begin();
+
+// the layer starts at the top of game_frame ($2112c) so that the sky and
+// ground drawn before $2fc14 are part of it; $2fc14 must not restart it
+static void on_game_frame() {
+  do_begin();
+  gf_begun = in_scene;
+}
+
 void scene_begin() {
+  if (gf_begun && in_scene) {
+    gf_begun = false;
+    return;
+  }
+  do_begin();
+}
+
+static void do_begin() {
   amiga::Machine& m = *native::g_machine;
   int S = m.hires_scale;
   if (S <= 0) return;
@@ -257,17 +388,8 @@ void scene_begin() {
   L->rows = std::min(200, int(rd16(0x5ac7c)) + 1);
   L->frame = m.frame_count();
   L->done = false;
-  L->px.assign(size_t(W * S) * size_t(L->rows * S), 0);
-  L->s0.assign(size_t(W) * size_t(L->rows), 0);
-  L->cover.assign(size_t(W) * size_t(L->rows), 0);
-  L->unexplained.clear();
-  for (int y = 0; y < L->rows; ++y)
-    for (int x = 0; x < W; ++x) {
-      uint8_t c = low_index(pl, x, y);
-      L->s0[size_t(y) * W + size_t(x)] = c;
-      for (int yy = 0; yy < S; ++yy)
-        std::memset(&L->px[size_t(y * S + yy) * size_t(W * S) + size_t(x * S)], c, size_t(S));
-    }
+  L->prims = 0;
+  init_from_bitmap(*L);
   cur = L;
   in_scene = true;
 }
@@ -284,6 +406,16 @@ void scene_end() {
   for (size_t i = 0; i < cur->snap.size(); ++i)
     cur->unexplained[i] = (cur->snap[i] != cur->s0[i]) && !cur->cover[i];
   cur->done = true;
+  if (getenv("FA18_HIRES_STATS")) {
+    int u = 0, ch = 0, ex = 0;
+    for (size_t i = 0; i < cur->snap.size(); ++i) {
+      u += cur->unexplained[i];
+      ch += cur->snap[i] != cur->s0[i];
+      ex += (cur->snap[i] != cur->s0[i]) && cur->cover[i];
+    }
+    std::fprintf(stderr, "[hires] frame %llu changed=%d explained=%d unexplained=%d\n",
+                 (unsigned long long)native::g_machine->frame_count(), ch, ex, u);
+  }
 }
 
 void install(amiga::Machine& m) {
@@ -292,14 +424,19 @@ void install(amiga::Machine& m) {
   (void)dummy;
   auto poly = [] { on_polygon(); };
   // $38c0a falls into $38c0c: observe both entries, but only count once
+  m.add_pc_hook(0x2112c, [] { on_game_frame(); });
   m.add_pc_hook(0x38c0c, poly);
   m.add_pc_hook(0x38c0a, poly);
   m.add_pc_hook(0x43a56, [] { on_line(); });
   m.add_pc_hook(0x4397c, [] { on_line_noclip(); });
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });
   // dots/discs and other direct fill callers: reset the pairing flag
-  for (uint32_t a : {0x438a0u, 0x438a8u, 0x438acu, 0x438b0u, 0x438b4u, 0x4389cu, 0x43dccu})
-    m.add_pc_hook(a, [] { pending_3d = false; });
+  m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
+  m.add_pc_hook(0x438a8, [] { on_point(-4); });
+  m.add_pc_hook(0x438ac, [] { on_point(-3); });
+  m.add_pc_hook(0x438b0, [] { on_point(-2); });
+  m.add_pc_hook(0x438b4, [] { on_point(-1); });
+  m.add_pc_hook(0x4389c, [] { on_point(-5); });
 }
 
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
@@ -317,6 +454,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
     for (auto& l : layers) std::fprintf(stderr, " %06x(rows=%d done=%d)", l.base, l.rows, l.done);
     std::fprintf(stderr, "\n");
   }
+  int mismatch = 0;
   for (int y = 0; y < 200; ++y) {
     // find the layer this row belongs to
     const Layer* L = nullptr;
@@ -337,7 +475,11 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
           size_t ci = size_t(ly) * W + size_t(x);
           if ((li & 15) == L->snap[ci] && !L->unexplained[ci]) {
             const uint8_t* hp = &L->px[size_t(ly * S + yy) * size_t(Wp) + size_t(x * S)];
-            for (int xx = 0; xx < S; ++xx) o[x * S + xx] = pal[size_t(y) * 32 + size_t((hp[xx] & 15) | (li & 16))];
+            for (int xx = 0; xx < S; ++xx) {
+              uint32_t hc = pal[size_t(y) * 32 + size_t((hp[xx] & 15) | (li & 16))];
+              o[x * S + xx] = hc;
+              if (S == 1 && hc != c) ++mismatch;
+            }
             continue;
           }
         }
@@ -346,6 +488,8 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
       }
     }
   }
+  if (S == 1 && getenv("FA18_HIRES_STATS"))
+    std::fprintf(stderr, "[hires-diff] frame %llu mismatch=%d\n", (unsigned long long)m.frame_count(), mismatch);
   return true;
 }
 

@@ -44,7 +44,7 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
 ## Remaster options (off by default; original behaviour untouched)
 - Enhancements are runtime options, never part of the translated routines'
   default path, so the gate always runs the original behaviour.
-- `--analog` (F9 toggles): gamepad left stick drives pitch/rudder
+- `--analog` (also in the debug menu): gamepad left stick drives pitch/rudder
   deflection analog (hook in `process_control_input`, controls.cpp);
   scripted runs ignore real pads; script command `analog <x> <y>|off`.
 - `--hires N` (N=2..8): the 3D view is re-rendered at N times resolution
@@ -55,6 +55,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   layer where the game did not draw after the scene ended (HUD/cockpit
   stay low-res) and falls back to low-res for changes it could not
   explain. `FA18_HIRES_DEBUG=1` paints the fall-back pixels magenta.
+
+- Debug menu: gamepad Back button (keyboard: Insert) pauses and offers
+  3D resolution (original/2x/3x/4x), analog stick, save/load state slots
+  (`<save dir>/stateN.sav`) and "send ESC". Save states are applied at the
+  top of the game's main loop ($27d50), the only point where all state is
+  in RAM/registers; script commands `savestate N`, `loadstate N`, `menu`.
 
 ## Tools
 - `tools/adf.py list|extract` — OFS ADF reader

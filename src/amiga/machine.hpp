@@ -24,6 +24,8 @@ namespace remaster {
 void install(amiga::Machine& m);
 // Build the composed hi-res frame; false if not available this frame.
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out);
+// Forget all per-frame layers (after a state load).
+void reset();
 }
 
 namespace amiga {
@@ -43,6 +45,9 @@ constexpr int FB_HSTART = 0x81;  // lores pixel position of fb x=0
 constexpr int FB_VSTART = 0x2C;  // beam line of fb y=0
 
 struct QuitRequested {};
+// Thrown to unwind the native C++ stack when a state is to be loaded while
+// the game is not (yet) in its main loop (e.g. during the intro).
+struct LoadRequested {};
 
 // INTENA/INTREQ bits
 enum : uint16_t {
@@ -129,6 +134,18 @@ public:
   // x: -1 left .. +1 right, y: -1 up .. +1 down (SDL convention).  While
   // analog_active the native control code replaces the digitally ramped
   // elevator/rudder deflections of the player aircraft.
+  // Save states: requests are applied at the next main-loop iteration.
+  void request_save_state(const std::string& path) { pending_save_ = path; }
+  void request_load_state(const std::string& path) { pending_load_ = path; }
+  std::string take_state_message() { std::string s; s.swap(state_msg_); return s; }
+  // Called by the game's main loop ($27d50) at the top of every iteration,
+  // the only point where all state is in RAM/registers (no native C++
+  // routine in the middle of its work).
+  void apply_state_requests();
+  bool in_main_loop = false;      // set by the game's main loop ($27d50)
+  bool save_state_now(const std::string& path);
+  bool load_state_now(const std::string& path);
+
   // Register an observer for the routine entry at `addr` (see execute()).
   void add_pc_hook(uint32_t addr, std::function<void()> fn);
 
@@ -140,6 +157,8 @@ public:
   const uint32_t* frame_row_key() const { return row_key_.data(); }
   const uint32_t* frame_row_pal() const { return row_pal_.data(); }
   int hires_scale = 0;  // remaster: 3D view render scale (0 = off)
+  // Switch the hi-res 3D view on/off at run time (installs the observers).
+  void set_hires_scale(int s);
   bool analog_enabled = false;
   bool analog_active = false;
   float analog_x = 0.0f, analog_y = 0.0f;
@@ -287,6 +306,8 @@ private:
   // display
   std::vector<uint32_t> fb_;
   std::vector<uint32_t> hires_fb_;
+  std::string pending_save_, pending_load_, state_msg_;
+  bool resume_main_loop_ = false;
   // Remaster scan-out records (filled only when hires_scale > 0)
   std::vector<uint8_t> idx_;          // palette index per low-res pixel
   std::vector<uint32_t> row_key_;     // plane-0 pointer at the start of each row
