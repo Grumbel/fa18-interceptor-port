@@ -101,8 +101,8 @@ Done (all verified by the gate):
   op handlers behind the jump table at $33478 (see ops.cpp, below).
 - scene draw top (scenedraw.cpp): camera position $2f220 and the object
   draw loop $2fc14 with helpers $2fffc/$3000e. Op handlers behind
-  the jump table at $33478 are in ops.cpp up to $353d8 (continue at
-  $35412; read-verified only, no scenario hits them: $335f8, $33de6,
+  the jump table at $33478 are in ops.cpp up to $35f48 (all handlers
+  of the $33478 tables done; read-verified only, no scenario hits them: $335f8, $33de6, $35730, $357ee,
   $33e74, $34708, $34754); then HUD / object AI.
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).

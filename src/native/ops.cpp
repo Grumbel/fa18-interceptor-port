@@ -2635,6 +2635,391 @@ void op_357ee() {
   ret_fp126();
 }
 
+// ---- $35b6c-$35f48: more lattice ops (object-relative and table-relative) -------
+void ld_d012_d67_a4(uint32_t a) {                     // movem.w a,d0-d2/d6-d7/a4
+  movemw(a, 0, 3);
+  D(6) = uint32_t(e16(rd16(a + 6)));
+  D(7) = uint32_t(e16(rd16(a + 8)));
+  A(4) = uint32_t(e16(rd16(a + 10)));
+}
+void obj_a3_plus_164() {
+  A(3) = 0x5b47c;
+  setw(0, rd16(0x5acae));
+  setw(0, lo(0) + 164);
+  A(3) += uint32_t(e16(lo(0)));
+}
+void sub_35bbc() {
+  movemw(A(3) + 18, 0, 6);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(132, {3, 4, 5});
+  movemw(A(3) + 54, 0, 3);
+  setw(6, lo(0));
+  setw(7, lo(1));
+  A(4) = uint32_t(e16(lo(2)));
+  sub_regs(0, 3, 3);
+  sub_regs(3, 0, 3);
+  st(138, {3, 4, 5});
+  movemw(A(3) + 48, 0, 3);
+  sub6_a4(0);
+  add6_a4(3);
+  st(144, {6, 7, 12});
+  load9(A(3) + 18);
+  sub6_a4(0);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(150, {3, 4, 5});
+  movemw(A(3) + 138, 0, 6);
+  add_a4_to(0);
+  add_a4_to(3);
+  st(228, {0, 1, 2, 3, 4, 5});
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(168, {3, 4, 5});
+  movemw(A(3) + 30, 0, 3);
+  movemw(A(3) + 150, 3, 3);
+  setw(6, lo(3));
+  setw(7, lo(4));
+  A(4) = uint32_t(e16(lo(5)));
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  add_regs(0, 3, 3);
+  asr1(0, 3);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  asr1(3, 3);
+  st(156, {0, 1, 2, 3, 4, 5});
+  movemw(A(3) + 6, 0, 6);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(174, {3, 4, 5});
+  movemw(A(3) + 36, 0, 6);
+  ld3a(A(3) + 60);
+  sub_regs(0, 3, 3);
+  add6_a4(0);
+  st(126, {6, 7, 12});
+  movemw(A(3) + 72, 3, 3);
+  add_regs(3, 0, 3);
+  ld3a(A(3) + 84);
+  add6_a4(0);
+  st(180, {3, 4, 5, 6, 7, 12});
+  copy_regs(3, 0, 3);
+  asr1(0, 3);
+  add_regs(3, 0, 3);
+  ld_d012_d67_a4(A(3) + 6);
+  add_regs(0, 3, 3);
+  add6_a4(3);
+  st(192, {0, 1, 2, 6, 7, 12});
+  ld_d012_d67_a4(A(3) + 36);
+  setw(0, lo(0) - lo(6));
+  setw(1, lo(1) - lo(7));
+  sub_a4w(2);
+  ld3a(A(3) + 192);
+  add6_a4(0);
+  st(216, {6, 7, 12});
+  ld3a(A(3) + 198);
+  add6_a4(0);
+  st(222, {6, 7, 12});
+  add_regs(3, 0, 3);
+  movemw(A(3) + 66, 0, 3);
+  add_regs(0, 3, 3);
+  ld3a(A(3) + 78);
+  add6_a4(3);
+  st(204, {0, 1, 2, 6, 7, 12});
+}
+void op_35b6c() {
+  obj_a3_plus_164();
+  sub_35bbc();
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  sub_35bbc();
+  movemw(A(3) + 108, 0, 6);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  movemw(A(3) + 96, 0, 3);
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(660, {3, 4, 5});
+  ret(0);
+}
+// one 'quad' block of $35d78: d0-d2 = base point, a3+src = three more points
+void block_35d78(uint32_t src, uint32_t dst1, uint32_t dst2, bool restore) {
+  ld6a(A(3) + src);
+  sub_regs(3, 0, 3);
+  sub_regs(0, 3, 3);
+  st(dst1, {0, 1, 2});
+  add_regs(0, 3, 3);
+  sub6_a4(0);
+  sub_a4_from(0);
+  st(dst2, {0, 1, 2});
+  if (restore) add_a4_to(0);
+}
+void sub_35d78() {
+  movemw(A(3) + 24, 0, 3);
+  block_35d78(42, 90, 96, true);
+  block_35d78(54, 102, 108, false);
+  movemw(A(3) + 18, 0, 3);
+  block_35d78(66, 114, 120, true);
+  block_35d78(78, 126, 132, false);
+  ret(0);
+}
+void op_35d5c() {
+  obj_a3_plus_164();
+  sub_35d78();
+  A(3) = 0x5d684;
+  sub_35d78();
+}
+void sub_35e70() {
+  load9(A(3));
+  sub6_a4(0);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(138, {3, 4, 5});
+  add_regs(3, 0, 3);
+  asr1(3, 3);
+  st(144, {3, 4, 5});
+  sub_regs(3, 0, 3);
+  asr1(3, 3);
+  sub_regs(0, 3, 3);
+  st(150, {0, 1, 2});
+  ld3a(A(3) + 6);
+  movemw(A(3) + 144, 0, 3);
+  setw(0, lo(0) - lo(6));
+  setw(1, lo(1) - lo(7));
+  sub_a4w(2);
+  asr1(0, 3);
+  sub6_a4(0);
+  st(162, {6, 7, 12});
+  sub6_a4(3);
+  st(168, {6, 7, 12});
+  sub_words(0, 3, A(3) + 150);
+  negw(0);
+  negw(1);
+  negw(2);
+  st(156, {0, 1, 2});
+  ret(0);
+}
+void op_35e54() {
+  obj_a3_plus_164();
+  sub_35e70();
+  A(3) = 0x5d684;
+  sub_35e70();
+}
+void sub_35f18() {
+  load9(A(3));
+  sub6_a4(0);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(138, {3, 4, 5});
+  movemw(A(3) + 30, 3, 3);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  add_a4w(5);
+  st(144, {3, 4, 5});
+  ret(0);
+}
+void op_35efc() {
+  obj_a3_plus_164();
+  sub_35f18();
+  A(3) = 0x5d684;
+  sub_35f18();
+}
+void op_35f44() { ret(0); }
+void op_35f48() { ret(0); }
+
+// ---- $35884: draw the four-point tail/flare light set of an object ---------------
+// Own `link a6,#-46` frame.  Locals: -10 b count, -30 w result, -32 b index,
+// -34 w direction, -38 w, -44..-36 saved words.
+uint8_t RB(int32_t off) { return rd8(FP() + uint32_t(off)); }
+void WB(int32_t off, uint32_t v) { wr8(FP() + uint32_t(off), v); }
+void light_step(int shift, bool second, bool reload) {  // $35a5e.. one interpolated point
+  if (reload) {
+    movemw(cpu().a[7], 0, 3);
+    D(6) = uint32_t(e16(rd16(cpu().a[7] + 6)));
+    A(3) = uint32_t(e16(rd16(cpu().a[7] + 8)));
+  }
+  movemw(FP() - 44, 3, 3);
+  D(7) = uint32_t(e16(rd16(FP() - 44 + 6)));
+  A(4) = uint32_t(e16(rd16(FP() - 44 + 8)));
+  swapw(0);
+  A(4) -= uint32_t(e16(uint16_t(A(3))));
+  setw(0, uint16_t(A(4)));
+  for (int r = 3; r <= 5; ++r) setw(r, asl16(lo(r), D(0)));
+  swapw(0);
+  if (!second) {
+    sub_regs(0, 3, 3);
+    setw(6, lo(6) - lo(7));
+    for (int r : {0, 1, 2, 6}) setw(r, asr16(lo(r), shift));
+    add_regs(0, 3, 3);
+    setw(6, lo(6) + lo(7));
+  } else {
+    sub_regs(3, 0, 3);
+    setw(7, lo(7) - lo(6));
+    for (int r : {3, 4, 5, 7}) setw(r, asr16(lo(r), shift));
+    add_regs(0, 3, 3);
+    setw(6, lo(6) + lo(7));
+  }
+  call_c(0x438a8);
+  WW(-30, RW(-30) | lo(0));
+}
+void op_35884() {
+  setw(0, rd16(0x5acae));
+  if (lo(0) != rd16(0x650c2)) return ret(0);
+  cpu().push32(cpu().a[6]);                            // link a6,#-46
+  cpu().a[6] = cpu().a[7];
+  cpu().a[7] -= 46;
+  WW(-38, 0xFFFF);
+  WW(-30, 0);
+  A(1) = 0x5b47c + uint32_t(e16(lo(0)));
+  setb(0, 0);
+  if (int8_t(rd8(0x650c0)) >= 6) setb(0, rd8(0x650c1));
+  WB(-32, lob(0));
+  WB(-10, rd8(A(1) + 61));
+  if (int8_t(RB(-10)) <= 0) goto L35b64;
+  if (!(int8_t(rd8(0x650c0)) >= 6)) WB(-10, RB(-10) - 1);
+  D(0) = rd32(A(1) + 62);
+  D(1) = rd32(A(1) + 66);
+  D(2) = rd32(A(1) + 70);
+  D(3) = rd32(A(1) + 20);
+  D(4) = rd32(A(1) + 24);
+  D(5) = rd32(A(1) + 28);
+  D(3) -= rd32(0x5ad74);
+  D(4) -= rd32(0x5ad78);
+  D(5) -= rd32(0x5ad7c);
+  if (!(int16_t(rd16(A(1) + 110)) < 256)) {
+    for (int r = 0; r <= 2; ++r) D(r) = uint32_t(asr32(int32_t(D(r)), 8));
+  }
+  for (int r = 3; r <= 5; ++r) D(r) = uint32_t(asr32(int32_t(D(r)), 8));
+  D(0) = uint32_t(int32_t(int16_t(lo(0))) * int16_t(lo(3)));
+  D(1) = uint32_t(int32_t(int16_t(lo(1))) * int16_t(lo(4)));
+  D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(lo(5)));
+  {
+    int64_t sum = int64_t(int32_t(D(2))) + int32_t(D(0));
+    D(2) += D(0);
+    sum = int64_t(int32_t(D(2))) + int32_t(D(1));
+    D(2) += D(1);
+    if (sum < 0) {
+      WW(-34, 0xFFFF);
+    } else {
+      WW(-34, 0);
+      setb(0, rd8(0x650c1));
+      setb(0, lob(0) - rd8(0x650c0));
+      if (!(int8_t(rd8(0x650c0)) >= 6)) setb(0, lob(0) - 1);
+      int r = int8_t(lob(0)) + int8_t(rd8(A(1) + 61));   // addb; bges: true sum >= 0
+      setb(0, uint32_t(r));
+      if (r < 0) setb(0, lob(0) + rd8(0x650c0));
+      WB(-32, lob(0));
+    }
+  }
+L35948:
+  A(1) = 0x5b47c + uint32_t(e16(rd16(0x5acae)));
+  setb(0, RB(-32));
+  extw(0);
+  setw(0, lo(0) + lo(0));
+  setw(0, lo(0) + lo(0));
+  setw(3, lo(0));
+  setw(0, lo(0) + lo(0));
+  setw(0, lo(0) + lo(3));
+  A(3) = 0x650c4 + uint32_t(e16(lo(0)));
+  D(3) = rd32(A(3));
+  D(4) = rd32(A(3) + 4);
+  D(5) = rd32(A(3) + 8);
+  D(3) -= rd32(0x5ad74);
+  D(4) -= rd32(0x5ad78);
+  D(5) -= rd32(0x5ad7c);
+  D(7) = 0;
+  D(0) = D(3);
+  if (int32_t(D(0)) < 0) negl(0);
+  D(1) = D(4);
+  if (int32_t(D(1)) < 0) negl(1);
+  D(2) = D(5);
+  if (int32_t(D(2)) < 0) negl(2);
+  D(6) = 16384;
+  if (int32_t(D(0)) > int32_t(D(6)) || int32_t(D(1)) > int32_t(D(6)) ||
+      int32_t(D(2)) > int32_t(D(6))) {
+    D(7) = 8;
+    D(6) = 262144;
+    if (!(int32_t(D(0)) > int32_t(D(6)) || int32_t(D(1)) > int32_t(D(6)) ||
+          int32_t(D(2)) > int32_t(D(6))))
+      D(7) = 4;
+    for (int r : {3, 4, 5, 0, 1, 2}) D(r) = uint32_t(asr32(int32_t(D(r)), D(7)));
+  }
+  if (RB(-32) & 1) wr16(0x5ac4c, (rd8(A(1) + 32) & 2) ? 3 : 8);
+  else wr16(0x5ac4c, (rd8(A(1) + 32) & 2) ? 12 : 10);
+  setw(6, 2496);                                       // $35a08
+  cpu().a[7] -= 8;
+  mstore(cpu().a[7], {3, 4, 5, 6});
+  setw(4, lo(2));
+  setw(3, lo(1));
+  setw(2, lo(0));
+  call_c(0x308cc);
+  movemw(cpu().a[7], 3, 4);
+  cpu().a[7] += 8;
+  D(0) = 8;
+  setw(0, lo(0) - lo(7));
+  A(3) = uint32_t(e16(lo(7)));
+  setw(1, asr16(lo(1), D(0)));
+  setw(7, lo(1));
+  cpu().a[7] -= 2;
+  wr16(cpu().a[7], lo(6));
+  call_c(0x41666);
+  setw(0, lo(6));
+  setw(1, lo(2));
+  setw(2, lo(5));
+  setw(6, rd16(cpu().a[7]));
+  cpu().a[7] += 2;
+  extl(6);
+  if (int16_t(lo(7)) <= 0) {
+    setw(6, 127);
+  } else {
+    divuw(D(6), lo(7));
+    if (!(int16_t(lo(6)) <= 127)) setw(6, 127);
+  }
+  if (!(int16_t(RW(-38)) < 0) && int8_t(rd8(A(1) + 61)) > 1) {
+    cpu().a[7] -= 10;                                  // movem.w d0-d2/d6/a3,-(sp)
+    mstore(cpu().a[7], {0, 1, 2, 6, 11});
+    light_step(2, false, false);
+    light_step(1, false, true);
+    light_step(2, true, true);
+    movemw(cpu().a[7], 0, 3);
+    D(6) = uint32_t(e16(rd16(cpu().a[7] + 6)));
+    A(3) = uint32_t(e16(rd16(cpu().a[7] + 8)));
+    cpu().a[7] += 10;
+  }
+  mstore(FP() - 44, {0, 1, 2, 6, 11});                 // $35b10
+  if (!(int8_t(RB(-10)) > 0)) {
+    setw(7, lo(6));
+    setw(7, asr16(lo(7), 3));
+    setw(6, lo(6) - lo(7));
+  }
+  call_c(0x438a8);
+  WW(-30, RW(-30) | lo(0));
+  if (!(int16_t(RW(-34)) < 0)) {
+    WB(-32, RB(-32) - 1);
+    if (!(int8_t(RB(-32)) >= 0)) {
+      setb(0, rd8(0x650c0));
+      setb(0, lob(0) - 1);
+      WB(-32, lob(0));
+    }
+  } else {
+    WB(-32, RB(-32) + 1);
+    setb(0, rd8(0x650c0));
+    setb(0, lob(0) - 1);
+    if (!(int8_t(lob(0)) >= int8_t(RB(-32)))) WB(-32, 0);
+  }
+  WB(-10, RB(-10) - 1);
+  if (int8_t(RB(-10)) >= 0) goto L35948;
+L35b64:
+  setw(0, RW(-30));
+  cpu().a[7] = cpu().a[6];                             // unlk a6
+  cpu().a[6] = cpu().pop32();
+  flags(lo(0), 16);
+  return;
+}
+
 }  // namespace
 
 NATIVE_ASM(0x335b0, op_335b0, true);
@@ -2703,5 +3088,12 @@ NATIVE_ASM(0x35684, op_35684, true);
 NATIVE_ASM(0x35730, op_35730, true);
 NATIVE_ASM(0x357d0, op_357d0, true);
 NATIVE_ASM(0x357ee, op_357ee, true);
+NATIVE_ASM(0x35b6c, op_35b6c, true);
+NATIVE_ASM(0x35d5c, op_35d5c, true);
+NATIVE_ASM(0x35e54, op_35e54, true);
+NATIVE_ASM(0x35efc, op_35efc, true);
+NATIVE_ASM(0x35f44, op_35f44, true);
+NATIVE_ASM(0x35f48, op_35f48, true);
+NATIVE_ASM(0x35884, op_35884, true);
 
 }  // namespace native
