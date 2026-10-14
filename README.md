@@ -84,8 +84,9 @@ The original Amiga game only supports a **digital** joystick (four
 directions + fire on port 2) — it never reads the proportional pot
 registers.  The left stick is therefore thresholded to digital
 directions.  Remaining functions are mapped to buttons and two hold
-layers that work like pie menus (aim with the stick, release the
-shoulder to activate):
+layers that work like pie menus (hold the shoulder, push the stick
+into a direction: the entry fires immediately; click the stick for the
+centre entry):
 
 | Input | Action |
 |-------|--------|
@@ -95,12 +96,25 @@ shoulder to activate):
 | X | Cycle target |
 | Y | Map |
 | LT / RT | Throttle down / up |
-| Start / Back | Pause / Esc |
+| Start / Back | Pause / debug menu (see below) |
 | LS click / RS click | Brakes / Gear |
 | Right stick X / Y | Rudder / Zoom |
-| **LB + stick** (release) | Systems pie: N radar, E target, S map, W HUD, NE ECM, SE chaff, SW flare, NW arrestor, center gear |
+| **LB + stick** (push) | Systems pie: N radar, E target, S map, W HUD, NE ECM, SE chaff, SW flare, NW arrestor, stick click = gear |
 | **LB + face** | A HUD, B ECM, X chaff, Y flare |
-| **RB + stick** (release) | View pie (keypad directions); center = forward, **RB+A** = outside view |
+| **RB + stick** (push) | View pie (keypad directions); stick click = forward, **RB+A** = outside view |
+
+### Remaster options and debug menu
+
+All off by default; the original behaviour is untouched.
+
+- `--hires N`: render the 3D view at N times resolution (HUD and cockpit
+  stay low-res).
+- `--analog`: left stick flies analog (dead zone, proportional pitch and
+  rudder) instead of the thresholded digital directions.
+- **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog
+  stick, save/load state slots and a way to send ESC to the game.  Save
+  states are stored next to the flight log; they can also be loaded from
+  the intro.
 
 ## Project layout
 

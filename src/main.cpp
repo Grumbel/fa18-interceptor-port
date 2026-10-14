@@ -125,7 +125,7 @@ public:
   bool sjoy[5] = {};
   // Gamepad: previous button mask for edge detection; held rawkeys for release.
   uint32_t pad_prev_btns = 0;
-  int pad_prev_hat = -1;      // layered d-pad/stick selection (-1 none, 0-7 dirs, 8 center)
+  int pad_prev_hat = -1;      // pie menu: last direction while a shoulder is held (-1 none, 8 neutral)
   int pad_throttle_cd = 0;    // frames until next throttle step
   bool pad_held_key[128] = {};
   bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
@@ -329,32 +329,37 @@ public:
       if (pressed & (1u << 7)) pad_tap(0x24);       // RS click = gear
     }
 
-    // Hold layers act as pie menus: aim with stick/d-pad, release the
-    // shoulder to commit.  Face buttons are shortcuts while the layer is held.
-    // LB wins over RB if both are down.
-    if (released & (1u << 8)) {
+    // Hold layers act as pie menus: while LB (systems) or RB (views) is
+    // held, pushing the stick or d-pad into a direction fires that entry
+    // immediately; clicking the left stick fires the centre entry.  Face
+    // buttons are shortcuts while LB is held.  LB wins over RB.
+    {
       // N=R, NE=J, E=T, SE=C, S=M, SW=F, W=H, NW=A, center=G
       static const int sys_keys[9] = {
         0x13, 0x26, 0x14, 0x33, 0x37, 0x23, 0x25, 0x20, 0x24
       };
-      if (pad_prev_hat >= 0 && pad_prev_hat <= 8) pad_tap(sys_keys[pad_prev_hat]);
-      pad_prev_hat = -1;
-    } else if (lb) {
-      pad_prev_hat = pad_dir8(lx, ly, du, dd, dl, dr);
-      if (pressed & (1u << 0)) pad_tap(0x25);  // A = H (HUD)
-      if (pressed & (1u << 1)) pad_tap(0x26);  // B = J (ECM)
-      if (pressed & (1u << 2)) pad_tap(0x33);  // X = C (chaff)
-      if (pressed & (1u << 3)) pad_tap(0x23);  // Y = F (flare)
-    } else if (released & (1u << 9)) {
       // Keypad 8,9,6,3,2,1,4,7,5
       static const int view_keys[9] = {
         0x3E, 0x3F, 0x2F, 0x1F, 0x1E, 0x1D, 0x2D, 0x3D, 0x2E
       };
-      if (pad_prev_hat >= 0 && pad_prev_hat <= 8) pad_tap(view_keys[pad_prev_hat]);
-      pad_prev_hat = -1;
-    } else if (rb) {
-      pad_prev_hat = pad_dir8(lx, ly, du, dd, dl, dr);
-      if (pressed & (1u << 0)) pad_tap(0x43);  // A = keypad Enter (outside view)
+      const int* keys = lb ? sys_keys : (rb ? view_keys : nullptr);
+      if (keys) {
+        int dir = pad_dir8(lx, ly, du, dd, dl, dr);  // 8 = neutral
+        // a direction already held when the shoulder goes down does not fire
+        if (pad_prev_hat >= 0 && dir != 8 && dir != pad_prev_hat) pad_tap(keys[dir]);
+        pad_prev_hat = dir;
+        if (pressed & (1u << 6)) pad_tap(keys[8]);   // stick click = centre entry
+        if (lb) {
+          if (pressed & (1u << 0)) pad_tap(0x25);  // A = H (HUD)
+          if (pressed & (1u << 1)) pad_tap(0x26);  // B = J (ECM)
+          if (pressed & (1u << 2)) pad_tap(0x33);  // X = C (chaff)
+          if (pressed & (1u << 3)) pad_tap(0x23);  // Y = F (flare)
+        } else if (pressed & (1u << 0)) {
+          pad_tap(0x43);  // RB + A = keypad Enter (outside view)
+        }
+      } else {
+        pad_prev_hat = -1;
+      }
     }
 
     // Throttle on triggers: RT = increase (+ / F10), LT = decrease (- / F1)

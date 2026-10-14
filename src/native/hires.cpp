@@ -28,7 +28,6 @@
 namespace remaster {
 
 namespace {
-inline int pl2(const char* s) { return atoi(s); }
 using native::rd16;
 using native::rd32;
 using native::rd8;
@@ -268,13 +267,6 @@ void on_polygon() {
     auto sh = [&](int16_t v) { return double(int16_t(uint32_t(int32_t(v)) << (shift & 31))); };
     pts.push_back({sh(int16_t(rd16(a))), sh(int16_t(rd16(a + 2))), sh(int16_t(rd16(a + 4)))});
   }
-  if (const char* pl = getenv("FA18_POLYLOG")) {
-    if (native::g_machine->frame_count() / 4 == uint64_t(atoi(pl)) / 4) {
-      std::fprintf(stderr, "[poly] st=%04x %04x %04x %04x col=%04x n=%d shift=%d first=(%d,%d,%d)\n",
-                   rd16(0x5a9de), rd16(0x5a9e0), rd16(0x5a9e2), rd16(0x5a9e4), rd16(0x5ac4c), n,
-                   shift, int(pts[0].x), int(pts[0].y), int(pts[0].z));
-    }
-  }
   auto clipped = clip_near(pts, 1.0);
   if (clipped.size() < 3) return;
   std::vector<V2> sp;
@@ -285,18 +277,6 @@ void on_polygon() {
 }
 
 void on_fill2d() {
-  if (const char* pl = getenv("FA18_POLYLOG")) {
-    if (native::g_machine->frame_count() / 4 == uint64_t(atoi(pl)) / 4)
-      std::fprintf(stderr, "[fill2d] pending3d=%d in_scene=%d st=%04x %04x %04x %04x col=%04x n=%d p0=(%d,%d)\n",
-                   pending_3d, in_scene, rd16(0x5a9de), rd16(0x5a9e0), rd16(0x5a9e2), rd16(0x5a9e4),
-                   rd16(0x5ac4c), int16_t(rd16(0x60684)), int16_t(rd16(0x60686)), int16_t(rd16(0x60688)));
-    if (native::g_machine->frame_count() / 4 == uint64_t(pl2(pl)) / 4) {
-      int n2 = int16_t(rd16(0x60684));
-      for (int i = 0; i < n2 && i < 8; ++i)
-        std::fprintf(stderr, "    v%d=(%d,%d)", i, int16_t(rd16(0x60686 + 4u * i)), int16_t(rd16(0x60688 + 4u * i)));
-      std::fprintf(stderr, "\n");
-    }
-  }
   // the fill of a 3D polygon ($38c0c calls $44b50 from $392cc) was rendered
   // from the 3D data already; anything else is a 2D polygon of its own
   if (rd32(native::g_machine->cpu.a[7]) == 0x392d2) return;
@@ -314,9 +294,10 @@ void on_fill2d() {
 // through $44dfe directly, not through $44b50: observe the return of $44dfe at $44b00
 void on_fill_horizon() {
   pending_3d = false;
-  // called at the return of $44dfe (bounds/edge set-up): Z set = polygon is
-  // visible and gets filled (bnes $44b14 otherwise)
-  if (!native::g_machine->cpu.fz) return;
+  // called at the return of $44dfe (bounds/edge set-up): d0 = 0 means the
+  // polygon is visible and gets filled (bnes $44b14 otherwise).  The result
+  // is read from d0, not from the flags (recompiled code keeps those lazily).
+  if (native::g_machine->cpu.d[0] != 0) return;
   if (rd8(0x5ab93) == 0) return;            // no second colour: sky fill only
   if (!first_prim()) return;
   int n = int16_t(rd16(0x60684));
@@ -472,13 +453,6 @@ void scene_end() {
   for (size_t i = 0; i < cur->snap.size(); ++i)
     cur->unexplained[i] = (cur->snap[i] != cur->s0[i]) && !cur->cover[i];
   cur->done = true;
-  if (getenv("FA18_PIXLOG")) {
-    int x = 40, y = 100;
-    std::fprintf(stderr, "[pix] frame %llu s0=%d snap=%d px=%d cover=%d prims=%d\n",
-                 (unsigned long long)native::g_machine->frame_count(), cur->s0[size_t(y) * W + x],
-                 cur->snap[size_t(y) * W + x], cur->px[size_t(y * cur->S) * size_t(W * cur->S) + size_t(x * cur->S)],
-                 cur->cover[size_t(y) * W + x], cur->prims);
-  }
   if (getenv("FA18_HIRES_STATS")) {
     int u = 0, ch = 0, ex = 0;
     for (size_t i = 0; i < cur->snap.size(); ++i) {
