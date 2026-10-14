@@ -105,7 +105,8 @@ commit with a routine disabled "for now" without saying so in TODO.md.
   compile error: it would copy the address, not the value).
 - Debugging a failure: `tests/ramdiff.sh SCENARIO FRAME DIR` (first
   differing bytes), `FA18_NATIVE_ONLY=name1,...` / `FA18_NATIVE_SKIP=...`
-  to bisect routines, `FA18_CALLTRACE=from,to,file` to diff the order of
+  to bisect routines, `FA18_VERIFY_ALL=1` (with `--native verify`: check
+  every call, not just the first 200), `FA18_CALLTRACE=from,to,file` to diff the order of
   routine entries, `FA18_POISON` to find routines reading registers they
   were not given.
 

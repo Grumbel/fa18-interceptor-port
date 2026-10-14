@@ -30,6 +30,11 @@ void ret(int32_t v) {
   D(0) = uint32_t(v);
   flags(uint32_t(v), 32);
 }
+// movew fp@(-126),d0 as the last instruction: N/Z come from the word
+void ret_fp126() {
+  setw(0, RW(-126));
+  flags(RW(-126), 16);
+}
 uint16_t next16() {                                   // (a2)+
   uint16_t v = rd16(A(2));
   A(2) += 2;
@@ -376,7 +381,7 @@ void op_33890() {
     A(4) = cpu().pop32();
   }
   pop_a1_a5();                                        // $33886
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 // ---- $33936: clipped polygon list with a depth/zoom prologue -------------------
@@ -737,7 +742,7 @@ L33d0a:
   WW(-126, RW(-126) | lo(0));
 L33d14:
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 void op_33d22() {
@@ -920,7 +925,7 @@ void op_33e74() {
     WW(-48, RW(-48) - 1);
   } while (int16_t(RW(-48)) > 0);
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 void op_33f8e() {
@@ -1073,7 +1078,7 @@ void op_34094() {
     setw(6, lo(6) + RW(-60));
   }
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 // ---- $341d0-$34a26: fans, strips and vertex-list ops ----------------------------
@@ -1190,7 +1195,7 @@ void fan_34200() {
     add_words_frame(4, 3, -64);
   }
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 void op_341d0() {
   wr32(0x5a9de, 0x000FFFFF);
@@ -1258,7 +1263,7 @@ void strip_343ea() {
     A(3) += 6;                                        // $3443e
   }
   pop_a1_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 void op_343b2() {
   push_a1_a5();
@@ -1317,7 +1322,7 @@ void op_344f8() {
     A(3) += 6;                                        // $3454c
   }
   pop_a1_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 // $345d0 / $345de: one quad from three vertices (v0, v1, v1+v2-v0)
@@ -1533,7 +1538,7 @@ void op_347ec() {
     A(2) = cpu().pop32();
   }
   pop_a1_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 // $34872: strip of parallelograms along an extrusion vector
@@ -1583,7 +1588,7 @@ void op_34872() {
     A(3) += 6;                                        // $348fe
   }
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 
 // $34968: n triangles/quads copied straight from the vertex table
@@ -1607,7 +1612,7 @@ void op_34968() {
     WW(-48, RW(-48) - 1);
   } while (int16_t(RW(-48)) > 0);
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
 }
 void op_349b6() {
   setw(0, next16());
@@ -1649,7 +1654,706 @@ void op_349b6() {
     WW(-48, RW(-48) - 1);
   } while (int16_t(RW(-48)) > 0);
   pop_a1_a2_a5();
-  setw(0, RW(-126));
+  ret_fp126();
+}
+
+// ---- $34a28-$353d8: line / quad / object-dependent ops --------------------------
+void st3(int r) {                                     // movew d<r>,(a0)+ x3
+  for (int i = 0; i < 3; ++i) {
+    wr16(A(0), lo(r + i));
+    A(0) += 2;
+  }
+}
+// movel a3(0,d),(a0)+ ; movew a3(4,d),(a0)+  (advance_last: the word too)
+void put_vertex(uint32_t idx, bool advance_last) {
+  wr32(A(0), rd32(A(3) + idx));
+  A(0) += 4;
+  wr16(A(0), rd16(A(3) + idx + 4));
+  if (advance_last) A(0) += 2;
+}
+uint32_t X(int r) { return uint32_t(e16(lo(r))); }   // index register as offset
+void sub3(int dst, int src) {                         // subw d<src>,d<dst> x3
+  sub_regs(dst, src, 3);
+}
+void ret0_pop_a1_a2_a5() {
+  pop_a1_a2_a5();
+  ret(0);
+}
+
+void add_words_a3(int r0, int n, uint32_t off) {       // addw a3@(off),d<r0>..
+  for (int i = 0; i < n; ++i) setw(r0 + i, lo(r0 + i) + rd16(A(3) + off + 2u * uint32_t(i)));
+}
+
+void op_34a3c() {
+  push_a1_a5();
+  wr32(0x5a9de, 0xFFFFFFFFu);
+  wr16(0x5ac4c, next16());
+  WW(-126, 0);
+  WW(-110, 0);
+  while (RW(-110) == 0) {                             // $34a58
+    setw(1, next16());
+    setw(2, next16());
+    if (int16_t(lo(2)) < 0) {
+      WW(-110, RW(-110) + 1);
+      setw(2, lo(2) & 0x7FFF);
+    }
+    A(3) = 0x5d684;
+    A(0) = 0x61886;
+    A(4) = A(3) + X(1);
+    wr32(A(0), rd32(A(4)));
+    A(0) += 4;
+    A(4) += 4;
+    setw(6, rd16(A(4)));
+    wr16(A(0), lo(6));
+    A(0) += 2;
+    A(4) = A(3) + X(2);
+    wr32(A(0), rd32(A(4)));
+    A(0) += 4;
+    A(4) += 4;
+    setw(6, lo(6) & rd16(A(4)));
+    if (int16_t(lo(6)) < 0) continue;
+    wr16(A(0), rd16(A(4)));
+    cpu().push32(A(2));
+    call_c(0x43a56);
+    or_result();
+    A(2) = cpu().pop32();
+  }
+  pop_a1_a5();
+  ret_fp126();
+}
+void op_34a28() {
+  if (sl(0x5ad70) < -192) return op_34a3c();
+  do {
+    A(2) += 2;
+  } while (int16_t(rd16(A(2) - 2)) >= 0);
+  ret(0);
+}
+void op_34aa8() {
+  push_a1_a5();
+  wr16(0x5ac4c, next16());
+  setw(0, next16());
+  WW(-126, 0);
+  WW(-110, 0);
+  while (RW(-110) == 0) {                             // $34abc
+    setw(1, next16());
+    if (int16_t(rd16(A(2))) < 0) WW(-110, RW(-110) + 1);
+    A(3) = 0x5d684;
+    movemw(A(3) + X(0), 2, 6);
+    setw(5, lo(5) - lo(2));
+    setw(6, lo(6) - lo(3));
+    setw(7, lo(7) - lo(4));
+    A(0) = 0x61886;
+    movemw(A(3) + X(1), 2, 3);
+    setw(2, lo(2) - lo(5));
+    setw(3, lo(3) - lo(6));
+    setw(4, lo(4) - lo(7));
+    mstore(A(0), {2, 3, 4});
+    setw(1, next16());
+    setw(1, lo(1) & 0x7FFF);
+    movemw(A(3) + X(1), 2, 3);
+    setw(2, lo(2) - lo(5));
+    setw(3, lo(3) - lo(6));
+    setw(4, lo(4) - lo(7));
+    mstore(A(0) + 6, {2, 3, 4});
+    cpu().push32(A(2));
+    cpu().a[7] -= 2;
+    wr16(cpu().a[7], lo(0));
+    call_c(0x43a56);
+    or_result();
+    setw(0, rd16(cpu().a[7]));
+    cpu().a[7] += 2;
+    A(2) = cpu().pop32();
+  }
+  pop_a1_a5();
+  ret_fp126();
+}
+void op_34b2a() {
+  wr16(0x5ac4c, next16());
+  movemw(A(2), 0, 3);
+  setw(7, rd16(A(2) + 6));
+  D(7) = uint32_t(e16(lo(7)));
+  A(2) += 8;
+  A(3) = 0x5d684;
+  A(0) = 0x61284;
+  wr16(A(0), 0);
+  A(0) += 2;
+  wr16(A(0), 4);
+  A(0) += 2;
+  put_vertex(X(1), true);
+  setw(6, rd16(A(0) - 2));
+  put_vertex(X(2), true);
+  setw(6, lo(6) & rd16(A(0) - 2));
+  put_vertex(X(7), true);
+  setw(6, lo(6) & rd16(A(0) - 2));
+  movemw(A(3) + X(0), 0, 6);
+  setw(3, lo(3) - lo(0));
+  setw(4, lo(4) - lo(1));
+  setw(5, lo(5) - lo(2));
+  movemw(A(3) + X(7), 0, 3);
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  mstore(A(0), {0, 1, 2});
+  setw(6, lo(6) & lo(2));
+  if (int16_t(lo(6)) < 0) return ret(0);
+  push_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+void op_34b9e() {
+  wr16(0x5ac4c, next16());
+  setw(7, next16());
+  A(3) = 0x5d684;
+  A(0) = 0x61284;
+  wr16(A(0), 0);
+  A(0) += 2;
+  wr16(A(0), 4);
+  A(0) += 2;
+  put_vertex(X(7), true);
+  setw(6, rd16(A(0) - 2));
+  setw(0, next16());
+  movemw(A(3) + X(0), 0, 6);
+  setw(3, lo(3) - lo(0));
+  setw(4, lo(4) - lo(1));
+  setw(5, lo(5) - lo(2));
+  movemw(A(3) + X(7), 0, 3);
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  st3(0);
+  setw(6, lo(6) & lo(2));
+  setw(7, next16());
+  movemw(A(3) + X(7), 0, 3);
+  setw(0, lo(0) - lo(3));
+  setw(1, lo(1) - lo(4));
+  setw(2, lo(2) - lo(5));
+  st3(0);
+  setw(6, lo(6) & lo(2));
+  put_vertex(X(7), false);
+  setw(6, lo(6) & rd16(A(0)));
+  if (int16_t(lo(6)) < 0) return ret(0);
+  push_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+void op_34c1c() {
+  wr16(0x5ac4c, next16());
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  if (sl(0x5ad70) < -128) return ret(0);
+  A(0) = 0x61284;
+  wr16(A(0), 0);
+  A(0) += 2;
+  wr16(A(0), 4);
+  A(0) += 2;
+  movemw(A(3), 2, 6);
+  A(3) += 12;
+  mstore(A(0), {2, 3, 4, 5, 6, 7});
+  A(0) += 12;
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  movemw(A(3), 2, 3);
+  st3(2);
+  setw(2, lo(2) - lo(5));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  mstore(A(0), {2, 3, 4});
+  setw(7, lo(4));
+  setw(7, lo(7) & rd16(A(0) + 10));
+  setw(7, lo(7) & rd16(A(0) + 16));
+  setw(7, lo(7) & rd16(A(0) + 22));
+  if (int16_t(lo(7)) < 0) return ret(0);
+  push_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+void op_34c8c() {
+  wr16(0x5ac4c, next16());
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  if (sl(0x5ad70) < -128) return ret(0);
+  push_a1_a2_a5();
+  A(0) = 0x61284;
+  wr16(A(0), 0);
+  A(0) += 2;
+  wr16(A(0), 4);
+  A(0) += 2;
+  movemw(A(3), 2, 6);
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  A(1) = uint32_t(e16(lo(5)));
+  A(4) = uint32_t(e16(lo(6)));
+  A(5) = uint32_t(e16(lo(7)));
+  movemw(A(3) + 18, 0, 3);
+  st3(0);
+  add_regs(0, 5, 3);
+  st3(0);
+  A(2) = uint32_t(e16(lo(2)));
+  movemw(A(3) + 6, 2, 6);
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  setw(2, uint16_t(A(2)));
+  add_regs(0, 5, 3);
+  st3(0);
+  setw(0, lo(0) - uint16_t(A(1)));
+  setw(1, lo(1) - uint16_t(A(4)));
+  setw(2, lo(2) - uint16_t(A(5)));
+  mstore(A(0), {0, 1, 2});
+  setw(7, rd16(A(0) - 14));
+  setw(7, lo(7) & rd16(A(0) - 8));
+  setw(7, lo(7) & rd16(A(0) - 2));
+  setw(7, lo(7) & rd16(A(0) + 4));
+  if (int16_t(lo(7)) < 0) return ret0_pop_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+
+// shared by $34d2a/$34e16: view-space product d4 = x*dx + y*dy for the facing test
+void facing_setup(uint32_t a4) {                      // d1,d2 deltas; d3,d4 projected
+  setw(0, next16());
+  setw(1, rd16(a4 + 10 + X(0)));
+  setw(2, rd16(a4 + 14 + X(0)));
+  setw(3, lo(1));
+  setw(4, lo(2));
+  setw(0, next16());
+  setw(6, lo(0));
+  setw(0, lo(0) & 0x7FFF);
+  setw(1, lo(1) - rd16(a4 + 10 + X(0)));
+  setw(2, lo(2) - rd16(a4 + 14 + X(0)));
+  setb(7, rd8(a4 + 6));
+  setw(7, lo(7) & 15);
+  setw(3, asr16(lo(3), D(7)));
+  setw(4, asr16(lo(4), D(7)));
+  setw(3, lo(3) + rd16(0x5ae22));
+  setw(4, lo(4) + rd16(0x5ae26));
+  setw(7, rd16(0x5adb0));
+  setw(3, asl16(lo(3), D(7)));
+  setw(4, asl16(lo(4), D(7)));
+  setw(3, lo(3) + rd16(0x5ad6a));
+  setw(4, lo(4) + rd16(0x5ad6e));
+  D(3) = uint32_t(int32_t(int16_t(lo(3))) * int16_t(lo(1)));
+  D(4) = uint32_t(int32_t(int16_t(lo(4))) * int16_t(lo(2)));
+}
+void op_34d2a() {
+  A(3) = 0x5d684;
+  A(0) = 0x61286;
+  wr16(A(0), 3);
+  A(0) += 2;
+  wr16(0x5ac4c, next16());
+  A(4) = rd32(0x5ad2a);
+  facing_setup(A(4));
+  setw(0, next16());
+  put_vertex(X(0), true);
+  A(3) += uint32_t(e16(next16()));
+  push_a1_a2_a5();
+  int64_t sum = int64_t(int32_t(D(4))) + int32_t(D(3));
+  D(4) += D(3);
+  bool ge = sum >= 0, neg6 = int16_t(lo(6)) < 0;
+  if (ge ? !neg6 : neg6) {                            // $34db4
+    wr32(A(0), rd32(A(3)));
+    A(0) += 4;
+    wr16(A(0), rd16(A(3) + 4));
+    A(0) += 2;
+    wr32(A(0), rd32(A(3) + 12));
+    A(0) += 4;
+    wr16(A(0), rd16(A(3) + 16));
+    setw(7, rd16(A(0) - 12));
+    setw(7, lo(7) & rd16(A(0) - 6));
+    setw(7, lo(7) & rd16(A(0)));
+    if (int16_t(lo(7)) < 0) return ret0_pop_a1_a2_a5();
+    call_c(0x38c0a);
+    return pop_a1_a2_a5();
+  }
+  movemw(A(3), 2, 6);                                 // $34dda
+  A(3) += 12;
+  wr16(A(0), lo(5));
+  wr16(A(0) + 2, lo(6));
+  wr16(A(0) + 4, lo(7));
+  A(0) += 6;
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  movemw(A(3), 2, 3);
+  setw(2, lo(2) - lo(5));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  mstore(A(0), {2, 3, 4});
+  setw(4, lo(4) & rd16(A(0) - 8));
+  setw(4, lo(4) & rd16(A(0) - 2));
+  if (int16_t(lo(4)) < 0) return ret0_pop_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+void op_34e16() {
+  A(3) = 0x5d684;
+  A(0) = 0x61286;
+  wr16(A(0), 3);
+  A(0) += 2;
+  wr16(0x5ac4c, next16());
+  setw(0, next16());
+  movemw(A(3) + X(0), 2, 6);
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  swapw(6);
+  swapw(7);
+  A(4) = rd32(0x5ad2a);
+  facing_setup(A(4));
+  D(4) += D(3);
+  swapw(6);
+  swapw(7);
+  setw(0, next16());
+  movemw(A(3) + X(0), 1, 3);
+  setw(1, lo(1) - lo(5));
+  setw(2, lo(2) - lo(6));
+  setw(3, lo(3) - lo(7));
+  st3(1);
+  A(3) += uint32_t(e16(next16()));
+  push_a1_a2_a5();
+  bool far_path;                                      // true: $34f16
+  if (int32_t(D(4)) >= 0) far_path = int32_t(D(6)) < 0;
+  else far_path = !(int32_t(D(6)) < 0);
+  if (!far_path) {                                    // $34eca
+    movemw(A(3), 2, 6);
+    setw(5, lo(5) - lo(2));
+    setw(6, lo(6) - lo(3));
+    setw(7, lo(7) - lo(4));
+    movemw(A(3) + 18, 0, 3);
+    st3(0);
+    add_regs(0, 5, 3);
+    A(2) = uint32_t(e16(lo(2)));
+    movemw(A(3) + 6, 2, 6);
+    setw(5, lo(5) - lo(2));
+    setw(6, lo(6) - lo(3));
+    setw(7, lo(7) - lo(4));
+    setw(2, uint16_t(A(2)));
+    add_regs(0, 5, 3);
+    mstore(A(0), {0, 1, 2});
+    setw(2, lo(2) & rd16(A(0) - 8));
+    setw(2, lo(2) & rd16(A(0) - 2));
+    if (int16_t(lo(2)) < 0) return ret0_pop_a1_a2_a5();
+    call_c(0x38c0a);
+    return pop_a1_a2_a5();
+  }
+  movemw(A(3), 2, 6);                                 // $34f16
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  A(1) = uint32_t(e16(lo(5)));
+  A(4) = uint32_t(e16(lo(6)));
+  A(5) = uint32_t(e16(lo(7)));
+  movemw(A(3) + 18, 0, 3);
+  add_regs(0, 5, 3);
+  st3(0);
+  A(2) = uint32_t(e16(lo(2)));
+  movemw(A(3) + 6, 2, 6);
+  setw(5, lo(5) - lo(2));
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  setw(2, uint16_t(A(2)));
+  add_regs(0, 5, 3);
+  setw(0, lo(0) - uint16_t(A(1)));
+  setw(1, lo(1) - uint16_t(A(4)));
+  setw(2, lo(2) - uint16_t(A(5)));
+  mstore(A(0), {0, 1, 2});
+  setw(2, lo(2) & rd16(A(0) - 8));
+  setw(2, lo(2) & rd16(A(0) - 2));
+  if (int16_t(lo(2)) < 0) return ret0_pop_a1_a2_a5();
+  call_c(0x38c0a);
+  pop_a1_a2_a5();
+}
+
+void op_34f76() {
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  movemw(A(3) + 6, 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + 6 + 16)));
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  setw(5, lo(5) - uint16_t(A(4)));
+  swapw(0);
+  setw(0, next16());
+  shift_d345(0);
+  swapw(0);
+  setw(6, lo(6) - lo(3));
+  setw(7, lo(7) - lo(4));
+  a4_sub(5);
+  mstore(A(3) + 60, {6, 7, 12});
+  setw(6, lo(6) + lo(3));
+  setw(7, lo(7) + lo(4));
+  a4_add(5);
+  movemw(A(3) + 12, 3, 3);
+  sub_regs(3, 0, 3);
+  setw(6, lo(6) + lo(3));
+  setw(7, lo(7) + lo(4));
+  a4_add(5);
+  mstore(A(3) + 54, {6, 7, 12});
+  movemw(A(3) + 30, 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + 30 + 16)));
+  sub_regs(0, 3, 3);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 66, {6, 7, 12});
+  movemw(A(3) + 48, 0, 3);
+  sub_regs(0, 3, 3);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 72, {6, 7, 12});
+  movemw(A(3) + 24, 0, 3);
+  sub_regs(0, 3, 3);
+  movemw(A(3) + 30, 3, 3);
+  add_regs(3, 0, 3);
+  movemw(A(3) + 48, 6, 2);
+  A(4) = uint32_t(e16(rd16(A(3) + 48 + 4)));
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 78, {3, 4, 5, 6, 7, 12});
+  movemw(A(3) + 42, 3, 3);
+  add_regs(3, 0, 3);
+  mstore(A(3) + 90, {3, 4, 5});
+  movemw(A(3) + 66, 3, 5);
+  A(4) = uint32_t(e16(rd16(A(3) + 66 + 10)));
+  add_regs(3, 0, 3);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 96, {3, 4, 5, 6, 7, 12});
+  ret(0);
+}
+
+// $35054-$35118: skip counts in the op stream selected by the object's state
+uint32_t obj_5b47c() { return 0x5b47c + uint32_t(e16(rd16(0x5acae))); }
+void op_35054() {
+  A(3) = obj_5b47c();
+  D(0) = 0;
+  setb(1, rd8(A(3) + 124));
+  setb(1, lob(1) & 15);
+  auto dec = [] { setb(1, lob(1) - 1); return int8_t(lob(1)) < 0; };
+  do {
+    if (int8_t(lob(1)) > 6) break;
+    if (dec()) break;
+    D(0) = 20;
+    if (dec()) break;
+    D(0) = 82;
+    if (dec()) break;
+    setw(0, 124);
+    if (dec()) break;
+    setw(0, 166);
+    if (dec()) break;
+    setw(0, 208);
+    if (dec()) break;
+    setw(0, 250);
+  } while (false);
+  A(2) += uint32_t(e16(lo(0)));
+  ret(0);
+}
+void op_350a2() {
+  A(3) = obj_5b47c();
+  D(0) = 0;
+  setb(1, rd8(A(3) + 124));
+  setb(1, lob(1) & 15);
+  if (!(int8_t(lob(1)) < 3) && !(int8_t(lob(1)) > 6)) D(0) = 8;
+  A(2) += uint32_t(e16(lo(0)));
+  ret(0);
+}
+void op_350cc() {
+  setw(2, next16());
+  A(3) = obj_5b47c();
+  setw(1, rd16(A(3) + 2));
+  setw(1, lo(1) & 8);
+  if (lo(1) == 0) D(2) = 0;
+  A(2) += uint32_t(e16(lo(2)));
+  ret(0);
+}
+void op_350ec() {
+  A(2) += 2;
+  ret(0);
+}
+void op_350f2() {
+  A(3) = obj_5b47c();
+  setb(1, rd8(0x5ab3f));
+  setb(1, lob(1) & 0x7F);
+  extw(1);
+  setw(1, lo(1) + lo(1));
+  setw(0, lo(1));
+  setw(1, asl16(lo(1), 3));
+  setw(1, lo(1) + lo(0));
+  A(2) += uint32_t(e16(lo(1)));
+  ret(0);
+}
+void op_35118() {
+  A(3) = obj_5b47c();
+  setb(1, rd8(A(3) + 124));
+  setb(1, lob(1) & 0x7F);
+  setb(1, uint32_t(int8_t(lob(1)) >> 4));
+  if (!(int8_t(lob(1)) >= 6)) A(2) += 2;
+  ret(0);
+}
+void op_3513a() {
+  A(3) = 0x5d684;
+  setw(0, next16());
+  setw(1, next16());
+  movemw(A(3) + X(0), 3, 3);
+  movemw(A(3) + X(1), 0, 3);
+  A(3) += uint32_t(e16(next16()));
+  sub_regs(0, 3, 3);
+  movemw(A(3), 3, 3);
+  add_regs(3, 0, 3);
+  mstore(A(3) + 18, {3, 4, 5});
+  asr1(0, 3);
+  movemw(A(3) + 6, 3, 5);
+  A(4) = uint32_t(e16(rd16(A(3) + 6 + 10)));
+  add_regs(3, 0, 3);
+  setw(6, lo(6) + lo(0));
+  setw(7, lo(7) + lo(1));
+  a4_add(2);
+  mstore(A(3) + 24, {3, 4, 5, 6, 7, 12});
+  A(3) = obj_5b47c();
+  setb(1, rd8(A(3) + 124));
+  setb(1, lob(1) & 0x7F);
+  setb(1, uint32_t(int8_t(lob(1)) >> 4));
+  extw(1);
+  setw(1, lo(1) + lo(1));
+  setw(0, lo(1));
+  setw(1, asl16(lo(1), 3));
+  setw(1, lo(1) - lo(0));
+  A(2) += uint32_t(e16(lo(1)));
+  ret(0);
+}
+void quad_group(uint32_t base, uint32_t src, uint32_t dst, bool six) {
+  if (six) {
+    movemw(base + src, 3, 5);
+    A(4) = uint32_t(e16(rd16(base + src + 10)));
+    add_regs(3, 0, 3);
+    setw(6, lo(6) + lo(0));
+    setw(7, lo(7) + lo(1));
+    a4_add(2);
+    mstore(base + dst, {3, 4, 5, 6, 7, 12});
+  } else {
+    movemw(base + src, 3, 3);
+    add_regs(3, 0, 3);
+    mstore(base + dst, {3, 4, 5});
+  }
+}
+void op_351ac() {
+  A(3) = 0x5d684;
+  cpu().push32(A(1));
+  A(1) = A(3);
+  A(1) += uint32_t(e16(next16()));
+  setw(7, rd16(A(2)));
+  movemw(A(3) + X(7), 0, 3);
+  movemw(A(1), 3, 3);
+  sub_regs(0, 3, 3);
+  quad_group(A(1), 6, 180, true);
+  quad_group(A(1), 18, 192, true);
+  quad_group(A(1), 30, 204, false);
+  setw(7, rd16(A(2)));
+  setw(7, lo(7) + 6);
+  movemw(A(1), 3, 3);
+  movemw(A(3) + X(7), 0, 3);
+  sub_regs(0, 3, 3);
+  quad_group(A(1), 6, 210, true);
+  quad_group(A(1), 18, 222, true);
+  quad_group(A(1), 30, 234, false);
+  setw(7, next16());
+  setw(7, lo(7) + 12);
+  movemw(A(1), 3, 3);
+  movemw(A(3) + X(7), 0, 3);
+  sub_regs(0, 3, 3);
+  quad_group(A(1), 6, 240, true);
+  quad_group(A(1), 18, 252, true);
+  quad_group(A(1), 30, 264, false);
+  setw(0, next16());
+  A(2) += uint32_t(e16(lo(0)));
+  A(1) = cpu().pop32();
+  ret(0);
+}
+
+void sub_352e2() {
+  movemw(A(3) + 18, 0, 8);
+  A(4) = uint32_t(e16(rd16(A(3) + 18 + 16)));
+  setw(6, lo(6) - lo(0));
+  setw(7, lo(7) - lo(1));
+  a4_sub(2);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  setw(5, lo(5) + uint16_t(A(4)));
+  mstore(A(3) + 84, {3, 4, 5});
+  setw(3, lo(3) - lo(6));
+  setw(4, lo(4) - lo(7));
+  setw(5, lo(5) - uint16_t(A(4)));
+  sub_words(0, 3, A(3) + 42);
+  add_regs(3, 0, 3);
+  mstore(A(3) + 90, {3, 4, 5});
+  sub_regs(3, 0, 3);
+  setw(2, uint16_t(A(4)));
+  setw(6, asr16(lo(6), 2));
+  setw(7, asr16(lo(7), 2));
+  setw(2, asr16(lo(2), 2));
+  A(4) = uint32_t(e16(lo(2)));
+  movemw(A(3) + 36, 0, 3);
+  sub_words(0, 3, A(3) + 18);
+  sub_regs(0, 3, 3);
+  negw(0);
+  negw(1);
+  negw(2);
+  mstore(A(3) + 60, {0, 1, 2});
+  movemw(A(3) + 18, 3, 3);
+  add_words_a3(3, 3, 24);
+  asr1(3, 3);
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  setw(5, lo(5) + uint16_t(A(4)));
+  mstore(A(3) + 66, {3, 4, 5});
+  movemw(A(3), 6, 2);
+  A(4) = uint32_t(e16(rd16(A(3) + 4)));
+  setw(3, lo(3) + lo(6));
+  setw(4, lo(4) + lo(7));
+  setw(5, lo(5) + uint16_t(A(4)));
+  asr1(3, 3);
+  mstore(A(3) + 72, {3, 4, 5});
+  movemw(A(3) + 42, 0, 3);
+  movemw(A(3) + 54, 3, 3);
+  sub_regs(3, 0, 3);
+  for (int r = 3; r <= 5; ++r) setw(r, asr16(lo(r), 2));
+  add_regs(0, 3, 3);
+  asr1(3, 3);
+  add_regs(0, 3, 3);
+  mstore(A(3) + 78, {0, 1, 2});
+  ret(0);
+}
+void op_352c4() {
+  A(3) = 0x5b47c;
+  setw(0, rd16(0x5acae));
+  setw(0, lo(0) + 164);
+  A(3) += uint32_t(e16(lo(0)));
+  sub_352e2();
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  sub_352e2();
+}
+void sub_353d8() {
+  movemw(A(3), 0, 6);
+  sub_regs(3, 0, 3);
+  asr1(3, 3);
+  add_regs(0, 3, 3);
+  mstore(A(3) + 30, {0, 1, 2});
+  sub_regs(0, 3, 3);
+  asr1(3, 3);
+  add_regs(0, 3, 3);
+  mstore(A(3) + 36, {0, 1, 2});
+  ret(0);
+}
+void op_353ba() {
+  A(3) = 0x5b47c;
+  setw(0, rd16(0x5acae));
+  setw(0, lo(0) + 164);
+  A(3) += uint32_t(e16(lo(0)));
+  sub_353d8();
+  A(3) = 0x5d684 + uint32_t(e16(next16()));
+  sub_353d8();
 }
 
 }  // namespace
@@ -1694,5 +2398,25 @@ NATIVE_ASM(0x347ec, op_347ec, true);
 NATIVE_ASM(0x34872, op_34872, true);
 NATIVE_ASM(0x34968, op_34968, true);
 NATIVE_ASM(0x349b6, op_349b6, true);
+NATIVE_ASM(0x34a28, op_34a28, true);
+NATIVE_ASM(0x34a3c, op_34a3c, true);
+NATIVE_ASM(0x34aa8, op_34aa8, true);
+NATIVE_ASM(0x34b2a, op_34b2a, true);
+NATIVE_ASM(0x34b9e, op_34b9e, true);
+NATIVE_ASM(0x34c1c, op_34c1c, true);
+NATIVE_ASM(0x34c8c, op_34c8c, true);
+NATIVE_ASM(0x34d2a, op_34d2a, true);
+NATIVE_ASM(0x34e16, op_34e16, true);
+NATIVE_ASM(0x34f76, op_34f76, true);
+NATIVE_ASM(0x35054, op_35054, true);
+NATIVE_ASM(0x350a2, op_350a2, true);
+NATIVE_ASM(0x350cc, op_350cc, true);
+NATIVE_ASM(0x350ec, op_350ec, true);
+NATIVE_ASM(0x350f2, op_350f2, true);
+NATIVE_ASM(0x35118, op_35118, true);
+NATIVE_ASM(0x3513a, op_3513a, true);
+NATIVE_ASM(0x351ac, op_351ac, true);
+NATIVE_ASM(0x352c4, op_352c4, true);
+NATIVE_ASM(0x353ba, op_353ba, true);
 
 }  // namespace native

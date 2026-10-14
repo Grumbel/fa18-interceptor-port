@@ -566,10 +566,12 @@ void Machine::execute(int64_t until) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;
       if (idx < native_table_.size() && native_table_[idx] && !(pc & 1)) {
         const native::Def* d = native_table_[idx];
-        // Verify the first 200 calls of each routine, then every 50th.
+        // Verify the first 200 calls of each routine, then every 50th
+        // (FA18_VERIFY_ALL=1: every call).
+        static const bool verify_all = getenv("FA18_VERIFY_ALL") != nullptr;
         NativeStats& st = native_stats_[d];
         if (native_mode == NativeMode::Verify && d->verify &&
-            (st.calls < 200 || st.calls % 50 == 0))
+            (verify_all || st.calls < 200 || st.calls % 50 == 0))
           verify_native(d);
         else invoke_native(d);
         continue;
