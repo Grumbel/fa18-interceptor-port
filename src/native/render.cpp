@@ -192,12 +192,14 @@ NATIVE_ASM(0x3f7e2, s3f7e2, true);
 // through when d7 was negative after the increment ladder).
 static void project_fail_4388e() {
   D(0) = 0;
+  flags(0, 32);  // moveq #0
   wr32(0x5ac50, 0xffffffffu);
 }
 static void project_error_4387c() {
   wr16(0x5ac96, 27);
   call_c(0x2f216);
   D(0) = 0;
+  flags(0, 32);
 }
 static void project_screen_body() {
   // frustum tests against |d0|,|d1| < d2 and d2 > 0 (d3 leftover = -d1)
@@ -246,14 +248,15 @@ static void project_screen_body() {
   if (int16_t(lo(7)) < 0) {
     // d7 was -5..-1: bump toward 0 and pick a marker routine
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x441fc); D(0) = 1; return; }
+    if (int16_t(lo(7)) >= 0) { call_c(0x441fc); D(0) = 1; flags(1, 32); return; }
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x44212); D(0) = 1; return; }
+    if (int16_t(lo(7)) >= 0) { call_c(0x44212); D(0) = 1; flags(1, 32); return; }
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x44276); D(0) = 1; return; }
+    if (int16_t(lo(7)) >= 0) { call_c(0x44276); D(0) = 1; flags(1, 32); return; }
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x43dcc); D(0) = 1; return; }
-    // still negative: success without marker, d0 left as projected x
+    if (int16_t(lo(7)) >= 0) { call_c(0x43dcc); D(0) = 1; flags(1, 32); return; }
+    // still negative: move.w d0,d0 sets flags from projected x
+    flags(lo(0), 16);
     return;
   }
   // d7 >= 0 (e.g. from $438a0 using $5adb0): distance-based marker.
@@ -263,18 +266,18 @@ static void project_screen_body() {
     setw(2, uint16_t(d2));
     if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
       call_c(0x44276);
-      D(0) = 1;
+      D(0) = 1; flags(1, 32);
       return;
     }
     d2 = asr16(80, lo(7));
     setw(2, uint16_t(d2));
     if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
       call_c(0x44212);
-      D(0) = 1;
+      D(0) = 1; flags(1, 32);
       return;
     }
     call_c(0x441fc);
-    D(0) = 1;
+    D(0) = 1; flags(1, 32);
   }
 }
 static void project_4389c() { D(7) = uint32_t(int32_t(int8_t(-5))); project_screen_body(); }
@@ -284,7 +287,7 @@ static void project_438ac() { D(7) = uint32_t(int32_t(int8_t(-3))); project_scre
 static void project_438b0() { D(7) = uint32_t(int32_t(int8_t(-2))); project_screen_body(); }
 static void project_438b4() { D(7) = uint32_t(int32_t(int8_t(-1))); project_screen_body(); }
 NATIVE_ASM(0x4389c, project_4389c, true);
-NATIVE_ASM(0x438a0, project_438a0, true);
+// NATIVE_ASM(0x438a0, project_438a0, true);  // TODO: menu1 DIFF@7000
 // NATIVE_ASM(0x438a8, project_438a8, true);  // TODO: free1 DIFF@3300 disc path
 NATIVE_ASM(0x438ac, project_438ac, true);
 NATIVE_ASM(0x438b0, project_438b0, true);
