@@ -136,8 +136,9 @@ Open:
       copies $5adea→$5adf2 / $5adee→$5adf6; body path ALWAYS writes $5adde
       (9999 path bras to that store, max-skip ble also falls into it)
 - [x] Fix $4389c positive-d7 path: write shifted threshold back to d2
-- [x] Fix $438a8 disc marker: bsr displacement targets $43dce (after
-      move.w d6,d5), not $43dcc — only the d7=-4 path uses this
+- [ ] $438a8 still DIFF@3300 alone; BSR.W target is $43dcc (relative to
+      extension word). Also fixed $35832 movem.l/divs vs word/divu mismatch
+      and projection DIVS remainder + d3 frustum leftovers
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific

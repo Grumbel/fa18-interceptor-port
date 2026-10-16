@@ -200,36 +200,37 @@ static void project_error_4387c() {
   D(0) = 0;
 }
 static void project_screen_body() {
-  // frustum tests against |d0|,|d1| < d2 and d2 > 0
+  // frustum tests against |d0|,|d1| < d2 and d2 > 0 (d3 leftover = -d1)
   if (int16_t(lo(0)) >= int16_t(lo(2))) { project_fail_4388e(); return; }
   if (int16_t(lo(1)) >= int16_t(lo(2))) { project_fail_4388e(); return; }
   {
     int16_t t = int16_t(-int16_t(lo(0)));
+    setw(3, uint16_t(t));
     if (t >= int16_t(lo(2))) { project_fail_4388e(); return; }
     t = int16_t(-int16_t(lo(1)));
+    setw(3, uint16_t(t));
     if (t >= int16_t(lo(2))) { project_fail_4388e(); return; }
   }
   if (int16_t(lo(2)) <= 0) { project_error_4387c(); return; }
 
-  // d0 = 160 + 160*d0/d2, clamp [0,319]
+  // muls/divs leave remainder in high word like 68000 DIVS
   {
     int32_t num = int32_t(int16_t(lo(0))) * 160;
     int16_t den = int16_t(lo(2));
-    int16_t q = int16_t(num / den);
-    q = int16_t(q + 160);
-    if (q < 0) q = 0;
-    else if (q >= 320) q = 319;
-    setw(0, uint16_t(q));
+    int32_t q = num / den, r = num % den;
+    D(0) = (uint32_t(uint16_t(r)) << 16) | uint16_t(q);
+    setw(0, uint16_t(int16_t(lo(0)) + 160));
+    if (int16_t(lo(0)) < 0) setw(0, 0);
+    else if (int16_t(lo(0)) >= 320) setw(0, 319);
   }
-  // d1 = 90 + 90*d1/d2, clamp [0,179]
   {
     int32_t num = int32_t(int16_t(lo(1))) * 90;
     int16_t den = int16_t(lo(2));
-    int16_t q = int16_t(num / den);
-    q = int16_t(q + 90);
-    if (q < 0) q = 0;
-    else if (q >= 180) q = 179;
-    setw(1, uint16_t(q));
+    int32_t q = num / den, r = num % den;
+    D(1) = (uint32_t(uint16_t(r)) << 16) | uint16_t(q);
+    setw(1, uint16_t(int16_t(lo(1)) + 90));
+    if (int16_t(lo(1)) < 0) setw(1, 0);
+    else if (int16_t(lo(1)) >= 180) setw(1, 179);
   }
   // flip to centred coords: d0 = -(d0-319), d1 = -(d1-179)+1
   setw(0, uint16_t(-int16_t(int16_t(lo(0)) - 319)));
@@ -251,7 +252,7 @@ static void project_screen_body() {
     setw(7, lo(7) + 1);
     if (int16_t(lo(7)) >= 0) { call_c(0x44276); D(0) = 1; return; }
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x43dce); D(0) = 1; return; }  // bsr lands on $43dce not $43dcc
+    if (int16_t(lo(7)) >= 0) { call_c(0x43dcc); D(0) = 1; return; }
     // still negative: success without marker, d0 left as projected x
     return;
   }
