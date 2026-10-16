@@ -151,20 +151,20 @@ static void compare_names_397b2() {
 NATIVE_ASM(0x397b2, compare_names_397b2, true);
 
 // $38baa: player-object readiness predicate → d0 = 0 or 1.
+// Callers may branch on CCR from the final moveq without an intervening tst.
 static void player_ready_pred_38baa() {
   A(0) = 0x5b47c;
-  auto fail = []() { D(0) = 1; };
-  auto ok = []() { D(0) = 0; };
-  if (!(rd8(0x5b47c + 33) & 1)) { fail(); return; }
-  if (!(rd8(0x5b47c + 3) & 0x80)) { fail(); return; }
+  auto ready = []() { D(0) = 1; flags(1, 32); };
+  auto not_ready = []() { D(0) = 0; flags(0, 32); };
+  if (!(rd8(0x5b47c + 33) & 1)) { ready(); return; }
+  if (!(rd8(0x5b47c + 3) & 0x80)) { ready(); return; }
   if (rd8(0x5ab40) == 3) {
-    if ((rd8(0x5b47c + 4) & 0xc0) == 0) { fail(); return; }
+    if ((rd8(0x5b47c + 4) & 0xc0) == 0) { ready(); return; }
   } else {
-    // non-mode-3: require bit 2 of +4, then fall through to +110 test
-    if (!(rd8(0x5b47c + 4) & 4)) { fail(); return; }
+    if (!(rd8(0x5b47c + 4) & 4)) { ready(); return; }
   }
-  if (rd16(0x5b47c + 110) != 0) { fail(); return; }
-  ok();
+  if (rd16(0x5b47c + 110) != 0) { ready(); return; }
+  not_ready();
 }
 NATIVE_ASM(0x38baa, player_ready_pred_38baa, true);
 
