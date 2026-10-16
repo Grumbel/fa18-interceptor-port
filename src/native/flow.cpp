@@ -162,52 +162,71 @@ NATIVE_ASM(0x38baa, player_ready_pred_38baa, true);
 
 // $4120a: merge steering bits into object byte a1@(101).
 static void object_steer_flags_4120a() {
+  // Match $4120a exactly, including d3 leftovers (altitude overwrites d3 on
+  // some paths) and the non-0x60 branch targets.
   uint8_t bits = 0;
   uint8_t mode = uint8_t(rd8(A(1) + 100) & 0x60);
   int16_t d3 = int16_t(lo(3));
+  auto bits_from_d3 = [&]() {
+    if (d3 == 0) bits = 0;
+    else if (d3 < 0) bits = 4;
+    else bits = 8;
+  };
   if (mode == 0x60) {
     if (d3 == 0) {
       bits = 0;
     } else if (d3 > 0) {
-      if (d3 <= int16_t(rd16(A(1) + 88))) bits = 0;
-      else {
+      if (d3 <= int16_t(rd16(A(1) + 88))) {
+        bits = 0;
+      } else {
         bits = 0x80;
-        int16_t alt = int16_t(rd16(A(1) + 106));
-        if (alt <= 14400) {
-          if (alt > 80) bits = uint8_t(bits | 4);
-        } else if (alt <= 28720) {
+        d3 = int16_t(rd16(A(1) + 106));  // original overwrites d3
+        setw(3, uint16_t(d3));
+        // alt<=80 or alt>28720 → moveq #0,d2 (clears the 0x80)
+        if (d3 <= 14400) {
+          if (d3 <= 80) bits = 0;
+          else bits = uint8_t(bits | 4);
+        } else if (d3 > 28720) {
+          bits = 0;
+        } else {
           bits = uint8_t(bits | 8);
         }
       }
     } else {  // d3 < 0
-      if (d3 >= int16_t(rd16(A(1) + 88))) bits = 0;
-      else {
+      if (d3 >= int16_t(rd16(A(1) + 88))) {
+        bits = 0;
+      } else {
         bits = 0x40;
-        int16_t alt = int16_t(rd16(A(1) + 106));
-        if (alt <= 14400) {
-          if (alt > 80) bits = uint8_t(bits | 4);
-        } else if (alt <= 28720) {
+        d3 = int16_t(rd16(A(1) + 106));
+        setw(3, uint16_t(d3));
+        if (d3 <= 14400) {
+          if (d3 <= 80) bits = 0;
+          else bits = uint8_t(bits | 4);
+        } else if (d3 > 28720) {
+          bits = 0;
+        } else {
           bits = uint8_t(bits | 8);
         }
       }
     }
   } else if (rd8(A(1) + 100) & 0x80) {
+    // bit7 set: altitude selects fixed 4/8 or falls through to d3 test
     int16_t v = int16_t(rd16(A(1) + 106));
-    bool take = false;
+    setw(2, uint16_t(v));  // original loads alt into d2
     if (v <= 14400) {
-      if (v >= 400) take = true;
-    } else if (v > 28400) {
-      take = true;
-    }
-    if (take) {
-      if (d3 == 0) bits = 0;
-      else if (d3 > 0) bits = 8;
-      else bits = 4;
+      if (v < 400) {
+        bits_from_d3();
+      } else {
+        bits = 4;  // bra to moveq #4
+      }
+    } else if (v <= 28400) {
+      bits = 8;  // ble to moveq #8
     } else {
-      bits = 0;
+      bits_from_d3();  // fall through to tst.w d3
     }
   } else {
-    bits = 0;
+    // bit7 clear: same as tst.w d3 path
+    bits_from_d3();
   }
   uint8_t d1 = uint8_t((rd8(A(1) + 101) & 3) | bits);
   setb(2, bits);

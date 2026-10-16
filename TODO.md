@@ -129,6 +129,9 @@ Open:
 - [x] Fix $42eba sincos: Q2/Q4 leftover d6/d7, and table index must
       sign-extend like 68000 (0,a0,dn.w) (was zero-extending uint16_t)
 - [x] Fix $36fb8 clear-lock: bit6-clear must *clear* selection (was inverted)
+- [x] Fix $4120a object steer flags: non-0x60 path was wrong (bit7-clear
+      and altitude bands); mode 0x60 alt<=80 / >28720 must zero bits;
+      d3 leftover = altitude when the altitude path runs
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
