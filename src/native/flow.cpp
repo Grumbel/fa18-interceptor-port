@@ -151,12 +151,12 @@ static void player_ready_pred_38baa() {
   if (!(rd8(0x5b47c + 3) & 0x80)) { fail(); return; }
   if (rd8(0x5ab40) == 3) {
     if ((rd8(0x5b47c + 4) & 0xc0) == 0) { fail(); return; }
-    if (rd16(0x5b47c + 110) != 0) { fail(); return; }
-    ok();
-    return;
+  } else {
+    // non-mode-3: require bit 2 of +4, then fall through to +110 test
+    if (!(rd8(0x5b47c + 4) & 4)) { fail(); return; }
   }
-  if (!(rd8(0x5b47c + 4) & 4)) { fail(); return; }
-  fail();  // bnes path after btst #2 still goes to d0=1 at 38be8
+  if (rd16(0x5b47c + 110) != 0) { fail(); return; }
+  ok();
 }
 NATIVE_ASM(0x38baa, player_ready_pred_38baa, true);
 
@@ -512,39 +512,47 @@ NATIVE_ASM(0x42696, obj_timer_set_neg_42696, true);
 // $42eba: angle in d4 (0..7199 units, full circle 7200) → (sin,cos)-like
 // table lookups at $538e8 into d4/d5 with quadrant sign fixups.
 static void sincos_table_42eba() {
+  // 68000 (0,a0,dn.w) sign-extends the index. Match leftovers per quadrant.
+  auto tbl = [](int16_t idx) -> uint16_t {
+    return rd16(0x538e8u + uint32_t(int32_t(idx)));
+  };
   setw(4, lo(4) + lo(4));  // addw d4,d4
   A(0) = 0x538e8;
   setw(7, lo(4));
   int16_t ang = int16_t(lo(4));
   if (ang < 1800) {
-    setw(4, rd16(A(0) + uint32_t(uint16_t(ang))));
+    // Q1: d4=sin, d6=1800-ang, d5=cos, d7=ang
+    setw(4, tbl(ang));
     int16_t d6 = int16_t(1800 - int16_t(lo(7)));
     setw(6, uint16_t(d6));
-    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(5, tbl(d6));
   } else if (ang < 3600) {
+    // Q2: d4=sin, d6=1800, d7=ang-1800, d5=-cos
     int16_t d6 = int16_t(3600 - ang);
     setw(6, uint16_t(d6));
-    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
-    d6 = int16_t(int16_t(lo(7)) - 1800);
-    setw(6, uint16_t(d6));
-    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(4, tbl(d6));
+    setw(6, 1800);
+    setw(7, uint16_t(int16_t(lo(7)) - 1800));
+    setw(5, tbl(int16_t(lo(7))));
     setw(5, uint16_t(-int16_t(lo(5))));
   } else if (ang < 5400) {
+    // Q3: d4=-sin, d6=5400-ang, d5=-cos, d7=ang
     int16_t d6 = int16_t(ang - 3600);
-    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(4, tbl(d6));
     setw(4, uint16_t(-int16_t(lo(4))));
     d6 = int16_t(5400 - int16_t(lo(7)));
     setw(6, uint16_t(d6));
-    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(5, tbl(d6));
     setw(5, uint16_t(-int16_t(lo(5))));
   } else {
+    // Q4: d4=-sin, d6=5400, d7=ang-5400, d5=cos
     int16_t d6 = int16_t(7200 - ang);
     setw(6, uint16_t(d6));
-    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(4, tbl(d6));
     setw(4, uint16_t(-int16_t(lo(4))));
-    d6 = int16_t(int16_t(lo(7)) - 5400);
-    setw(6, uint16_t(d6));
-    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(6, 5400);
+    setw(7, uint16_t(int16_t(lo(7)) - 5400));
+    setw(5, tbl(int16_t(lo(7))));
   }
 }
 NATIVE_ASM(0x42eba, sincos_table_42eba, true);

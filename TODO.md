@@ -124,6 +124,10 @@ Done (batch): $399f6 airspeed limits, $397b2 name compare,
   $42eba sincos, $2f11a/$2f124 player flag, $31b34 cam delta.
 
 Open:
+- [x] Fix $38baa player-ready predicate (non-mode-3 path always failed; must
+      test object+110 after bit2 check, same as mode-3 tail)
+- [x] Fix $42eba sincos: Q2/Q4 leftover d6/d7, and table index must
+      sign-extend like 68000 (0,a0,dn.w) (was zero-extending uint16_t)
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
