@@ -81,6 +81,8 @@ Done (all verified by the gate):
   ground_poke), effect slots ($272e4/$27554/$277e0/$27b06/$27c2c;
   effects.cpp, scenario effects_poke; $27a30 is never called), gun burst
   sound ($2a2f8, sound_api.cpp)
+- UI text formatting helper $397a2: append one hexadecimal digit as ASCII
+  to the output buffer (flow.cpp, NATIVE_ASM; equivalence gate pending).
 - asm math helpers (math.cpp, all NATIVE_ASM, verified per call): hypot
   $308cc, isqrt $39bba, vector scaling $39cb6/$39cc0/$39d58, matrix rotate
   $39de2, rounded divide $39eec, BCD <-> binary $39f2e/$39f74, view pan

@@ -60,6 +60,21 @@ static void set_mission_message(int32_t mission, int32_t queue_slot,
   wr16(destination + 2, 0);
 }
 NATIVE_C(0x39510, set_mission_message, true);
+
+// $397a2: append one hexadecimal digit from d1 to the byte string at a0.
+// Values 0..9 become '0'..'9'; values 10..15 become 'A'..'F'.  The
+// original uses word arithmetic for the ASCII conversion and postincrements
+// a0 as part of the final move.b.  This helper is used while preparing the
+// mission/status text shown between screens.
+static void append_hex_digit() {
+  uint8_t digit = asmr::lob(1);
+  if (int8_t(digit) > 9) asmr::setw(1, asmr::lo(1) + 7);
+  asmr::setw(1, asmr::lo(1) + 0x30);
+  wr8(asmr::A(0), asmr::lob(1));
+  ++asmr::A(0);
+  asmr::flags(asmr::lob(1), 8);  // MOVE.B sets N/Z and clears V/C.
+}
+NATIVE_ASM(0x397a2, append_hex_digit, true);
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
