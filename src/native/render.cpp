@@ -251,7 +251,7 @@ static void project_screen_body() {
     setw(7, lo(7) + 1);
     if (int16_t(lo(7)) >= 0) { call_c(0x44276); D(0) = 1; return; }
     setw(7, lo(7) + 1);
-    if (int16_t(lo(7)) >= 0) { call_c(0x43dcc); D(0) = 1; return; }
+    if (int16_t(lo(7)) >= 0) { call_c(0x43dce); D(0) = 1; return; }  // bsr lands on $43dce not $43dcc
     // still negative: success without marker, d0 left as projected x
     return;
   }
