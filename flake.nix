@@ -9,127 +9,122 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;  # requireFile ADF is marked unfree
+        };
         lib = pkgs.lib;
 
-        # Host path to the original ADF.  Read at *evaluation* time only
-        # (builtins.getEnv).  It does NOT automatically appear inside a
-        # sandboxed build — the value is substituted into the derivation
-        # text, and the build must be allowed to open that host path
-        # (__noChroot) because the ADF is not in the Nix store.
-        #   FA18_DATA=/path/to/game.adf nix flake check --impure
-        fa18Data = builtins.getEnv "FA18_DATA";
+        # Original game disk — not redistributable, not in the repo.
+        # Store path names cannot contain spaces; content hash is of the
+        # TOSEC 901120-byte ADF (flat).  Add it once:
+        #
+        #   cp "FA-18 Interceptor (1988)(Electronic Arts).adf" fa18-interceptor.adf
+        #   nix-store --add-fixed sha256 fa18-interceptor.adf
+        fa18Adf = pkgs.requireFile {
+          name = "fa18-interceptor.adf";
+          sha256 = "sha256-PdSPiYVWG+ItkCOT3juu4ALWQlX6OCaDX8sgmHXGJUA=";
+          message = ''
+            The original FA-18 Interceptor ADF is required for the native
+            verification gate and for a recompiled build, but it is not part
+            of this repository.
 
-        mkFa18 = { pname, cmakeExtraFlags ? [ ], extraAttrs ? { } }:
-          pkgs.stdenv.mkDerivation ({
-            inherit pname;
-            version = "0.1.0";
-            src = self;
+            1. Obtain the TOSEC image, e.g.:
+                 FA-18 Interceptor (1988)(Electronic Arts).adf
+            2. Add it to the Nix store under the fixed name (content hash):
+                 cp "FA-18 Interceptor (1988)(Electronic Arts).adf" fa18-interceptor.adf
+                 nix-store --add-fixed sha256 fa18-interceptor.adf
+            3. Re-run the build / check.
+          '';
+        };
 
-            nativeBuildInputs = with pkgs; [
-              cmake
-              pkg-config
-              python3
-            ];
+        mkFa18 = { pname, cmakeExtraFlags ? [ ] }: pkgs.stdenv.mkDerivation {
+          inherit pname;
+          version = "0.1.0";
+          src = self;
 
-            buildInputs = with pkgs; [
-              SDL2
-            ];
+          nativeBuildInputs = with pkgs; [
+            cmake
+            pkg-config
+            python3
+          ];
 
-            cmakeFlags = [
-              "-DCMAKE_BUILD_TYPE=Release"
-            ] ++ cmakeExtraFlags;
+          buildInputs = with pkgs; [
+            SDL2
+          ];
 
-            meta = with lib; {
-              mainProgram = "fa18";
-              description = "Modern port of the 1988 Amiga flight simulator F/A-18 Interceptor";
-              license = licenses.gpl3Plus;
-              platforms = platforms.linux;
-            };
-          } // extraAttrs);
+          cmakeFlags = [
+            "-DCMAKE_BUILD_TYPE=Release"
+          ] ++ cmakeExtraFlags;
+
+          meta = with lib; {
+            mainProgram = "fa18";
+            description = "Modern port of the 1988 Amiga flight simulator F/A-18 Interceptor";
+            license = licenses.gpl3Plus;
+            platforms = platforms.linux;
+          };
+        };
 
         fa18 = mkFa18 { pname = "fa18-interceptor"; };
 
-        # Recomp build: needs the host ADF to extract the executable once.
-        # __noChroot: the ADF path is outside the store.
-        fa18Recomp =
-          if fa18Data == "" then null
-          else mkFa18 {
-            pname = "fa18-interceptor-recomp";
-            cmakeExtraFlags = [ "-DFA18_ADF=${fa18Data}" ];
-            extraAttrs = {
-              # Host ADF is not a store input; disable the sandbox so cmake
-              # can read FA18_ADF and extract the executable.
-              __noChroot = true;
-            };
-          };
+        fa18Recomp = mkFa18 {
+          pname = "fa18-interceptor-recomp";
+          cmakeExtraFlags = [ "-DFA18_ADF=${fa18Adf}" ];
+        };
 
-        # Full native translation gate (tests/check_native.sh).
-        checkNative =
-          if fa18Data == "" then
-            pkgs.runCommand "fa18-check-native-skipped" { } ''
-              echo "SKIP fa18-check-native: set FA18_DATA to the game ADF (or assets dir)"
-              echo "  and re-run with:  FA18_DATA=/path/to/game.adf nix flake check --impure"
-              touch "$out"
-            ''
-          else
-            pkgs.stdenv.mkDerivation {
-              name = "fa18-check-native";
-              src = self;
+        checkNative = pkgs.stdenv.mkDerivation {
+          name = "fa18-check-native";
+          src = self;
 
-              # Host ADF path + nested bash scripts with /usr/bin/env shebangs.
-              __noChroot = true;
+          nativeBuildInputs = [
+            fa18Recomp
+            pkgs.python3
+            pkgs.coreutils
+            pkgs.bash
+            pkgs.gnugrep
+            pkgs.gnused
+            pkgs.gawk
+            pkgs.findutils
+            pkgs.util-linux
+            pkgs.diffutils
+          ];
+          buildInputs = [ pkgs.SDL2 ];
 
-              nativeBuildInputs = [
-                fa18Recomp
-                pkgs.python3
-                pkgs.coreutils
-                pkgs.bash
-                pkgs.gnugrep
-                pkgs.gnused
-                pkgs.gawk
-                pkgs.findutils
-                pkgs.util-linux
-                pkgs.diffutils
-              ];
-              buildInputs = [ pkgs.SDL2 ];
+          # #!/usr/bin/env bash → store bash (sandbox has no /usr/bin/env).
+          postPatch = ''
+            patchShebangs tests
+          '';
 
-              # Rewrite #!/usr/bin/env bash → Nix store bash (sandbox has no /usr/bin/env).
-              postPatch = ''
-                patchShebangs tests
-              '';
+          dontConfigure = true;
+          dontBuild = true;
 
-              dontConfigure = true;
-              dontBuild = true;
+          installPhase = ''
+            runHook preInstall
+            mkdir -p build
+            ln -sf ${fa18Recomp}/bin/fa18 build/fa18
 
-              installPhase = ''
-                runHook preInstall
-                mkdir -p build
-                ln -sf ${fa18Recomp}/bin/fa18 build/fa18
+            # ADF is a real store input (requireFile); sandbox can read it.
+            export FA18_DATA=${fa18Adf}
+            export FA18_SKIP_BUILD=1
+            export SDL_VIDEODRIVER=dummy
+            export SDL_AUDIODRIVER=dummy
 
-                # FA18_DATA is baked in from evaluation-time getEnv (not inherited
-                # from the invoking shell into the builder environment).
-                export FA18_DATA=${lib.escapeShellArg fa18Data}
-                export FA18_SKIP_BUILD=1
-                export SDL_VIDEODRIVER=dummy
-                export SDL_AUDIODRIVER=dummy
+            echo "== native gate (FA18_DATA=$FA18_DATA)"
+            mkdir -p "$TMPDIR/gate"
+            if ! bash tests/check_native.sh "$TMPDIR/gate"; then
+              echo "FAIL: tests/check_native.sh"
+              exit 1
+            fi
+            mkdir -p "$out"
+            echo PASS > "$out/result"
+            if [ -f "$TMPDIR/gate/compare.txt" ]; then
+              cp "$TMPDIR/gate/compare.txt" "$out/compare.txt" || true
+            fi
+            runHook postInstall
+          '';
 
-                echo "== native gate (FA18_DATA=$FA18_DATA)"
-                mkdir -p "$TMPDIR/gate"
-                if ! bash tests/check_native.sh "$TMPDIR/gate"; then
-                  echo "FAIL: tests/check_native.sh"
-                  exit 1
-                fi
-                mkdir -p "$out"
-                echo PASS > "$out/result"
-                if [ -f "$TMPDIR/gate/compare.txt" ]; then
-                  cp "$TMPDIR/gate/compare.txt" "$out/compare.txt" || true
-                fi
-                runHook postInstall
-              '';
-
-              meta.description = "Native C++ translation gate (tests/check_native.sh)";
-            };
+          meta.description = "Native C++ translation gate (tests/check_native.sh)";
+        };
 
         mkApp = name: extraArgs: {
           type = "app";
@@ -142,7 +137,6 @@
         packages = {
           default = fa18;
           fa18 = fa18;
-        } // lib.optionalAttrs (fa18Recomp != null) {
           fa18-recomp = fa18Recomp;
         };
 
@@ -150,9 +144,9 @@
         apps.native = mkApp "native" "--native on";
         apps.recomp = mkApp "recomp" "--native off";
 
-        # nix flake check [--impure]
-        #   checks.build  – package builds (interpreter-only without ADF)
-        #   checks.native – tests/check_native.sh (needs FA18_DATA + --impure)
+        # nix flake check
+        #   checks.build  – package (interpreter-only; no ADF needed)
+        #   checks.native – tests/check_native.sh (ADF via requireFile in the store)
         checks = {
           build = fa18;
           native = checkNative;
@@ -172,7 +166,9 @@
             echo "FA-18 Interceptor dev shell"
             echo "  cmake -B build && cmake --build build"
             echo "  ./build/fa18 /path/to/game.adf"
-            echo "  FA18_DATA=/path/to/game.adf nix flake check --impure"
+            echo "  # native gate — add ADF to the store first (see flake requireFile):"
+            echo "  cp /path/to/game.adf fa18-interceptor.adf && nix-store --add-fixed sha256 fa18-interceptor.adf"
+            echo "  nix build .#checks.x86_64-linux.native"
             echo "  nix run .#native"
             echo "  nix run .#recomp"
           '';

@@ -152,19 +152,24 @@ extract it once for the recompiler). The ADF is never installed or committed.
 ### Checks
 
 ```
-nix flake check                          # builds the package (interpreter-only)
-FA18_DATA=/path/to/game.adf nix flake check --impure   # + tests/check_native.sh gate
+nix flake check
+# or only the native gate:
+nix build .#checks.x86_64-linux.native
 ```
 
-`checks.native` runs the full native translation gate (equivalence + per-call
-verify). It needs the ADF via `FA18_DATA` and must be evaluated with `--impure`
-because the image is not in the repository.
+`checks.build` always builds the package (interpreter-only without the ADF).
 
-`FA18_DATA` is read at *evaluation* time (`builtins.getEnv`) and substituted
-into the derivation; it is not passed through from the shell into a pure
-sandbox. The native check therefore uses `__noChroot` so the builder can open
-the host ADF path. Nested test scripts are invoked with `bash` / `patchShebangs`
-because `/usr/bin/env` is absent in the Nix build environment.
+`checks.native` runs `tests/check_native.sh` inside the normal Nix sandbox.
+The original ADF is a `pkgs.requireFile` input (not committed). Add it once:
+
+```
+cp "FA-18 Interceptor (1988)(Electronic Arts).adf" fa18-interceptor.adf
+nix-store --add-fixed sha256 fa18-interceptor.adf
+```
+
+(Store path names cannot contain spaces; the content hash is what matters.)
+If the file is missing from the store, the build fails with that instruction.
+
 
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is an
