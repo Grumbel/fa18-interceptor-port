@@ -93,6 +93,129 @@ static void append_hex_digit() {
   asmr::flags(asmr::lob(1), 8);  // MOVE.B sets N/Z and clears V/C.
 }
 NATIVE_ASM(0x397a2, append_hex_digit, true);
+
+// ---- Pure helpers (batch) --------------------------------------------------------
+
+// $399f6: refresh airspeed-derived limits when $5adf2 >= 0.
+static void refresh_airspeed_limits_399f6() {
+  if (int32_t(rd32(0x5adf2)) < 0) return;
+  uint32_t d1 = rd32(0x5ae02);
+  uint32_t d0;
+  if (int32_t(d1) > 32767) {
+    d0 = 9999;
+  } else {
+    d0 = (800000u / (d1 & 0xffffu)) & 0xffffu;
+    if (int16_t(uint16_t(d0)) < int16_t(rd16(0x5ade0)))
+      wr16(0x5ade0, uint16_t(d0));
+    if (int16_t(uint16_t(d0)) > int16_t(rd16(0x5abd8))) {
+      wr16(0x5abd8, uint16_t(d0));
+      wr16(0x5adde, uint16_t(d0));
+    }
+  }
+  D(0) = d0;
+  D(1) = d1;
+  wr32(0x5adf2, rd32(0x5adea));
+  wr32(0x5adf6, rd32(0x5adee));
+}
+NATIVE_ASM(0x399f6, refresh_airspeed_limits_399f6, true);
+
+// $397b2: walk name buffers; always ends by setting $5aba4 = 1.
+static void compare_names_397b2() {
+  A(0) = 0x5aae3;
+  A(1) = 0x5aac3;
+  // dbf count = word at $2d04a + 2; dbf runs count+1 times
+  int32_t count = int32_t(uint16_t(rd16(0x2d04a) + 2));
+  D(1) = uint32_t(uint16_t(count));
+  for (;;) {
+    int8_t c = int8_t(rd8(A(1)));
+    A(1) += 1;
+    setb(0, uint8_t(c));
+    if (c <= 0) break;
+    int8_t o = int8_t(rd8(A(0)));
+    A(0) += 1;
+    if (c != o) break;
+    if (count == 0) break;
+    --count;
+    D(1) = uint32_t(uint16_t(count));
+  }
+  wr8(0x5aba4, 1);
+}
+NATIVE_ASM(0x397b2, compare_names_397b2, true);
+
+// $38baa: player-object readiness predicate → d0 = 0 or 1.
+static void player_ready_pred_38baa() {
+  A(0) = 0x5b47c;
+  auto fail = []() { D(0) = 1; };
+  auto ok = []() { D(0) = 0; };
+  if (!(rd8(0x5b47c + 33) & 1)) { fail(); return; }
+  if (!(rd8(0x5b47c + 3) & 0x80)) { fail(); return; }
+  if (rd8(0x5ab40) == 3) {
+    if ((rd8(0x5b47c + 4) & 0xc0) == 0) { fail(); return; }
+    if (rd16(0x5b47c + 110) != 0) { fail(); return; }
+    ok();
+    return;
+  }
+  if (!(rd8(0x5b47c + 4) & 4)) { fail(); return; }
+  fail();  // bnes path after btst #2 still goes to d0=1 at 38be8
+}
+NATIVE_ASM(0x38baa, player_ready_pred_38baa, true);
+
+// $4120a: merge steering bits into object byte a1@(101).
+static void object_steer_flags_4120a() {
+  uint8_t bits = 0;
+  uint8_t mode = uint8_t(rd8(A(1) + 100) & 0x60);
+  int16_t d3 = int16_t(lo(3));
+  if (mode == 0x60) {
+    if (d3 == 0) {
+      bits = 0;
+    } else if (d3 > 0) {
+      if (d3 <= int16_t(rd16(A(1) + 88))) bits = 0;
+      else {
+        bits = 0x80;
+        int16_t alt = int16_t(rd16(A(1) + 106));
+        if (alt <= 14400) {
+          if (alt > 80) bits = uint8_t(bits | 4);
+        } else if (alt <= 28720) {
+          bits = uint8_t(bits | 8);
+        }
+      }
+    } else {  // d3 < 0
+      if (d3 >= int16_t(rd16(A(1) + 88))) bits = 0;
+      else {
+        bits = 0x40;
+        int16_t alt = int16_t(rd16(A(1) + 106));
+        if (alt <= 14400) {
+          if (alt > 80) bits = uint8_t(bits | 4);
+        } else if (alt <= 28720) {
+          bits = uint8_t(bits | 8);
+        }
+      }
+    }
+  } else if (rd8(A(1) + 100) & 0x80) {
+    int16_t v = int16_t(rd16(A(1) + 106));
+    bool take = false;
+    if (v <= 14400) {
+      if (v >= 400) take = true;
+    } else if (v > 28400) {
+      take = true;
+    }
+    if (take) {
+      if (d3 == 0) bits = 0;
+      else if (d3 > 0) bits = 8;
+      else bits = 4;
+    } else {
+      bits = 0;
+    }
+  } else {
+    bits = 0;
+  }
+  uint8_t d1 = uint8_t((rd8(A(1) + 101) & 3) | bits);
+  setb(2, bits);
+  setb(1, d1);
+  wr8(A(1) + 101, d1);
+}
+NATIVE_ASM(0x4120a, object_steer_flags_4120a, true);
+
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);

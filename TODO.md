@@ -115,6 +115,9 @@ Done (all verified by the gate):
   Condition codes are only set where the original's last instruction
   defines them (not compared by --native verify).
 
+Done (batch): $399f6 airspeed limits, $397b2 name compare,
+  $38baa player-ready predicate, $4120a object steer flags.
+
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
