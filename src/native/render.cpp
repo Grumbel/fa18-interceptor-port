@@ -187,6 +187,107 @@ void s3f7e2() {
 }
 NATIVE_ASM(0x3f7e2, s3f7e2, true);
 
+// ---- $4389c family: project (d0,d1,d2) to screen; d7 selects HUD variant ----
+// Shared body at $438b6. Fail → d0=0 and $5ac50=-1. Success → d0=1 (or pass
+// through when d7 was negative after the increment ladder).
+static void project_fail_4388e() {
+  D(0) = 0;
+  wr32(0x5ac50, 0xffffffffu);
+}
+static void project_error_4387c() {
+  wr16(0x5ac96, 27);
+  call_c(0x2f216);
+  D(0) = 0;
+}
+static void project_screen_body() {
+  // frustum tests against |d0|,|d1| < d2 and d2 > 0
+  if (int16_t(lo(0)) >= int16_t(lo(2))) { project_fail_4388e(); return; }
+  if (int16_t(lo(1)) >= int16_t(lo(2))) { project_fail_4388e(); return; }
+  {
+    int16_t t = int16_t(-int16_t(lo(0)));
+    if (t >= int16_t(lo(2))) { project_fail_4388e(); return; }
+    t = int16_t(-int16_t(lo(1)));
+    if (t >= int16_t(lo(2))) { project_fail_4388e(); return; }
+  }
+  if (int16_t(lo(2)) <= 0) { project_error_4387c(); return; }
+
+  // d0 = 160 + 160*d0/d2, clamp [0,319]
+  {
+    int32_t num = int32_t(int16_t(lo(0))) * 160;
+    int16_t den = int16_t(lo(2));
+    int16_t q = int16_t(num / den);
+    q = int16_t(q + 160);
+    if (q < 0) q = 0;
+    else if (q >= 320) q = 319;
+    setw(0, uint16_t(q));
+  }
+  // d1 = 90 + 90*d1/d2, clamp [0,179]
+  {
+    int32_t num = int32_t(int16_t(lo(1))) * 90;
+    int16_t den = int16_t(lo(2));
+    int16_t q = int16_t(num / den);
+    q = int16_t(q + 90);
+    if (q < 0) q = 0;
+    else if (q >= 180) q = 179;
+    setw(1, uint16_t(q));
+  }
+  // flip to centred coords: d0 = -(d0-319), d1 = -(d1-179)+1
+  setw(0, uint16_t(-int16_t(int16_t(lo(0)) - 319)));
+  setw(1, uint16_t(-int16_t(int16_t(lo(1)) - 179)));
+  setw(1, lo(1) + 1);
+  if (int16_t(lo(1)) > int16_t(rd16(0x5ac7c))) {
+    project_fail_4388e();
+    return;
+  }
+  wr16(0x5ac50, lo(0));
+  wr16(0x5ac52, lo(1));
+
+  if (int16_t(lo(7)) < 0) {
+    // d7 was -5..-1: bump toward 0 and pick a marker routine
+    setw(7, lo(7) + 1);
+    if (int16_t(lo(7)) >= 0) { call_c(0x441fc); D(0) = 1; return; }
+    setw(7, lo(7) + 1);
+    if (int16_t(lo(7)) >= 0) { call_c(0x44212); D(0) = 1; return; }
+    setw(7, lo(7) + 1);
+    if (int16_t(lo(7)) >= 0) { call_c(0x44276); D(0) = 1; return; }
+    setw(7, lo(7) + 1);
+    if (int16_t(lo(7)) >= 0) { call_c(0x43dcc); D(0) = 1; return; }
+    // still negative: success without marker, d0 left as projected x
+    return;
+  }
+  // d7 >= 0 (e.g. from $438a0 using $5adb0): distance-based marker
+  {
+    int16_t d2 = int16_t(48);
+    d2 = int16_t(d2 >> (lo(7) & 63));
+    if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
+      call_c(0x44276);
+      D(0) = 1;
+      return;
+    }
+    d2 = int16_t(80);
+    d2 = int16_t(d2 >> (lo(7) & 63));
+    if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
+      call_c(0x44212);
+      D(0) = 1;
+      return;
+    }
+    call_c(0x441fc);
+    D(0) = 1;
+  }
+}
+static void project_4389c() { D(7) = uint32_t(int32_t(int8_t(-5))); project_screen_body(); }
+static void project_438a0() { setw(7, rd16(0x5adb0)); project_screen_body(); }
+static void project_438a8() { D(7) = uint32_t(int32_t(int8_t(-4))); project_screen_body(); }
+static void project_438ac() { D(7) = uint32_t(int32_t(int8_t(-3))); project_screen_body(); }
+static void project_438b0() { D(7) = uint32_t(int32_t(int8_t(-2))); project_screen_body(); }
+static void project_438b4() { D(7) = uint32_t(int32_t(int8_t(-1))); project_screen_body(); }
+NATIVE_ASM(0x4389c, project_4389c, true);
+NATIVE_ASM(0x438a0, project_438a0, true);
+NATIVE_ASM(0x438a8, project_438a8, true);
+NATIVE_ASM(0x438ac, project_438ac, true);
+NATIVE_ASM(0x438b0, project_438b0, true);
+NATIVE_ASM(0x438b4, project_438b4, true);
+
 // ---- $32adc / $32aec / $32b24: plane tests (return Z like the original) ----
 bool s32aec() {                                       // d0-d5 in; returns Z flag
   setw(7, rd16(0x5adb0));
