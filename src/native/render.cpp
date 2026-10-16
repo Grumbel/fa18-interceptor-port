@@ -140,6 +140,7 @@ void s3223e() {
   A(2) = 0x5af18;
   rot_out(2);
 }
+NATIVE_ASM(0x3223e, s3223e, true);
 
 // ---- $32adc / $32aec / $32b24: plane tests (return Z like the original) ----
 bool s32aec() {                                       // d0-d5 in; returns Z flag
@@ -712,6 +713,25 @@ fail:
   flags(0, 32);
 }
 NATIVE_ASM(0x33160, table_match_33160, true);
+
+// ---- $31c28: same as $31c50 but the offsets come from a1@(14) (hi/lo bytes) ----
+void view_offset_31c28() {
+  D(1) = 0;
+  setw(1, rd16(A(1) + 14));
+  setw(1, uint16_t(lo(1) >> 8));  // lsrw #8
+  setw(1, lo(1) - RW(-28));
+  swapw(1);
+  D(1) = uint32_t(asr32(int32_t(D(1)), 2));
+  D(2) += D(1);
+  D(1) = 0;
+  setw(1, rd16(A(1) + 14));
+  setw(1, lo(1) & 255);
+  setw(1, lo(1) - RW(-30));
+  swapw(1);
+  D(1) = uint32_t(asr32(int32_t(D(1)), 2));
+  D(4) += D(1);
+}
+NATIVE_ASM(0x31c28, view_offset_31c28, true);
 
 // ---- $31c50 -----------------------------------------------------------------------
 void view_offset_31c50() {
@@ -1913,6 +1933,14 @@ void entry_32d72() {
 }
 NATIVE_ASM(0x32d64, entry_32d64, true);
 NATIVE_ASM(0x32d72, entry_32d72, true);
+
+// Plane-test helpers (already used internally; register for original callers).
+static void native_32aec() { (void)s32aec(); }
+static void native_32adc() { (void)s32adc(); }
+static void native_32b92() { (void)s32b92(); }
+NATIVE_ASM(0x32aec, native_32aec, true);
+NATIVE_ASM(0x32adc, native_32adc, true);
+NATIVE_ASM(0x32b92, native_32b92, true);
 
 }  // namespace
 }  // namespace native
