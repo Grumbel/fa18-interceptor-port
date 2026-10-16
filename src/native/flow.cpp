@@ -541,40 +541,58 @@ static void xform_body(uint32_t a1, uint32_t mat) {
   D(6) = uint32_t(d6);
   D(7) = uint32_t(d7);
 }
+// Entries save a1/a2 on the stack and restore them before rts, so leftover
+// a1/a2 must match the caller's values (not the working pointers).
 // $2d4a6: a1 = $5b47c, matrix at a1+$92
 static void xform_setup_2d4a6() {
-  A(1) = 0x5b47c;
-  xform_body(A(1), A(1) + 0x92);
+  uint32_t s_a1 = A(1), s_a2 = A(2);
+  xform_body(0x5b47c, 0x5b47c + 0x92);
+  A(1) = s_a1;
+  A(2) = s_a2;
 }
-// $2d48e / $2d4a0: matrix at a1+$92 (a1 already set / computed)
+// $2d48e: a1 = $5b47c + w_$5abd6, matrix at a1+$92; restore a1/a2
 static void xform_2d48e() {
-  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
-  xform_body(A(1), A(1) + 0x92);
+  uint32_t s_a1 = A(1), s_a2 = A(2);
+  uint32_t a1 = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
+  xform_body(a1, a1 + 0x92);
+  A(1) = s_a1;
+  A(2) = s_a2;
 }
+// $2d4a0: matrix at a1+$92 using the caller's a1; restore a1/a2
 static void xform_2d4a0() {
-  xform_body(A(1), A(1) + 0x92);
+  uint32_t s_a1 = A(1), s_a2 = A(2);
+  xform_body(s_a1, s_a1 + 0x92);
+  A(1) = s_a1;
+  A(2) = s_a2;
 }
-// $2d468: jsr $422d2, a1 = $5b47c+w_$5abd6, matrix at $5af06 (a2)
+// $2d468: save a1/a2, save d3-d5.w, jsr $422d2, restore d3-d5.w,
+// working a1=$5b47c+w_$5abd6, matrix at $5af06; restore a1/a2.
 static void xform_2d468() {
+  uint32_t s_a1 = A(1), s_a2 = A(2);
   uint16_t s3 = lo(3), s4 = lo(4), s5 = lo(5);
   Regs in{};
   for (int i = 0; i < 8; ++i) { in.d[i] = D(i); in.a[i] = A(i); }
   Regs out = call_asm(0x422d2, in);
   for (int i = 0; i < 8; ++i) { D(i) = out.d[i]; A(i) = out.a[i]; }
   setw(3, s3); setw(4, s4); setw(5, s5);
-  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
-  A(2) = 0x5af06;
-  xform_body(A(1), 0x5af06);
+  uint32_t a1 = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
+  xform_body(a1, 0x5af06);
+  A(1) = s_a1;
+  A(2) = s_a2;
 }
+// $2d452: moveq #0,d3/d4; movew #-5760,d5; bsr $2d4a6 (restores a1/a2);
+// store d0-d2 to $5af4e.  a1/a2 and upper d4 left as on entry (d3/d4 full 0).
 static void xform_2d452() {
-  setw(3, 0);
-  setw(4, 0);
+  uint32_t s_a1 = A(1), s_a2 = A(2);
+  D(3) = 0;
+  D(4) = 0;
   setw(5, uint16_t(int16_t(-5760)));
-  A(1) = 0x5b47c;
-  xform_body(A(1), A(1) + 0x92);
+  xform_body(0x5b47c, 0x5b47c + 0x92);
   wr32(0x5af4e, D(0));
   wr32(0x5af52, D(1));
   wr32(0x5af56, D(2));
+  A(1) = s_a1;
+  A(2) = s_a2;
 }
 NATIVE_ASM(0x2d4a6, xform_setup_2d4a6, true);
 NATIVE_ASM(0x2d48e, xform_2d48e, true);
