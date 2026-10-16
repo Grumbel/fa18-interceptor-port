@@ -147,10 +147,11 @@ Open:
 - [x] $3ab16/$3b462: divs.w overflow leaves destination unchanged (effects_poke@5050)
 - [x] $38baa: set CCR from final moveq (callers branch without tst) — end_*_ok@5550
 - [x] projection body: set CCR on moveq #0/#1 and move.w d0,d0 paths
+- [x] verify leftovers: $432b8 setw d2-d5; $4136a D(2)=bits (moveq);
+      $36fb8 setw d0 (move.w high-word preserve)
 - [ ] $438a0 disabled (menu1 DIFF@7000 with native positive-d7 path)
 - [ ] $438a8 still disabled (disc projection path)
-- [ ] remaining hunk-0 C helpers
-- [ ] later-frame diffs: mission6@6500, aero_all@8800 still reached via call_c/sub_XXXXX
+- [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
       message/value lookup into the queue) has been translated in flow.cpp;

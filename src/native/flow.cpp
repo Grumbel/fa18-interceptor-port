@@ -414,7 +414,8 @@ static void angles_to_screen_432b8() {
   d5 = uint16_t(d5 - rd16(A(0) + uint32_t(int16_t(lo(1))) + 2));
   wr16(A(1), d4); A(1) += 2;
   wr16(A(1), d5); A(1) += 2;
-  D(2) = d2; D(3) = d3; D(4) = d4; D(5) = d5;
+  // move.w/sub.w only touch low words — preserve high-word leftovers
+  setw(2, d2); setw(3, d3); setw(4, d4); setw(5, d5);
 }
 NATIVE_ASM(0x432b8, angles_to_screen_432b8, true);
 
@@ -438,7 +439,7 @@ static void object_pitch_flags_4136a() {
   // Actually moveb doesn't clear high byte of d1 on 68000! So high byte remains 0 from moveq.
   // So always the andib #3 path.
   d1 = uint8_t((d1 & 3) | d2);
-  setb(2, d2);
+  D(2) = d2;  // moveq #0/#0x10/#0x20 zeros the long
   setb(1, d1);
   wr8(A(1) + 101, d1);
 }
@@ -449,7 +450,7 @@ NATIVE_ASM(0x4136a, object_pitch_flags_4136a, true);
 // So clear when bit6 of +1 is clear, OR when bit6 set and bit1 of +32 set.
 static void clear_lock_if_gone_36fb8() {
   int16_t d0 = int16_t(rd16(0x5acb8));
-  D(0) = uint32_t(uint16_t(d0));
+  setw(0, uint16_t(d0));  // move.w — keep high-word leftover
   if (d0 < 0) return;
   A(1) = 0x5b47c + uint32_t(uint16_t(d0));
   if (rd8(A(1) + 1) & 0x40) {
