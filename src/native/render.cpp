@@ -142,6 +142,51 @@ void s3223e() {
 }
 NATIVE_ASM(0x3223e, s3223e, true);
 
+// ---- $3f7e2: add d0.hi to d2 and d0.lo to d4, then project (d2,d3,d4)
+// through the 3x3 word matrix at $5aed0 into (a5)+ (rot_out shape, a5 dest).
+void s3f7e2() {
+  uint32_t d0 = D(0);
+  setw(5, uint16_t(d0 >> 16));   // swap half of d0
+  setw(6, uint16_t(d0));
+  setw(2, lo(2) + lo(5));
+  setw(4, lo(4) + lo(6));
+  A(1) = 0x5aed0;
+  // row 0 → (a5)+
+  setw(5, lo(2));
+  setw(6, lo(3));
+  setw(7, lo(4));
+  D(5) = uint32_t(int32_t(int16_t(lo(5))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(6) = uint32_t(int32_t(int16_t(lo(6))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(7) = uint32_t(int32_t(int16_t(lo(7))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(7) += D(6);
+  D(7) += D(5);
+  D(7) = uint32_t(int32_t(D(7)) >> 8);
+  wr16(A(5), lo(7));
+  A(5) += 2;
+  // row 1 → (a5)+
+  setw(5, lo(2));
+  setw(6, lo(3));
+  setw(7, lo(4));
+  D(5) = uint32_t(int32_t(int16_t(lo(5))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(6) = uint32_t(int32_t(int16_t(lo(6))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(7) = uint32_t(int32_t(int16_t(lo(7))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(7) += D(6);
+  D(7) += D(5);
+  D(7) = uint32_t(int32_t(D(7)) >> 8);
+  wr16(A(5), lo(7));
+  A(5) += 2;
+  // row 2 → d4 → (a5)+
+  D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(3) = uint32_t(int32_t(int16_t(lo(3))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(4) = uint32_t(int32_t(int16_t(lo(4))) * int16_t(rd16(A(1)))); A(1) += 2;
+  D(4) += D(3);
+  D(4) += D(2);
+  D(4) = uint32_t(int32_t(D(4)) >> 8);
+  wr16(A(5), lo(4));
+  A(5) += 2;
+}
+NATIVE_ASM(0x3f7e2, s3f7e2, true);
+
 // ---- $32adc / $32aec / $32b24: plane tests (return Z like the original) ----
 bool s32aec() {                                       // d0-d5 in; returns Z flag
   setw(7, rd16(0x5adb0));

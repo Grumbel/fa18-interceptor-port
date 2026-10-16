@@ -2606,6 +2606,8 @@ void sub_35832() {
   }
   call_c(0x438a8);
 }
+NATIVE_ASM(0x35832, sub_35832, true);
+
 void op_357d0() {
   A(3) = 0x5d684 + uint32_t(e16(next16()));
   wr16(0x5ac4c, next16());

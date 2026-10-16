@@ -97,7 +97,8 @@ Done (all verified by the gate):
 - 3D object transform / polygon-op driver (render.cpp): entries $31c8c/
   $31c9c/$31d64 and the distant variant $32d64/$32d72 with their
   subroutines ($3223e, $328ea, $32adc/$32aec, $32b92, $32f6e), polygon
-  ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Registered internal helpers $3223e/$32adc/$32aec/$32b92/$31c28 for
+  ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Registered internal helpers $3223e/$32adc/$32aec/$32b92/$31c28/$35832,
+  matrix project $3f7e2 for
   original callers. Still original: larger bulk $33fda/$40136 and some
   op-adjacent code; op handlers at $33478 are in ops.cpp.
 - world-origin vectors ($2d3cc/$2d3e0/$2d3f4/$2d408/$2d41a) and object
