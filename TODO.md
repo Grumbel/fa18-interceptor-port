@@ -99,6 +99,8 @@ Done (all verified by the gate):
   subroutines ($3223e, $328ea, $32adc/$32aec, $32b92, $32f6e), polygon
   ops $32ffa/$33052/$3309e, $33120/$33140, $31c50. Still original: the
   op handlers behind the jump table at $33478 (see ops.cpp, below).
+- world-origin vectors ($2d3cc/$2d3e0/$2d3f4/$2d408/$2d41a) and object
+  matrix xform ($2d452/$2d468/$2d48e/$2d4a0/$2d4a6) as NATIVE_ASM in flow.cpp
 - scene draw top (scenedraw.cpp): camera position $2f220 and the object
   draw loop $2fc14 with helpers $2fffc/$3000e. Op handlers behind
   the jump table at $33478 are in ops.cpp up to $35f48 (all handlers

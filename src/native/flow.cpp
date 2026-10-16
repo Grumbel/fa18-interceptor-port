@@ -10,10 +10,13 @@
 #include "native/orig.hpp"
 #include "native/os.hpp"
 #include "native/vars.hpp"
+#include "native/asmregs.hpp"
+#include "native/runtime.hpp"
 
 namespace native {
 using namespace g;
 using namespace v;
+using namespace asmr;
 
 // ---- state machine ------------------------------------------------------------
 
@@ -417,26 +420,120 @@ NATIVE_ASM(0x2e2bc, stick_h_rel, true);
 static void stub_2f216() {}
 NATIVE_C(0x2f216, stub_2f216, true);
 
-// $2d3e0 / $2d3f4 / $2d408: initialise world-origin / camera offset vectors
-// (positive set + negated set).  Three entry points load different constants
-// then share the same store tail.
-static void store_world_origin(int32_t x, int32_t y, int32_t z) {
-  wr32(0x5af36, uint32_t(x));
-  wr32(0x5af3a, uint32_t(y));
-  wr32(0x5af3e, uint32_t(z));
-  x = -(x & 0x003fffff);
-  y = -y;
-  z = -(z & 0x003fffff);
-  wr32(0x5af2a, uint32_t(x));
-  wr32(0x5af2e, uint32_t(y));
-  wr32(0x5af32, uint32_t(z));
+// $2d3cc / $2d3e0 / $2d3f4 / $2d408 / $2d41a: world-origin / camera offset
+// vectors (positive set at $5af36 and negated set at $5af2a).  Pure ASM:
+// entries load d0/d1/d2 then fall into / call the store tail; leftover
+// registers are the negated components.
+static void store_world_origin_tail() {
+  wr32(0x5af36, D(0));
+  wr32(0x5af3a, D(1));
+  wr32(0x5af3e, D(2));
+  D(0) = uint32_t(-int32_t(D(0) & 0x003fffffu));
+  D(1) = uint32_t(-int32_t(D(1)));
+  D(2) = uint32_t(-int32_t(D(2) & 0x003fffffu));
+  wr32(0x5af2a, D(0));
+  wr32(0x5af2e, D(1));
+  wr32(0x5af32, D(2));
 }
-static void init_world_origin_a() { store_world_origin(0x10800000, 0x03000000, 0x10c00000); }
-static void init_world_origin_b() { store_world_origin(0x10546800, 0x00005000, 0x10a36700); }
-static void init_world_origin()   { store_world_origin(0x0f248000, 0x00005000, 0x0fccf000); }
-NATIVE_C(0x2d3e0, init_world_origin_a, true);
-NATIVE_C(0x2d3f4, init_world_origin_b, true);
-NATIVE_C(0x2d408, init_world_origin, true);
+static void world_origin_2d3cc() {
+  D(0) = 0x10c00000;
+  D(1) = 0x05000000;
+  D(2) = 0x11400000;
+}
+static void world_origin_2d3e0() {
+  D(0) = 0x10800000;
+  D(1) = 0x03000000;
+  D(2) = 0x10c00000;
+  store_world_origin_tail();
+}
+static void world_origin_2d3f4() {
+  D(0) = 0x10546800;
+  D(1) = 0x00005000;
+  D(2) = 0x10a36700;
+  store_world_origin_tail();
+}
+static void world_origin_2d408() {
+  D(0) = 0x0f248000;
+  D(1) = 0x00005000;
+  D(2) = 0x0fccf000;
+  store_world_origin_tail();
+}
+NATIVE_ASM(0x2d3cc, world_origin_2d3cc, true);
+NATIVE_ASM(0x2d41a, store_world_origin_tail, true);
+NATIVE_ASM(0x2d3e0, world_origin_2d3e0, true);
+NATIVE_ASM(0x2d3f4, world_origin_2d3f4, true);
+NATIVE_ASM(0x2d408, world_origin_2d408, true);
+
+// $2d4a6: transform (d3,d4,d5) by the 3x3 word matrix at a1+$92 and add the
+// translation at a1+$14/$18/$1c; result in d0/d1/d2 (asr #4).
+static void xform_2d4a6() {
+  uint32_t a1 = A(1);
+  uint32_t mat = a1 + 0x92;
+  int16_t v3 = int16_t(lo(3)), v4 = int16_t(lo(4)), v5 = int16_t(lo(5));
+  int32_t m0 = int16_t(rd16(mat + 0)), m1 = int16_t(rd16(mat + 2)), m2 = int16_t(rd16(mat + 4));
+  int32_t m3 = int16_t(rd16(mat + 6)), m4 = int16_t(rd16(mat + 8)), m5 = int16_t(rd16(mat + 10));
+  int32_t m6 = int16_t(rd16(mat + 12)), m7 = int16_t(rd16(mat + 14)), m8 = int16_t(rd16(mat + 16));
+  int32_t d6 = int32_t(v3) * m0;
+  int32_t d0 = int32_t(v4) * m1;
+  int32_t d7 = int32_t(v5) * m2;
+  d0 = d0 + d6 + d7;
+  d6 = int32_t(v3) * m3;
+  int32_t d1 = int32_t(v4) * m4;
+  d7 = int32_t(v5) * m5;
+  d1 = d1 + d6 + d7;
+  int32_t d3p = int32_t(v3) * m6;
+  int32_t d2 = int32_t(v4) * m7;
+  int32_t d5p = int32_t(v5) * m8;
+  d2 = d2 + d3p + d5p;
+  d0 >>= 4; d1 >>= 4; d2 >>= 4;
+  d0 += int32_t(rd32(a1 + 0x14));
+  d1 += int32_t(rd32(a1 + 0x18));
+  d2 += int32_t(rd32(a1 + 0x1c));
+  D(0) = uint32_t(d0);
+  D(1) = uint32_t(d1);
+  D(2) = uint32_t(d2);
+  D(3) = uint32_t(d3p);
+  D(5) = uint32_t(d5p);
+  D(6) = uint32_t(d6);
+  D(7) = uint32_t(d7);
+}
+static void xform_setup_2d4a6() {
+  A(1) = 0x5b47c;
+  xform_2d4a6();
+}
+static void xform_2d48e() {
+  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
+  xform_2d4a6();
+}
+static void xform_2d468() {
+  uint16_t s3 = lo(3), s4 = lo(4), s5 = lo(5);
+  Regs in{};
+  for (int i = 0; i < 8; ++i) { in.d[i] = D(i); in.a[i] = A(i); }
+  Regs out = call_asm(0x422d2, in);
+  for (int i = 0; i < 8; ++i) { D(i) = out.d[i]; A(i) = out.a[i]; }
+  setw(3, s3); setw(4, s4); setw(5, s5);
+  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
+  A(2) = 0x5af06;
+  xform_2d4a6();
+}
+static void xform_2d4a0() {
+  xform_2d4a6();
+}
+static void xform_2d452() {
+  setw(3, 0);
+  setw(4, 0);
+  setw(5, uint16_t(int16_t(-5760)));
+  A(1) = 0x5b47c;
+  xform_2d4a6();
+  wr32(0x5af4e, D(0));
+  wr32(0x5af52, D(1));
+  wr32(0x5af56, D(2));
+}
+NATIVE_ASM(0x2d4a6, xform_setup_2d4a6, true);
+NATIVE_ASM(0x2d48e, xform_2d48e, true);
+NATIVE_ASM(0x2d4a0, xform_2d4a0, true);
+NATIVE_ASM(0x2d468, xform_2d468, true);
+NATIVE_ASM(0x2d452, xform_2d452, true);
 
 // $2d1a4: reset display / fade state for a fresh scenario.
 static void reset_display_state() {
@@ -1035,7 +1132,7 @@ static void st_22026() {
     b_5aaa6 = 1;
     game_state = st_21b5c_addr;
   } else if (sel == 1) {
-    init_world_origin_a();
+    world_origin_2d3e0();
     b_5ab8f = 5;
     game_state = st_22354_addr;
   } else if (sel == 2) {
@@ -1061,7 +1158,7 @@ static void st_22026() {
     b_5ab40 = 2;
     enable_inflight_systems();
     sub_3dc86();
-    init_world_origin();
+    world_origin_2d408();
     sub_3cf0e();
     b_5aaa5 = 0;
     game_state = st_223ca_addr;
