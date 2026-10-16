@@ -286,13 +286,17 @@ static void obj_persp_correct_3ab16() {
   setw(3, uint16_t(-int16_t(lo(3))));
   D(0) = uint32_t(int32_t(D(0)) << 4);
   D(2) = uint32_t(int32_t(D(2)) << 4);
-  // divsw d1, d0 and d2 — signed 32/16 → 16 in low of d0/d2
+  // divs.w d1, d0/d2 — overflow leaves destination unchanged
   int16_t div = int16_t(lo(1));
   if (div != 0) {
-    int32_t q0 = int32_t(D(0)) / int32_t(div);
-    int32_t q2 = int32_t(D(2)) / int32_t(div);
-    D(0) = uint32_t(int16_t(q0));
-    D(2) = uint32_t(int16_t(q2));
+    auto divs = [](uint32_t& dn, int16_t d) {
+      int64_t q = int64_t(int32_t(dn)) / d;
+      if (q > 32767 || q < -32768) return;
+      int32_t r = int32_t(int64_t(int32_t(dn)) % d);
+      dn = (uint32_t(uint16_t(r)) << 16) | uint16_t(q);
+    };
+    divs(D(0), div);
+    divs(D(2), div);
   }
   D(0) = uint32_t(int32_t(int16_t(lo(0))) * int16_t(lo(3)));
   D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(lo(3)));
@@ -327,8 +331,14 @@ static void table_persp_correct_3b462() {
   D(2) = uint32_t(int32_t(D(2)) << 4);
   int16_t div = int16_t(lo(1));
   if (div != 0) {
-    D(0) = uint32_t(int16_t(int32_t(D(0)) / int32_t(div)));
-    D(2) = uint32_t(int16_t(int32_t(D(2)) / int32_t(div)));
+    auto divs = [](uint32_t& dn, int16_t d) {
+      int64_t q = int64_t(int32_t(dn)) / d;
+      if (q > 32767 || q < -32768) return;
+      int32_t r = int32_t(int64_t(int32_t(dn)) % d);
+      dn = (uint32_t(uint16_t(r)) << 16) | uint16_t(q);
+    };
+    divs(D(0), div);
+    divs(D(2), div);
   }
   D(0) = uint32_t(int32_t(int16_t(lo(0))) * int16_t(lo(3)));
   D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(lo(3)));
