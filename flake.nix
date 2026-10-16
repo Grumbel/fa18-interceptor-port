@@ -23,17 +23,19 @@
         #   nix-store --add-fixed sha256 fa18-interceptor.adf
         fa18Adf = pkgs.requireFile {
           name = "fa18-interceptor.adf";
-          sha256 = "sha256-PdSPiYVWG+ItkCOT3juu4ALWQlX6OCaDX8sgmHXGJUA=";
+          # nix hash path --mode flat 'FA-18 Interceptor (1988)(Electronic Arts).adf'
+          hash = "sha256-PdSPiYVWG+ItkCOT3juu4ALWQlX6OCaDX8sgmHXGJUA=";
           message = ''
             The original FA-18 Interceptor ADF is required for the native
             verification gate and for a recompiled build, but it is not part
             of this repository.
 
-            1. Obtain the TOSEC image, e.g.:
-                 FA-18 Interceptor (1988)(Electronic Arts).adf
+            1. Obtain the TOSEC image, e.g. "FA-18 Interceptor (1988)(Electronic Arts).adf"
+
             2. Add it to the Nix store under the fixed name (content hash):
-                 cp "FA-18 Interceptor (1988)(Electronic Arts).adf" fa18-interceptor.adf
-                 nix-store --add-fixed sha256 fa18-interceptor.adf
+
+               nix store add-path --name fa18-interceptor.adf --mode flat "FA-18 Interceptor (1988)(Electronic Arts).adf"
+
             3. Re-run the build / check.
           '';
         };
