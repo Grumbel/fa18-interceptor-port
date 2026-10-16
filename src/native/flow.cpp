@@ -346,6 +346,82 @@ static void scale_matrix_rows_42d8c() {
 }
 NATIVE_ASM(0x42d8c, scale_matrix_rows_42d8c, true);
 
+// ---- More pure render / object helpers ------------------------------------------
+
+// $3cfc6: lookup byte from table at (ptr $2d03c)+12 indexed by $5ab9e; return 2*signext.
+static void lookup_scaled_byte_3cfc6() {
+  D(0) = 0;
+  uint8_t d1 = rd8(0x5ab9e);
+  setb(1, d1);
+  if (d1 == 0x7e || d1 == 0x7f) return;
+  setw(1, uint16_t(int16_t(int8_t(d1))));
+  A(0) = rd32(0x2d03c);
+  setb(0, rd8(A(0) + 12 + uint32_t(int16_t(lo(1)))));
+  setw(0, uint16_t(int16_t(int8_t(lo(0)))));
+  setw(0, lo(0) + lo(0));
+}
+NATIVE_ASM(0x3cfc6, lookup_scaled_byte_3cfc6, true);
+
+// $432b8: map two angle indices (d0,d1) through table $60c84 into screen
+// deltas relative to (319,179), store four words at (a1)+.
+static void angles_to_screen_432b8() {
+  setw(0, uint16_t(int16_t(lo(0)) << 3));
+  setw(1, uint16_t(int16_t(lo(1)) << 3));
+  A(0) = 0x60c84;
+  uint16_t d2 = 319, d3 = 179;
+  uint16_t d4 = d2, d5 = d3;
+  d2 = uint16_t(d2 - rd16(A(0) + uint32_t(int16_t(lo(0)))));
+  d3 = uint16_t(d3 - rd16(A(0) + uint32_t(int16_t(lo(0))) + 2));
+  wr16(A(1), d2); A(1) += 2;
+  wr16(A(1), d3); A(1) += 2;
+  d4 = uint16_t(d4 - rd16(A(0) + uint32_t(int16_t(lo(1)))));
+  d5 = uint16_t(d5 - rd16(A(0) + uint32_t(int16_t(lo(1))) + 2));
+  wr16(A(1), d4); A(1) += 2;
+  wr16(A(1), d5); A(1) += 2;
+  D(2) = d2; D(3) = d3; D(4) = d4; D(5) = d5;
+}
+NATIVE_ASM(0x432b8, angles_to_screen_432b8, true);
+
+// $4136a: sibling of $4120a — set pitch-ish bits 4/5 in a1@(101) from d3 vs a1@(86).
+static void object_pitch_flags_4136a() {
+  D(1) = 0;
+  int16_t d3 = int16_t(lo(3));
+  uint8_t d2;
+  if (d3 < 0) {
+    if (d3 >= int16_t(rd16(A(1) + 86))) d2 = 0;
+    else d2 = 0x20;
+  } else {
+    if (d3 <= int16_t(rd16(A(1) + 86))) d2 = 0;
+    else d2 = 0x10;
+  }
+  uint8_t d1 = rd8(A(1) + 101);
+  // tstw d1: if the byte as word (high 0) is "negative" — only if we sign-extend?
+  // original: moveb a1@(101),d1; tstw d1 — byte load into low of d1, high may be 0 from moveq
+  // so tstw always non-negative if moveq #0 first... wait moveq was only for initial d1=0
+  // after moveb, high byte of d1 is 0, so tstw always >= 0 → andib #3 path
+  // Actually moveb doesn't clear high byte of d1 on 68000! So high byte remains 0 from moveq.
+  // So always the andib #3 path.
+  d1 = uint8_t((d1 & 3) | d2);
+  setb(2, d2);
+  setb(1, d1);
+  wr8(A(1) + 101, d1);
+}
+NATIVE_ASM(0x4136a, object_pitch_flags_4136a, true);
+
+// $36fb8: if selected object (offset $5acb8) is locked, clear selection.
+static void clear_lock_if_gone_36fb8() {
+  int16_t d0 = int16_t(rd16(0x5acb8));
+  D(0) = uint32_t(uint16_t(d0));
+  if (d0 < 0) return;
+  A(1) = 0x5b47c + uint32_t(uint16_t(d0));
+  if (!(rd8(A(1) + 1) & 0x40)) return;
+  if (!(rd8(A(1) + 32) & 2)) return;
+  wr16(0x5acb8, 0xffff);
+  wr8(0x5ab60, 0);
+  wr16(0x5ac32, 0xffff);
+}
+NATIVE_ASM(0x36fb8, clear_lock_if_gone_36fb8, true);
+
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
