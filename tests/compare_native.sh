@@ -8,8 +8,8 @@ set -e
 w=$1; shift
 here=$(cd "$(dirname "$0")" && pwd)
 rm -rf "$w/off" "$w/on"
-"$here/run_scenarios.sh" "$w/off" --native off --det-timing --ram-hash 50 "$@" > /dev/null
-"$here/run_scenarios.sh" "$w/on" --native on --det-timing --ram-hash 50 "$@" > /dev/null
+bash "$here/run_scenarios.sh" "$w/off" --native off --det-timing --ram-hash 50 "$@" > /dev/null
+bash "$here/run_scenarios.sh" "$w/on" --native on --det-timing --ram-hash 50 "$@" > /dev/null
 fail=0
 for f in "$w"/off/*.log; do
   n=$(basename "$f" .log)

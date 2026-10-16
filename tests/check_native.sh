@@ -18,13 +18,13 @@ elif ! cmake --build "$here_root/build" -j"$(nproc)" > "$w/build.txt" 2>&1; then
   grep -E "error|Error" "$w/build.txt" | head -20; echo "FAIL: build failed"; exit 1
 fi
 echo "== equivalence (compare_native.sh)"
-if ! "$here/compare_native.sh" "$w/cmp" > "$w/compare.txt"; then
+if ! bash "$here/compare_native.sh" "$w/cmp" > "$w/compare.txt"; then
   grep DIFF "$w/compare.txt"; echo "FAIL: native code is not equivalent"; exit 1
 fi
 echo "   $(grep -c same "$w/compare.txt") scenarios identical"
 echo "== per-call verify"
 rm -rf "$w/verify"
-"$here/run_scenarios.sh" "$w/verify" --native verify --det-timing > "$w/verify.txt" 2>&1 || true
+bash "$here/run_scenarios.sh" "$w/verify" --native verify --det-timing > "$w/verify.txt" 2>&1 || true
 if grep -q "MISMATCH" "$w/verify.txt" || grep -q "FAILED" "$w/verify.txt"; then
   grep "MISMATCH\|FAILED" "$w/verify.txt" | head -20; echo "FAIL: verify mismatches"; exit 1
 fi

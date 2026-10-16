@@ -160,6 +160,12 @@ FA18_DATA=/path/to/game.adf nix flake check --impure   # + tests/check_native.sh
 verify). It needs the ADF via `FA18_DATA` and must be evaluated with `--impure`
 because the image is not in the repository.
 
+`FA18_DATA` is read at *evaluation* time (`builtins.getEnv`) and substituted
+into the derivation; it is not passed through from the shell into a pure
+sandbox. The native check therefore uses `__noChroot` so the builder can open
+the host ADF path. Nested test scripts are invoked with `bash` / `patchShebangs`
+because `/usr/bin/env` is absent in the Nix build environment.
+
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is an
 RE / educational port. Game data is not redistributable.
