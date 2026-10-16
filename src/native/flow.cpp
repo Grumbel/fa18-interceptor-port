@@ -559,6 +559,66 @@ static void begin_flight_reset() {
 }
 NATIVE_C(0x2d50a, begin_flight_reset, false);
 
+// $2d880: reset the player object record at $5b47c and a handful of global
+// flight-control words.  Pure memory stores; a1 left pointing at $5b47c.
+static void reset_player_object_2d880() {
+  A(1) = 0x5b47c;
+  uint32_t a1 = A(1);
+  wr16(a1 + 0x6c, 0);   // 108
+  wr16(a1 + 0x6e, 0);   // 110
+  wr16(a1 + 0x78, 0);   // 120
+  wr32(a1 + 0x3e, 0);   // 62
+  wr32(a1 + 0x42, 0);   // 66
+  wr32(a1 + 0x46, 0);   // 70
+  wr32(a1 + 0x56, 0);   // 86
+  wr16(a1 + 0x5a, 0);   // 90
+  wr32(a1 + 0x50, 0);   // 80
+  wr16(a1 + 0x54, 0);   // 84
+  wr8(a1 + 0x65, 0);    // 101
+  wr8(a1 + 0x2b, 9);    // 43
+  wr16(a1 + 0, uint16_t(rd16(a1 + 0) & 0x7fff));
+  wr32(0x5ae48, 0);
+  wr32(0x5ae4c, 0);
+  wr16(0x5add8, 0);
+  wr16(0x5add6, 0);
+  wr16(0x5addc, uint16_t(int16_t(-1)));
+}
+NATIVE_ASM(0x2d880, reset_player_object_2d880, true);
+
+// $2d8e0: further player-object / mode flags for free-flight start.
+// Calls $2f182 (still original) then patches flags on the $5b47c record.
+static void setup_player_flight_2d8e0() {
+  A(0) = 0x5b47c;
+  uint32_t a0 = A(0);
+  wr8(a0 + 0x21, uint8_t(rd8(a0 + 0x21) & ~1));  // bclr #0
+  wr8(a0 + 0x63, 13);  // 99
+  {
+    Regs in{};
+    for (int i = 0; i < 8; ++i) { in.d[i] = D(i); in.a[i] = A(i); }
+    Regs out = call_asm(0x2f182, in);
+    for (int i = 0; i < 8; ++i) { D(i) = out.d[i]; A(i) = out.a[i]; }
+    a0 = A(0);  // whatever $2f182 left in a0 (original does not reload)
+  }
+  wr16(a0 + 0, 0x0148);  // 328
+  wr16(a0 + 0, uint16_t(rd16(a0 + 0) | 0x1080));
+  wr16(a0 + 0x7e, 0x1400);  // 126 = 5120
+  wr8(0x5ab91, 0);
+  wr8(0x5ab92, 0);
+  wr8(0x5abab, 0);
+  wr8(0x5aba9, 0);
+  wr8(0x5ab81, 0);
+  wr8(0x5ab67, 0);
+  wr8(0x5abad, 0);
+  wr16(0x5ae3a, 0x7fff);
+  wr8(0x5aad0, 1);
+  wr8(a0 + 0x71, 0xff);  // 113
+  wr16(0x5acb8, uint16_t(int16_t(-1)));
+  wr8(0x5ab60, 0);
+  if (rd8(0x5aa90) != 0)
+    wr8(0x5aa90, 4);
+}
+NATIVE_ASM(0x2d8e0, setup_player_flight_2d8e0, true);
+
 // $29074: sample JOY1DAT and fire edge helpers for each axis.
 static void sample_joystick() {
   uint16_t joy = rd16(0xdff00c);
