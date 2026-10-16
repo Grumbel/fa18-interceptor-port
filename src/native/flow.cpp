@@ -216,6 +216,136 @@ static void object_steer_flags_4120a() {
 }
 NATIVE_ASM(0x4120a, object_steer_flags_4120a, true);
 
+// ---- Render-adjacent pure math / object helpers (batch) --------------------------
+
+// $388ee: copy a 5-word (+ long) parameter block from table $3ddc8 indexed by
+// a1@(58) into a1@(44..56).
+static void load_obj_params_388ee() {
+  D(0) = 0;
+  setb(0, rd8(A(1) + 58));
+  setw(0, lo(0) + lo(0));
+  A(4) = 0x3ddc8 + uint32_t(int16_t(rd16(0x3ddc8 + uint32_t(int16_t(lo(0))))));
+  // movemw a4@+, d2-d6  — 5 words; then the fifth is treated as long at a1@(52)?
+  // original: movemw a4@+,d2-d6 then movew d2..d5 to a1@(44..50), movel d6 to a1@(52)
+  // movemw of 5 words: d2,d3,d4,d5,d6 — d6 only gets a word, but movel d6 stores long
+  // with upper half whatever was in d6 before. After movemw, d6 high is 0 if cleared...
+  // movemw sign-extends? On 68000 movem.w to data regs sign-extends to long.
+  uint16_t w2 = rd16(A(4)); A(4) += 2;
+  uint16_t w3 = rd16(A(4)); A(4) += 2;
+  uint16_t w4 = rd16(A(4)); A(4) += 2;
+  uint16_t w5 = rd16(A(4)); A(4) += 2;
+  uint16_t w6 = rd16(A(4)); A(4) += 2;
+  D(2) = uint32_t(int16_t(w2));
+  D(3) = uint32_t(int16_t(w3));
+  D(4) = uint32_t(int16_t(w4));
+  D(5) = uint32_t(int16_t(w5));
+  D(6) = uint32_t(int16_t(w6));
+  wr16(A(1) + 44, lo(2));
+  wr16(A(1) + 46, lo(3));
+  wr16(A(1) + 48, lo(4));
+  wr16(A(1) + 50, lo(5));
+  wr32(A(1) + 52, D(6));
+}
+NATIVE_ASM(0x388ee, load_obj_params_388ee, true);
+
+// $3ab16: perspective-style correction of object position at a1 using d5/d6/d7.
+// If (d6>>8)==0, leave position alone; else adjust a1@(20) and a1@(28), clear @(24).
+static void obj_persp_correct_3ab16() {
+  D(0) = D(5);
+  D(1) = D(6);
+  D(2) = D(7);
+  D(1) = uint32_t(int32_t(D(1)) >> 8);
+  if (int32_t(D(1)) == 0) return;
+  D(3) = rd32(A(1) + 24);
+  D(3) = uint32_t(int32_t(D(3)) >> 8);
+  setw(3, uint16_t(-int16_t(lo(3))));
+  D(0) = uint32_t(int32_t(D(0)) << 4);
+  D(2) = uint32_t(int32_t(D(2)) << 4);
+  // divsw d1, d0 and d2 — signed 32/16 → 16 in low of d0/d2
+  int16_t div = int16_t(lo(1));
+  if (div != 0) {
+    int32_t q0 = int32_t(D(0)) / int32_t(div);
+    int32_t q2 = int32_t(D(2)) / int32_t(div);
+    D(0) = uint32_t(int16_t(q0));
+    D(2) = uint32_t(int16_t(q2));
+  }
+  D(0) = uint32_t(int32_t(int16_t(lo(0))) * int16_t(lo(3)));
+  D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(lo(3)));
+  D(0) = uint32_t(int32_t(D(0)) >> 4);
+  D(2) = uint32_t(int32_t(D(2)) >> 4);
+  wr32(A(1) + 20, uint32_t(int32_t(rd32(A(1) + 20)) + int32_t(D(0))));
+  wr32(A(1) + 24, 0);
+  wr32(A(1) + 28, uint32_t(int32_t(rd32(A(1) + 28)) + int32_t(D(2))));
+}
+NATIVE_ASM(0x3ab16, obj_persp_correct_3ab16, true);
+
+// $3b462: C-arg index → scale entry at $5af6a + (arg<<6), same math as $3ab16
+// on the long triple at entry+0/+4/+8 (using entry+12 as the source vector).
+static void table_persp_correct_3b462() {
+  const uint32_t sp = cpu().a[7];
+  uint32_t idx = rd32(sp + 4);
+  D(0) = idx;
+  setw(0, uint16_t(int16_t(lo(0)) << 6));
+  A(3) = 0x5af6a + uint32_t(int16_t(lo(0)));
+  D(0) = rd32(A(3) + 12);
+  D(1) = rd32(A(3) + 16);
+  D(2) = rd32(A(3) + 20);
+  D(1) = uint32_t(int32_t(D(1)) >> 8);
+  if (int32_t(D(1)) == 0) {
+    D(0) = 0;
+    return;
+  }
+  D(3) = rd32(A(3) + 4);
+  D(3) = uint32_t(int32_t(D(3)) >> 8);
+  setw(3, uint16_t(-int16_t(lo(3))));
+  D(0) = uint32_t(int32_t(D(0)) << 4);
+  D(2) = uint32_t(int32_t(D(2)) << 4);
+  int16_t div = int16_t(lo(1));
+  if (div != 0) {
+    D(0) = uint32_t(int16_t(int32_t(D(0)) / int32_t(div)));
+    D(2) = uint32_t(int16_t(int32_t(D(2)) / int32_t(div)));
+  }
+  D(0) = uint32_t(int32_t(int16_t(lo(0))) * int16_t(lo(3)));
+  D(2) = uint32_t(int32_t(int16_t(lo(2))) * int16_t(lo(3)));
+  D(0) = uint32_t(int32_t(D(0)) >> 4);
+  D(2) = uint32_t(int32_t(D(2)) >> 4);
+  wr32(A(3) + 0, uint32_t(int32_t(rd32(A(3) + 0)) + int32_t(D(0))));
+  wr32(A(3) + 4, 0);
+  wr32(A(3) + 8, uint32_t(int32_t(rd32(A(3) + 8)) + int32_t(D(2))));
+  // original then asrl #8 d0/d2 and forces d0=0 before rts
+  D(0) = 0;
+  D(2) = uint32_t(int32_t(D(2)) >> 8);
+}
+NATIVE_ASM(0x3b462, table_persp_correct_3b462, true);
+
+// $42d8c: scale three consecutive word-triples at a1 by the word scale
+// factors in $5ad36/$5ad38/$5ad3a (mulsw + asr #8), write back in place.
+static void scale_matrix_rows_42d8c() {
+  uint16_t s0 = rd16(0x5ad36);
+  uint16_t s1 = rd16(0x5ad38);
+  uint16_t s2 = rd16(0x5ad3a);
+  D(0) = uint32_t(int16_t(s0));
+  D(1) = uint32_t(int16_t(s1));
+  D(2) = uint32_t(int16_t(s2));
+  auto scale_row = [](uint32_t base, int16_t s) {
+    for (int i = 0; i < 3; ++i) {
+      int32_t v = int32_t(int16_t(rd16(base + uint32_t(i * 2)))) * int32_t(s);
+      v >>= 8;
+      wr16(base + uint32_t(i * 2), uint16_t(v));
+    }
+  };
+  scale_row(A(1), int16_t(s0));
+  A(1) += 6;
+  scale_row(A(1), int16_t(s1));
+  A(1) += 6;
+  scale_row(A(1), int16_t(s2));
+  // leftover d3-d5 = last row after scale
+  D(3) = uint32_t(int16_t(rd16(A(1))));
+  D(4) = uint32_t(int16_t(rd16(A(1) + 2)));
+  D(5) = uint32_t(int16_t(rd16(A(1) + 4)));
+}
+NATIVE_ASM(0x42d8c, scale_matrix_rows_42d8c, true);
+
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
