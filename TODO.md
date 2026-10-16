@@ -119,6 +119,7 @@ Done (batch): $399f6 airspeed limits, $397b2 name compare,
   $38baa player-ready predicate, $4120a object steer flags.
   $388ee obj params, $3ab16/$3b462 persp correct, $42d8c matrix row scale.
   $3cfc6/$432b8/$4136a/$36fb8 screen/object helpers.
+  $44160/$4419e/$3000e/$42682..$42696 buffer/object setup.
 
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX

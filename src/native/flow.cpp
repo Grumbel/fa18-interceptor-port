@@ -422,6 +422,91 @@ static void clear_lock_if_gone_36fb8() {
 }
 NATIVE_ASM(0x36fb8, clear_lock_if_gone_36fb8, true);
 
+// ---- Buffer / object setup helpers ----------------------------------------------
+
+// $44160: pick primary or alternate HUD buffer pair from $5a964.
+static void select_hud_buffers_44160() {
+  A(0) = 0x5a966;
+  A(1) = 0x5a986;
+  if (rd16(0x5a964) != 0) {
+    A(0) += 16;
+    A(1) += 20;
+  }
+  wr32(0x5a9ae, A(0));
+  wr32(0x5a9b2, A(1));
+}
+NATIVE_ASM(0x44160, select_hud_buffers_44160, true);
+
+// $4419e: zero four 40-byte blocks whose pointers are the four longs at a1@.
+static void clear_four_blocks_4419e() {
+  uint32_t p0 = rd32(A(1));
+  uint32_t p1 = rd32(A(1) + 4);
+  uint32_t p2 = rd32(A(1) + 8);
+  uint32_t p3 = rd32(A(1) + 12);
+  A(0) = p0; A(1) = p1; A(2) = p2; A(3) = p3;
+  D(0) = 0;
+  for (int r = 1; r <= 7; ++r) D(r) = 0;
+  A(4) = 0; A(5) = 0;
+  auto clear40 = [](uint32_t base) {
+    // moveml d0-d7/a4-a5 stores 10 longs = 40 bytes
+    for (int i = 0; i < 10; ++i) wr32(base + uint32_t(i * 4), 0);
+  };
+  clear40(p0);
+  clear40(p1);
+  clear40(p2);
+  clear40(p3);
+}
+NATIVE_ASM(0x4419e, clear_four_blocks_4419e, true);
+
+// $3000e: build world-space eye offsets from object slot in d7.
+static void object_eye_offsets_3000e() {
+  A(2) = 0x5b47c;
+  setw(1, lo(7));
+  setw(6, lo(7));
+  setw(1, lo(1) & 0xff00);
+  setw(1, lo(1) + lo(1));
+  A(2) += uint32_t(int16_t(lo(1)));
+  setw(6, lo(6) & 0xf);
+  int32_t d3 = int32_t(rd32(A(2) + 20) & 0x000fffffu);
+  d3 >>= int(lo(6) & 63);
+  D(2) = uint32_t(int32_t(D(2)) << 8);
+  D(2) = uint32_t(int32_t(D(2)) + d3);
+  d3 = int32_t(rd32(A(2) + 28) & 0x000fffffu);
+  d3 >>= int(lo(6) & 63);
+  D(4) = uint32_t(int32_t(D(4)) << 8);
+  D(4) = uint32_t(int32_t(D(4)) + d3);
+  d3 = int32_t(rd32(A(2) + 24));
+  D(1) = uint32_t(d3);
+  d3 >>= int(lo(6) & 63);
+  D(3) = uint32_t(d3);
+  D(1) = uint32_t(int32_t(D(1)) + int32_t(rd32(0x5ad5e)));
+  D(1) = uint32_t(int32_t(D(1)) >> int(lo(6) & 63));
+  wr32(0x5ae34, D(1));
+  wr8(0x5abb3, 1);
+}
+NATIVE_ASM(0x3000e, object_eye_offsets_3000e, true);
+
+// $42682 / $42690 / $42696: toggle / force object timer word at a1@(80).
+static void obj_timer_force_neg_42682() {
+  if (rd16(A(1) + 80) != 0) {
+    wr16(A(1) + 80, 0xffff);
+    return;
+  }
+  wr16(A(1) + 80, 0xffff);
+  wr16(A(1) + 84, uint16_t(-int16_t(rd16(A(1) + 84))));
+}
+static void obj_timer_clear_42690() {
+  wr16(A(1) + 80, 0);
+  wr16(A(1) + 84, uint16_t(-int16_t(rd16(A(1) + 84))));
+}
+static void obj_timer_set_neg_42696() {
+  wr16(A(1) + 80, 0xffff);
+  wr16(A(1) + 84, uint16_t(-int16_t(rd16(A(1) + 84))));
+}
+NATIVE_ASM(0x42682, obj_timer_force_neg_42682, true);
+NATIVE_ASM(0x42690, obj_timer_clear_42690, true);
+NATIVE_ASM(0x42696, obj_timer_set_neg_42696, true);
+
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
