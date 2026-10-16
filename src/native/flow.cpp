@@ -40,6 +40,26 @@ NATIVE_STATE(0x21bd8, st_21bd8);
 NATIVE_STATE(0x21cc8, st_21cc8);
 NATIVE_STATE(0x21d0e, st_21d0e);
 NATIVE_STATE(0x21d38, st_mission_menu);
+
+// $39510: select a mission-specific message/value and place it in the
+// message queue. The first argument selects a record through the signed
+// offset table at $540e2; the third selects a word within that record, and
+// the second is the destination slot in the queue at $5aa42. The original
+// clears the following queue word to terminate the queue.
+static void set_mission_message(int32_t mission, int32_t queue_slot,
+                                int32_t record_slot) {
+  const int16_t mission_index = int16_t(uint16_t(mission) - 3u);
+  const int16_t table_offset = int16_t(mission_index * 2);
+  const int16_t record_offset = int16_t(rd16(0x540E2u + uint32_t(int32_t(table_offset))));
+  const uint32_t record = uint32_t(int32_t(0x54006u) + int32_t(record_offset));
+  const int16_t value_offset = int16_t(uint16_t(record_slot) * 2u);
+  const int16_t value = int16_t(rd16(record + uint32_t(int32_t(value_offset))));
+  const int16_t destination_offset = int16_t(uint16_t(queue_slot) * 2u);
+  const uint32_t destination = 0x5AA42u + uint32_t(int32_t(destination_offset));
+  wr16(destination, uint16_t(value));
+  wr16(destination + 2, 0);
+}
+NATIVE_C(0x39510, set_mission_message, true);
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);

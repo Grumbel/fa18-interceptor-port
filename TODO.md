@@ -115,7 +115,9 @@ Done (all verified by the gate):
 Open:
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
-      $393f6/$396e2/$39510, flight-log screens, ...)
+      $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
+      message/value lookup into the queue) has been translated in flow.cpp;
+      its native equivalence gate still needs to be run in an SDL2 build.
 - [ ] C runtime library parts that are executed (hunks 80+)
 - [ ] assembly subsystems: hunks 4-40 (3D engine, flight model, HUD,
       objects; ~22000 executed instructions), blitter primitives (73),
