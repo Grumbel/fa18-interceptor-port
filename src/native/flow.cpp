@@ -233,7 +233,9 @@ static void object_steer_flags_4120a() {
     bits_from_d3();
   }
   uint8_t d1 = uint8_t((rd8(A(1) + 101) & 3) | bits);
-  setb(2, bits);
+  // Original ends with d2 = bits as byte (moveq zeros the long; move.b keeps
+  // only low byte after andi). Zero the long then set low byte for consistency.
+  D(2) = bits;
   setb(1, d1);
   wr8(A(1) + 101, d1);
 }
@@ -638,14 +640,14 @@ static void obj_cam_delta_31b34() {
   d2 <<= sh;
   d4 <<= sh;
   uint16_t w14 = rd16(A(1) + 14);
-  int32_t d3 = int32_t(w14 >> 8);
-  int32_t d5 = int32_t(w14 & 0xff);
-  uint16_t d6 = uint16_t(rd16(0x5ac44) & 0xff);
-  uint16_t d7 = uint16_t(rd16(0x5ac46) & 0xff);
-  d3 = int32_t(uint16_t(uint16_t(d3) - d6));
-  d5 = int32_t(uint16_t(uint16_t(d5) - d7));
-  d3 = int32_t(uint32_t(d3) << 16) >> 2;  // swap then asr #2
-  d5 = int32_t(uint32_t(d5) << 16) >> 2;
+  // sub.w camera_bias, then swap, then asr.l #2 — word subtract can go
+  // negative; must keep the sign through swap (high word) + arithmetic shift.
+  uint16_t d6b = uint16_t(rd16(0x5ac44) & 0xff);
+  uint16_t d7b = uint16_t(rd16(0x5ac46) & 0xff);
+  uint16_t t3 = uint16_t(uint16_t(w14 >> 8) - d6b);
+  uint16_t t5 = uint16_t(uint16_t(w14 & 0xff) - d7b);
+  int32_t d3 = int32_t(uint32_t(t3) << 16) >> 2;
+  int32_t d5 = int32_t(uint32_t(t5) << 16) >> 2;
   d2 -= d3;
   d4 -= d5;
   d3 = int32_t(int16_t(rd16(A(1) + 8)));

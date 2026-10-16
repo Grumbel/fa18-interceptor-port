@@ -139,6 +139,9 @@ Open:
 - [ ] $438a8 native disabled (free1 DIFF@3300); body math independent of
       d7 yet only the -4 entry diverges; $35832 kept as word-save version
       that matched skip_all; long movem rewrite regressed
+- [x] $31b34 cam delta: word subtract before swap/asr must preserve sign
+      (uint zero-extend of a negative word difference was wrong)
+- [x] $4120a: set D(2)=bits as long (moveq-style) not setb only
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
