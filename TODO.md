@@ -136,9 +136,9 @@ Open:
       copies $5adea→$5adf2 / $5adee→$5adf6; body path ALWAYS writes $5adde
       (9999 path bras to that store, max-skip ble also falls into it)
 - [x] Fix $4389c positive-d7 path: write shifted threshold back to d2
-- [ ] $438a8 still DIFF@3300 alone; BSR.W target is $43dcc (relative to
-      extension word). Also fixed $35832 movem.l/divs vs word/divu mismatch
-      and projection DIVS remainder + d3 frustum leftovers
+- [ ] $438a8 native disabled (free1 DIFF@3300); body math independent of
+      d7 yet only the -4 entry diverges; $35832 kept as word-save version
+      that matched skip_all; long movem rewrite regressed
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific

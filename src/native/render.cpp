@@ -285,7 +285,7 @@ static void project_438b0() { D(7) = uint32_t(int32_t(int8_t(-2))); project_scre
 static void project_438b4() { D(7) = uint32_t(int32_t(int8_t(-1))); project_screen_body(); }
 NATIVE_ASM(0x4389c, project_4389c, true);
 NATIVE_ASM(0x438a0, project_438a0, true);
-NATIVE_ASM(0x438a8, project_438a8, true);
+// NATIVE_ASM(0x438a8, project_438a8, true);  // TODO: free1 DIFF@3300 disc path
 NATIVE_ASM(0x438ac, project_438ac, true);
 NATIVE_ASM(0x438b0, project_438b0, true);
 NATIVE_ASM(0x438b4, project_438b4, true);

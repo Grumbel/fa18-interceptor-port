@@ -2578,50 +2578,31 @@ void op_35730() {
 }
 
 // $35832: line from vertex a3 (scaled by fp-8), length class -> $438a8
-// Original: movem.w (a3),d3-d5; asl by -8(a6); movem.l d3-d6,-(sp);
-// after hypot: movem.l (sp)+,d0-d2/d6; divs d7,d6; clamp; jsr $438a8
 void sub_35832() {
-  setw(3, rd16(A(3)));
-  setw(4, rd16(A(3) + 2));
-  setw(5, rd16(A(3) + 4));
-  setw(0, rd16(cpu().a[6] - 8));
-  setw(3, asl16(lo(3), D(0)));
-  setw(4, asl16(lo(4), D(0)));
-  setw(5, asl16(lo(5), D(0)));
-  // movem.l d3-d6, -(sp) — 16 bytes (predec order d6,d5,d4,d3)
-  cpu().a[7] -= 16;
-  wr32(cpu().a[7], D(6));
-  wr32(cpu().a[7] + 4, D(5));
-  wr32(cpu().a[7] + 8, D(4));
-  wr32(cpu().a[7] + 12, D(3));
+  movemw(A(3), 3, 3);
+  setw(0, RW(-8));
+  for (int r = 3; r <= 5; ++r) setw(r, asl16(lo(r), D(0)));
+  cpu().a[7] -= 8;
+  mstore(cpu().a[7], {3, 4, 5, 6});
   setw(0, lo(3));
-  if (int16_t(lo(0)) < 0) setw(0, uint16_t(-int16_t(lo(0))));
+  if (int16_t(lo(0)) < 0) negw(0);
   setw(1, lo(4));
-  if (int16_t(lo(1)) < 0) setw(1, uint16_t(-int16_t(lo(1))));
+  if (int16_t(lo(1)) < 0) negw(1);
   setw(2, lo(5));
-  if (int16_t(lo(2)) < 0) setw(2, uint16_t(-int16_t(lo(2))));
+  if (int16_t(lo(2)) < 0) negw(2);
   setw(4, lo(2));
   setw(3, lo(1));
   setw(2, lo(0));
   call_c(0x308cc);
   setw(7, lo(1));
-  // movem.l (sp)+, d0-d2/d6
-  D(0) = rd32(cpu().a[7] + 12);
-  D(1) = rd32(cpu().a[7] + 8);
-  D(2) = rd32(cpu().a[7] + 4);
-  D(6) = rd32(cpu().a[7]);
-  cpu().a[7] += 16;
+  movemw(cpu().a[7], 0, 3);
+  D(6) = uint32_t(e16(rd16(cpu().a[7] + 6)));
+  cpu().a[7] += 8;
   if (int16_t(lo(7)) <= 0) {
     setw(6, 127);
   } else {
-    int32_t n = int32_t(D(6));
-    int16_t d = int16_t(lo(7));
-    int32_t q = n / d;
-    if (!(q > 32767 || q < -32768)) {
-      int32_t r = n % d;
-      D(6) = (uint32_t(uint16_t(r)) << 16) | uint16_t(q);
-    }
-    if (int16_t(lo(6)) > 127) setw(6, 127);
+    divuw(D(6), lo(7));
+    if (!(int16_t(lo(6)) <= 127)) setw(6, 127);
   }
   call_c(0x438a8);
 }
