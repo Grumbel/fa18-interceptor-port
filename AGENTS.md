@@ -95,7 +95,9 @@ routines. Every commit touching src/native/ must pass the gate:
 
 It runs all scenarios with `--native on` and `--native off` in
 deterministic timing and compares memory hashes every 50 frames, then runs
-`--native verify` (per-call comparison). Never commit on a failure; never
+`--native verify` (per-call comparison). In a recompiled build it also
+checks that `--interpret` gives the same memory as the recompiled code
+(`FA18_SKIP_INTERP=1` skips that step). Never commit on a failure; never
 commit with a routine disabled "for now" without saying so in TODO.md.
 
 - Translate from the assembly of the *patched* program (`tools/disasm.py`

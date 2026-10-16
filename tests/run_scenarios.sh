@@ -15,6 +15,7 @@ if [ -z "$data" ]; then
     data="$here/assets"
   else
     for cand in \
+      "$here/../FA-18 Interceptor (1988)(Electronic Arts).adf" \
       "$here/../attachments/FA-18 Interceptor (1988)(Electronic Arts).adf" \
       "/home/workdir/attachments/FA-18 Interceptor (1988)(Electronic Arts).adf" \
       "$here/FA-18 Interceptor (1988)(Electronic Arts).adf" \

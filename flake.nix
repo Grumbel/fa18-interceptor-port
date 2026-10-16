@@ -122,16 +122,19 @@
             if [ -f "$TMPDIR/gate/compare.txt" ]; then
               cp "$TMPDIR/gate/compare.txt" "$out/compare.txt" || true
             fi
+            if [ -f "$TMPDIR/gate/interp.txt" ]; then
+              cp "$TMPDIR/gate/interp.txt" "$out/interp.txt" || true
+            fi
             runHook postInstall
           '';
 
           meta.description = "Native C++ translation gate (tests/check_native.sh)";
         };
 
-        mkApp = name: extraArgs: {
+        mkApp = name: pkg: extraArgs: {
           type = "app";
           program = "${pkgs.writeShellScript "fa18-${name}" ''
-            exec ${fa18}/bin/fa18 ${extraArgs} "$@"
+            exec ${pkg}/bin/fa18 ${extraArgs} "$@"
           ''}";
         };
       in
@@ -142,9 +145,12 @@
           fa18-recomp = fa18Recomp;
         };
 
-        apps.default = mkApp "default" "--native on";
-        apps.native = mkApp "native" "--native on";
-        apps.recomp = mkApp "recomp" "--native off";
+        # default: no ADF needed at build time (interpreter + native code);
+        # native/recomp: recompiled build (ADF via requireFile).
+        apps.default = mkApp "default" fa18 "--native on";
+        apps.native = mkApp "native" fa18Recomp "--native on";
+        apps.recomp = mkApp "recomp" fa18Recomp "--native off";
+        apps.interpret = mkApp "interpret" fa18 "--native off --interpret";
 
         # nix flake check
         #   checks.build  – package (interpreter-only; no ADF needed)

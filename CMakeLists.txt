@@ -53,7 +53,8 @@ if(FA18_RECOMP AND NOT EXISTS "${RECOMP_EXE}")
       COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/adf.py extract-one
               "${FA18_ADF}" "F-18 Interceptor" ${RECOMP_EXE}
       DEPENDS "${FA18_ADF}" ${CMAKE_SOURCE_DIR}/tools/adf.py
-      COMMENT "Extracting F-18 Interceptor from ADF for recomp")
+      COMMENT "Extracting F-18 Interceptor from ADF for recomp"
+      VERBATIM)
     set(RECOMP_EXTRA_DEPS ${RECOMP_EXE})
   else()
     message(STATUS
@@ -80,7 +81,8 @@ if(FA18_RECOMP)
     DEPENDS ${RECOMP_EXE} ${RECOMP_EXTRA_DEPS}
             ${CMAKE_SOURCE_DIR}/tools/recomp.py ${CMAKE_SOURCE_DIR}/tools/loadseg.py
             ${CMAKE_SOURCE_DIR}/tools/hunks.py ${CMAKE_SOURCE_DIR}/tools/recomp_seeds.txt
-    COMMENT "Recompiling 68000 game code to C++")
+    COMMENT "Recompiling 68000 game code to C++"
+    VERBATIM)
   add_library(recomp STATIC ${RECOMP_SRCS})
   # The generated functions are huge goto-based state machines; -O1 keeps
   # build times reasonable while still producing fast code.
