@@ -507,6 +507,123 @@ NATIVE_ASM(0x42682, obj_timer_force_neg_42682, true);
 NATIVE_ASM(0x42690, obj_timer_clear_42690, true);
 NATIVE_ASM(0x42696, obj_timer_set_neg_42696, true);
 
+// ---- Sin/cos and object-frame helpers -------------------------------------------
+
+// $42eba: angle in d4 (0..7199 units, full circle 7200) → (sin,cos)-like
+// table lookups at $538e8 into d4/d5 with quadrant sign fixups.
+static void sincos_table_42eba() {
+  setw(4, lo(4) + lo(4));  // addw d4,d4
+  A(0) = 0x538e8;
+  setw(7, lo(4));
+  int16_t ang = int16_t(lo(4));
+  if (ang < 1800) {
+    setw(4, rd16(A(0) + uint32_t(uint16_t(ang))));
+    int16_t d6 = int16_t(1800 - int16_t(lo(7)));
+    setw(6, uint16_t(d6));
+    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+  } else if (ang < 3600) {
+    int16_t d6 = int16_t(3600 - ang);
+    setw(6, uint16_t(d6));
+    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
+    d6 = int16_t(int16_t(lo(7)) - 1800);
+    setw(6, uint16_t(d6));
+    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(5, uint16_t(-int16_t(lo(5))));
+  } else if (ang < 5400) {
+    int16_t d6 = int16_t(ang - 3600);
+    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(4, uint16_t(-int16_t(lo(4))));
+    d6 = int16_t(5400 - int16_t(lo(7)));
+    setw(6, uint16_t(d6));
+    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(5, uint16_t(-int16_t(lo(5))));
+  } else {
+    int16_t d6 = int16_t(7200 - ang);
+    setw(6, uint16_t(d6));
+    setw(4, rd16(A(0) + uint32_t(uint16_t(d6))));
+    setw(4, uint16_t(-int16_t(lo(4))));
+    d6 = int16_t(int16_t(lo(7)) - 5400);
+    setw(6, uint16_t(d6));
+    setw(5, rd16(A(0) + uint32_t(uint16_t(d6))));
+  }
+}
+NATIVE_ASM(0x42eba, sincos_table_42eba, true);
+
+// $2f11a / $2f124: set or clear bit 7 of player-object+124 depending on d7 flag.
+static void player_flag_set_2f11a() {
+  cpu().a[7] -= 12;
+  wr32(cpu().a[7], D(4));
+  wr32(cpu().a[7] + 4, D(7));
+  wr32(cpu().a[7] + 8, A(1));
+  setb(7, 1);
+  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5acae)));
+  if (!(rd8(A(1) + 3) & 0x80)) {
+    if (lob(7) == 0)
+      wr8(A(1) + 124, uint8_t(rd8(A(1) + 124) & ~0x80));
+    else
+      wr8(A(1) + 124, uint8_t(rd8(A(1) + 124) | 0x80));
+  }
+  D(4) = rd32(cpu().a[7]);
+  D(7) = rd32(cpu().a[7] + 4);
+  A(1) = rd32(cpu().a[7] + 8);
+  cpu().a[7] += 12;
+}
+static void player_flag_clear_2f124() {
+  cpu().a[7] -= 12;
+  wr32(cpu().a[7], D(4));
+  wr32(cpu().a[7] + 4, D(7));
+  wr32(cpu().a[7] + 8, A(1));
+  setb(7, 0);
+  A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5acae)));
+  if (!(rd8(A(1) + 3) & 0x80)) {
+    if (lob(7) == 0)
+      wr8(A(1) + 124, uint8_t(rd8(A(1) + 124) & ~0x80));
+    else
+      wr8(A(1) + 124, uint8_t(rd8(A(1) + 124) | 0x80));
+  }
+  D(4) = rd32(cpu().a[7]);
+  D(7) = rd32(cpu().a[7] + 4);
+  A(1) = rd32(cpu().a[7] + 8);
+  cpu().a[7] += 12;
+}
+NATIVE_ASM(0x2f11a, player_flag_set_2f11a, true);
+NATIVE_ASM(0x2f124, player_flag_clear_2f124, true);
+
+// $31b34: shift object a1@(6/8/10) by d1&15, subtract camera bias into d2/d4, leave d3.
+static void obj_cam_delta_31b34() {
+  cpu().a[7] -= 6;
+  wr16(cpu().a[7], lo(5));
+  wr16(cpu().a[7] + 2, lo(6));
+  wr16(cpu().a[7] + 4, lo(7));
+  int32_t d2 = int32_t(int16_t(rd16(A(1) + 6)));
+  int32_t d4 = int32_t(int16_t(rd16(A(1) + 10)));
+  setw(1, lo(1) & 15);
+  int sh = int(lo(1) & 63);
+  d2 <<= sh;
+  d4 <<= sh;
+  uint16_t w14 = rd16(A(1) + 14);
+  int32_t d3 = int32_t(w14 >> 8);
+  int32_t d5 = int32_t(w14 & 0xff);
+  uint16_t d6 = uint16_t(rd16(0x5ac44) & 0xff);
+  uint16_t d7 = uint16_t(rd16(0x5ac46) & 0xff);
+  d3 = int32_t(uint16_t(uint16_t(d3) - d6));
+  d5 = int32_t(uint16_t(uint16_t(d5) - d7));
+  d3 = int32_t(uint32_t(d3) << 16) >> 2;  // swap then asr #2
+  d5 = int32_t(uint32_t(d5) << 16) >> 2;
+  d2 -= d3;
+  d4 -= d5;
+  d3 = int32_t(int16_t(rd16(A(1) + 8)));
+  d3 <<= sh;
+  D(2) = uint32_t(d2);
+  D(3) = uint32_t(d3);
+  D(4) = uint32_t(d4);
+  setw(5, rd16(cpu().a[7]));
+  setw(6, rd16(cpu().a[7] + 2));
+  setw(7, rd16(cpu().a[7] + 4));
+  cpu().a[7] += 6;
+}
+NATIVE_ASM(0x31b34, obj_cam_delta_31b34, true);
+
 NATIVE_STATE(0x21e0c, st_mission_menu_wait);
 NATIVE_STATE(0x21f8e, st_flight_log);
 NATIVE_STATE(0x22026, st_22026);
