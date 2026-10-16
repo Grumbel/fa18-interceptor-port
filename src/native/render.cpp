@@ -255,17 +255,18 @@ static void project_screen_body() {
     // still negative: success without marker, d0 left as projected x
     return;
   }
-  // d7 >= 0 (e.g. from $438a0 using $5adb0): distance-based marker
+  // d7 >= 0 (e.g. from $438a0 using $5adb0): distance-based marker.
+  // Original overwrites d2 with the shifted threshold (asr.w d7,d2).
   {
-    int16_t d2 = int16_t(48);
-    d2 = int16_t(d2 >> (lo(7) & 63));
+    int16_t d2 = asr16(48, lo(7));
+    setw(2, uint16_t(d2));
     if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
       call_c(0x44276);
       D(0) = 1;
       return;
     }
-    d2 = int16_t(80);
-    d2 = int16_t(d2 >> (lo(7) & 63));
+    d2 = asr16(80, lo(7));
+    setw(2, uint16_t(d2));
     if (d2 >= int16_t(rd16(cpu().a[6] - 40))) {
       call_c(0x44212);
       D(0) = 1;

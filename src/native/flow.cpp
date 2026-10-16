@@ -104,7 +104,13 @@ static void refresh_airspeed_limits_399f6() {
   if (int32_t(d1) > 32767) {
     d0 = 9999;
   } else {
-    d0 = (800000u / (d1 & 0xffffu)) & 0xffffu;
+    // divu.w: on overflow (quotient > $ffff) destination is unchanged
+    d0 = 800000u;
+    uint16_t divisor = uint16_t(d1);
+    if (divisor != 0) {
+      divuw(d0, divisor);
+    }
+    // comparisons and stores use the low word (quotient or low of unchanged)
     if (int16_t(uint16_t(d0)) < int16_t(rd16(0x5ade0)))
       wr16(0x5ade0, uint16_t(d0));
     if (int16_t(uint16_t(d0)) > int16_t(rd16(0x5abd8))) {

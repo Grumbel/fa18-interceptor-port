@@ -132,6 +132,9 @@ Open:
 - [x] Fix $4120a object steer flags: non-0x60 path was wrong (bit7-clear
       and altitude bands); mode 0x60 alt<=80 / >28720 must zero bits;
       d3 leftover = altitude when the altitude path runs
+- [x] Fix $399f6 airspeed limits: use divu.w overflow semantics (quotient
+      > $ffff leaves destination unchanged) instead of truncating C /
+- [x] Fix $4389c positive-d7 path: write shifted threshold back to d2
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
