@@ -1987,5 +1987,9 @@ NATIVE_ASM(0x32aec, native_32aec, true);
 NATIVE_ASM(0x32adc, native_32adc, true);
 NATIVE_ASM(0x32b92, native_32b92, true);
 
+// Vertex-projection helpers used by distant/object draw paths.
+NATIVE_ASM(0x328ea, s328ea, true);
+NATIVE_ASM(0x32f6e, s32f6e, true);
+
 }  // namespace
 }  // namespace native

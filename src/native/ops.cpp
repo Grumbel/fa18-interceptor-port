@@ -3098,4 +3098,15 @@ NATIVE_ASM(0x35f44, op_35f44, true);
 NATIVE_ASM(0x35f48, op_35f48, true);
 NATIVE_ASM(0x35884, op_35884, true);
 
+// Internal lattice helpers used by the ops above — register so original
+// callers that jump here directly take the native path.
+NATIVE_ASM(0x352e2, sub_352e2, true);
+NATIVE_ASM(0x353d8, sub_353d8, true);
+NATIVE_ASM(0x35462, sub_35462, true);
+NATIVE_ASM(0x3574c, sub_3574c, true);
+NATIVE_ASM(0x35bbc, sub_35bbc, true);
+NATIVE_ASM(0x35d78, sub_35d78, true);
+NATIVE_ASM(0x35e70, sub_35e70, true);
+NATIVE_ASM(0x35f18, sub_35f18, true);
+
 }  // namespace native
