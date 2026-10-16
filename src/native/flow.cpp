@@ -373,7 +373,8 @@ NATIVE_ASM(0x42d8c, scale_matrix_rows_42d8c, true);
 
 // ---- More pure render / object helpers ------------------------------------------
 
-// $3cfc6: lookup byte from table at (ptr $2d03c)+12 indexed by $5ab9e; return 2*signext.
+// $3cfc6: lookup byte from table at (ptr $2d03c)+18 indexed by $5ab9e; return 2*signext.
+// Opcode 1030 1012 = move.b 18(a0,d1.w),d0 (brief ext disp=$12).
 static void lookup_scaled_byte_3cfc6() {
   D(0) = 0;
   uint8_t d1 = rd8(0x5ab9e);
@@ -381,7 +382,7 @@ static void lookup_scaled_byte_3cfc6() {
   if (d1 == 0x7e || d1 == 0x7f) return;
   setw(1, uint16_t(int16_t(int8_t(d1))));
   A(0) = rd32(0x2d03c);
-  setb(0, rd8(A(0) + 12 + uint32_t(int16_t(lo(1)))));
+  setb(0, rd8(A(0) + 18 + uint32_t(int16_t(lo(1)))));
   setw(0, uint16_t(int16_t(int8_t(lo(0)))));
   setw(0, lo(0) + lo(0));
 }

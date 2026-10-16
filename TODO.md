@@ -142,7 +142,11 @@ Open:
 - [x] $31b34 cam delta: word subtract before swap/asr must preserve sign
       (uint zero-extend of a negative word difference was wrong)
 - [x] $4120a: set D(2)=bits as long (moveq-style) not setb only
-- [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
+- [x] $3cfc6 lookup_scaled_byte: table displacement is 18 not 12
+      (opcode 1030 1012 brief ext disp=$12); caused menu5/qual_carrier@2250
+- [ ] remaining hunk-0 C helpers
+- [ ] $438a8 still disabled (disc projection path)
+- [ ] later-frame diffs: effects_poke@5050, end_*_ok@5550, mission6@6500, etc. still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
       message/value lookup into the queue) has been translated in flow.cpp;
