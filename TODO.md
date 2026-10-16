@@ -31,7 +31,7 @@ Verified with scripted runs (`--script`):
 - [ ] Optional: crossfeed for the hard-panned Amiga stereo, CRT-ish scaling
 - [ ] Optional: >15 fps would need patching the game's timer.device based
       frame limiter (and checking the simulation's time-step clamp)
-- [ ] Optional: load directly from the ADF instead of extracted files
+- [x] Load directly from the ADF instead of extracted files (runtime Adf reader in src/amiga/adf.hpp; directory mode kept as fallback)
 - [ ] Optional: on-screen pie-menu overlay for the gamepad layers
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the

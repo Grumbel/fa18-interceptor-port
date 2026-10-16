@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Minimal AmigaDOS OFS/FFS ADF reader.
 
-    python3 tools/adf.py list    disk.adf
-    python3 tools/adf.py extract disk.adf outdir
+    python3 tools/adf.py list         disk.adf
+    python3 tools/adf.py extract      disk.adf outdir
+    python3 tools/adf.py extract-one  disk.adf "Name" outfile
 """
 import os
 import struct
@@ -95,6 +96,18 @@ def main():
                 os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
                 with open(dst, "wb") as f:
                     f.write(adf.read_file(h))
+    elif cmd == "extract-one":
+        # extract-one disk.adf "Amiga Name" outfile
+        name, out = sys.argv[3], sys.argv[4]
+        for p, h, size in adf.walk():
+            if p == name and size is not None:
+                os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+                with open(out, "wb") as f:
+                    f.write(adf.read_file(h))
+                return
+        raise SystemExit(f"file not found in ADF: {name}")
+    else:
+        raise SystemExit(f"unknown command: {cmd}")
 
 
 if __name__ == "__main__":

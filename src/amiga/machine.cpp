@@ -5,9 +5,9 @@
 #include "native/runtime.hpp"
 
 #include <algorithm>
-
 #include <cstdarg>
 #include <cstring>
+#include <filesystem>
 
 namespace amiga {
 
@@ -100,14 +100,62 @@ uint32_t Machine::avail() const {
 
 // ---- boot ------------------------------------------------------------------
 
-bool Machine::boot(const std::string& dir) {
-  data_dir = dir;
-  if (save_dir.empty()) save_dir = dir;
+bool Machine::disk_has(const std::string& amiga_path) const {
+  return adf_ && adf_->has(amiga_path);
+}
+
+std::vector<uint8_t> Machine::disk_read(const std::string& amiga_path) const {
+  if (!adf_) return {};
+  return adf_->read(amiga_path);
+}
+
+int32_t Machine::disk_size(const std::string& amiga_path) const {
+  return adf_ ? adf_->size(amiga_path) : -1;
+}
+
+bool Machine::boot(const std::string& path) {
+  data_dir = path;
+  data_is_adf = false;
+  adf_.reset();
+  if (save_dir.empty()) {
+    // For an ADF the image itself is not a writable directory.
+    namespace fs = std::filesystem;
+    if (fs::is_regular_file(path))
+      save_dir = ".";  // caller usually sets a proper XDG path before boot
+    else
+      save_dir = path;
+  }
+
   HunkFile exe;
-  std::string path = dir + "/F-18 Interceptor";
-  if (!exe.load(path)) {
-    log("cannot load %s\n", path.c_str());
-    return false;
+  namespace fs = std::filesystem;
+  if (fs::is_regular_file(path)) {
+    // Preferred path: load assets straight from the original ADF.
+    adf_ = std::make_unique<Adf>();
+    if (!adf_->load(path)) {
+      log("cannot open ADF %s\n", path.c_str());
+      adf_.reset();
+      return false;
+    }
+    auto bytes = adf_->read("F-18 Interceptor");
+    if (bytes.empty()) {
+      log("ADF %s has no 'F-18 Interceptor' executable\n", path.c_str());
+      adf_.reset();
+      return false;
+    }
+    if (!exe.parse(bytes)) {
+      log("ADF executable is not a valid hunk file\n");
+      adf_.reset();
+      return false;
+    }
+    data_is_adf = true;
+    log("loaded executable from ADF %s (%zu bytes)\n", path.c_str(), bytes.size());
+  } else {
+    // Legacy: directory of unpacked disk files.
+    std::string exe_path = path + "/F-18 Interceptor";
+    if (!exe.load(exe_path)) {
+      log("cannot load %s\n", exe_path.c_str());
+      return false;
+    }
   }
   // Segments are laid out back to back (8-byte LoadSeg header + payload),
   // so WHDLoad PatchSeg offsets map to LOAD_BASE + offset. Same layout as

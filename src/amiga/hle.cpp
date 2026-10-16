@@ -738,7 +738,8 @@ std::string Hle::host_path(const std::string& amiga_name, bool for_write) {
   std::string n = amiga_name;
   auto colon = n.find(':');
   if (colon != std::string::npos) n = n.substr(colon + 1);
-  // Case-insensitive lookup below `root`.
+  // Case-insensitive lookup below `root`.  When data is an ADF, only the
+  // save directory is a real filesystem tree.
   auto resolve = [&](const std::string& root) -> std::string {
     fs::path p = root;
     size_t start = 0;
@@ -766,6 +767,7 @@ std::string Hle::host_path(const std::string& amiga_name, bool for_write) {
     return saved;
   }
   if (fs::exists(saved)) return saved;
+  if (m.data_is_adf) return {};  // no host path; caller falls back to the ADF
   return resolve(m.data_dir);
 }
 
@@ -773,13 +775,47 @@ uint32_t Hle::dos_open(const std::string& name, int mode) {
   bool write = mode == 1006;
   std::string path = host_path(name, write);
   FILE* f = nullptr;
-  if (mode == 1006) f = fopen(path.c_str(), "w+b");
-  else if (mode == 1005) f = fopen(path.c_str(), "rb");
-  else {  // MODE_READWRITE
+  bool from_adf = false;
+  std::vector<uint8_t>* adf_buf = nullptr;
+
+  if (mode == 1006) {
+    f = fopen(path.c_str(), "w+b");
+  } else if (mode == 1005) {
+    if (!path.empty()) f = fopen(path.c_str(), "rb");
+    if (!f && m.adf()) {
+      auto bytes = m.disk_read(name);
+      if (!bytes.empty() || m.disk_has(name)) {
+        adf_buf = new std::vector<uint8_t>(std::move(bytes));
+        size_t sz = adf_buf->size();
+        // fmemopen requires a non-null buffer; use a one-byte dummy for empty files.
+        if (sz == 0) adf_buf->push_back(0);
+        f = fmemopen(adf_buf->data(), sz, "rb");
+        if (f) {
+          from_adf = true;
+          path = std::string("adf:") + name;
+        } else {
+          delete adf_buf;
+          adf_buf = nullptr;
+        }
+      }
+    }
+  } else {  // MODE_READWRITE
     std::string wp = host_path(name, true);
-    if (!fs::exists(wp) && fs::exists(path) && path != wp) fs::copy_file(path, wp);
+    if (!path.empty() && fs::exists(path) && path != wp && !fs::exists(wp))
+      fs::copy_file(path, wp);
+    // Seed the save-dir copy from the ADF when the host has no original.
+    if (!fs::exists(wp) && m.adf() && m.disk_has(name)) {
+      auto bytes = m.disk_read(name);
+      fs::create_directories(fs::path(wp).parent_path());
+      FILE* out = fopen(wp.c_str(), "w+b");
+      if (out) {
+        if (!bytes.empty()) fwrite(bytes.data(), 1, bytes.size(), out);
+        fclose(out);
+      }
+    }
     f = fopen(wp.c_str(), "r+b");
     if (!f) f = fopen(wp.c_str(), "w+b");
+    path = wp;
   }
   if (!f) {
     if (m.verbose) m.log("Open(%s) failed (%s)\n", name.c_str(), path.c_str());
@@ -787,19 +823,35 @@ uint32_t Hle::dos_open(const std::string& name, int mode) {
     return 0;
   }
   uint32_t h = next_handle_++;
-  files_[h] = {f, path, name, mode != 1005};
-  if (m.verbose) m.log("Open(%s, %d) = %u\n", name.c_str(), mode, h);
+  files_[h] = {f, path, name, mode != 1005, adf_buf};
+  if (m.verbose)
+    m.log("Open(%s, %d) = %u%s\n", name.c_str(), mode, h, from_adf ? " [adf]" : "");
   return h;
 }
 
 // MODE_OLDFILE handles are read/write on AmigaDOS. They are opened read-only
-// (possibly from the data dir); the first Write copies the file into the
+// (possibly from the data dir / ADF); the first Write copies the file into the
 // save dir and reopens it there at the same position.
 bool Hle::make_writable(File& file) {
   if (file.writable) return true;
   long pos = ftell(file.f);
   std::string wp = host_path(file.name, true);
-  if (wp != file.path) {
+  if (file.adf_buf) {
+    // Materialise the ADF contents into the save directory.
+    fs::create_directories(fs::path(wp).parent_path());
+    FILE* out = fopen(wp.c_str(), "w+b");
+    if (!out) return false;
+    // adf_buf may hold a dummy byte for empty files; size was the original.
+    size_t n = file.adf_buf->size();
+    // We stored original size implicitly: if only the dummy was added, n==1 and
+    // the open used size 0.  Reconstruct via disk_size when possible.
+    int32_t orig = m.disk_size(file.name);
+    if (orig >= 0) n = size_t(orig);
+    if (n) fwrite(file.adf_buf->data(), 1, n, out);
+    fclose(out);
+    delete file.adf_buf;
+    file.adf_buf = nullptr;
+  } else if (!file.path.empty() && wp != file.path && fs::exists(file.path)) {
     std::error_code ec;
     fs::copy_file(file.path, wp, fs::copy_options::overwrite_existing, ec);
     if (ec) return false;
@@ -819,7 +871,11 @@ void Hle::dos(int lvo) {
     case 30: D(0) = dos_open(m.cstr(D(1)), int(D(2))); return;  // Open
     case 36: {  // Close
       auto it = files_.find(D(1));
-      if (it != files_.end()) { fclose(it->second.f); files_.erase(it); }
+      if (it != files_.end()) {
+        fclose(it->second.f);
+        delete it->second.adf_buf;
+        files_.erase(it);
+      }
       D(0) = 1;
       return;
     }
@@ -876,10 +932,15 @@ void Hle::dos(int lvo) {
     case 84: {  // Lock(d1 name, d2 mode)
       std::string name = m.cstr(D(1));
       std::string p = host_path(name, false);
-      if (!fs::exists(p)) {
-        // A bare device/volume ("df0:") always exists.
-        if (name.empty() || name.back() != ':') { ioerr_ = 205; D(0) = 0; return; }
-        p = m.save_dir;
+      if (p.empty() || !fs::exists(p)) {
+        // ADF-resident file/dir, or a bare device/volume ("df0:").
+        if (m.adf() && (m.disk_has(name) || m.adf()->is_dir(name))) {
+          p = std::string("adf:") + name;
+        } else if (!name.empty() && name.back() == ':') {
+          p = m.save_dir;
+        } else {
+          ioerr_ = 205; D(0) = 0; return;
+        }
       }
       uint32_t h = next_handle_++;
       locks_[h] = p;
@@ -900,14 +961,27 @@ void Hle::dos(int lvo) {
       if (it == locks_.end()) { D(0) = 0; return; }
       uint32_t fib = D(2);
       for (uint32_t i = 0; i < 260; ++i) m.w8(fib + i, 0);
-      fs::path p = it->second;
-      bool dir = fs::is_directory(p);
+      std::string lock_path = it->second;
+      bool dir = false;
+      uint32_t size = 0;
+      std::string fn;
+      if (lock_path.rfind("adf:", 0) == 0) {
+        std::string aname = lock_path.substr(4);
+        dir = m.adf() && m.adf()->is_dir(aname);
+        int32_t sz = m.disk_size(aname);
+        size = dir || sz < 0 ? 0 : uint32_t(sz);
+        auto slash = aname.find_last_of('/');
+        fn = (slash == std::string::npos ? aname : aname.substr(slash + 1)).substr(0, 106);
+      } else {
+        fs::path p = lock_path;
+        dir = fs::is_directory(p);
+        fn = p.filename().string().substr(0, 106);
+        size = dir ? 0 : uint32_t(fs::file_size(p));
+      }
       m.w32(fib + 4, dir ? 2 : uint32_t(-3));
-      std::string fn = p.filename().string().substr(0, 106);
       m.w8(fib + 8, 0);
       for (size_t i = 0; i < fn.size(); ++i) m.w8(fib + 8 + uint32_t(i), uint8_t(fn[i]));
       m.w32(fib + 120, dir ? 2 : uint32_t(-3));
-      uint32_t size = dir ? 0 : uint32_t(fs::file_size(p));
       m.w32(fib + 124, size);
       m.w32(fib + 128, (size + 487) / 488);
       D(0) = 1;

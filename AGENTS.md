@@ -5,11 +5,15 @@ Reverse engineer the Amiga game F/A-18 Interceptor (1988, Electronic Arts / Inte
 and port it to modern C++ with SDL2 for Linux (and other platforms).
 
 ## Source Material
-- Original ADF from TOSEC: `FA-18 Interceptor (1988)(Electronic Arts).adf` (not in git)
-- Game files extracted with `tools/adf.py` into `assets/`:
-  `F-18 Interceptor` (hunk executable, 331232 bytes, 185 hunks, no overlays),
-  `config`, `pix/{splsh,frnt5,inst5}` (ILBM), `text/*` (encoded game texts/data)
-- NOTE: the assets committed before Oct 2026 were a corrupt extraction
+- Original ADF from TOSEC: `FA-18 Interceptor (1988)(Electronic Arts).adf`
+- **The ADF is not part of the repository and must not be committed.** Keep it
+  outside the tree (or pass its path at runtime / to CMake). The runtime loads
+  assets directly from the ADF — no unpack step is required.
+- Disk contents (for reference): `F-18 Interceptor` (hunk executable, 331232
+  bytes, 185 hunks, no overlays), `config`, `pix/{splsh,frnt5,inst5}` (ILBM),
+  `text/*` (encoded game texts/data). `tools/adf.py list|extract|extract-one`
+  can still dump the image if needed.
+- NOTE: any `assets/` tree committed before Oct 2026 was a corrupt extraction
   (truncated executable, wrong config/text files). Docs written against it
   use file offsets that are still valid for the first 311832 bytes.
 
@@ -135,11 +139,15 @@ commit with a routine disabled "for now" without saying so in TODO.md.
 
 ```
 nix develop
-cmake -B build && cmake --build build
-./build/fa18            # looks for ./assets/F-18 Interceptor
+cmake -B build -DFA18_ADF=/path/to/FA-18\ Interceptor\ (1988)(Electronic\ Arts).adf
+cmake --build build
+./build/fa18 /path/to/FA-18\ Interceptor\ (1988)(Electronic\ Arts).adf
 ```
 
-Or plain CMake with system SDL2.
+Or plain CMake with system SDL2. If you already have an unpacked executable,
+pass `-DFA18_EXE=/path/to/F-18 Interceptor` instead of `-DFA18_ADF=...`.
+The ADF itself is never installed or copied into the build tree except for a
+temporary extract of the executable used by the recompiler.
 
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is an

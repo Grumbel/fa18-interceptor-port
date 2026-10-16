@@ -5,6 +5,7 @@
 
 #include "m68k/cpu.hpp"
 #include "recomp/recomp.hpp"
+#include "amiga/adf.hpp"
 
 #include <array>
 #include <cstdint>
@@ -92,10 +93,19 @@ public:
   ~Machine() override;
 
   // ---- setup ------------------------------------------------------------
-  // Load the executable from `data_dir`/F-18 Interceptor and prepare the
-  // initial process so that run() starts the game.
-  bool boot(const std::string& data_dir);
+  // Load the executable and prepare the initial process so that run()
+  // starts the game.  `path` may be either:
+  //   - a directory containing the unpacked disk files (legacy), or
+  //   - a path to the original .adf disk image (preferred; no unpack needed).
+  bool boot(const std::string& path);
   void set_host(Host* h) { host_ = h; }
+
+  // When boot() was given an ADF, these serve the original disk files.
+  // Otherwise nullptr / empty — HLE falls back to the host filesystem.
+  const Adf* adf() const { return adf_.get(); }
+  bool disk_has(const std::string& amiga_path) const;
+  std::vector<uint8_t> disk_read(const std::string& amiga_path) const;
+  int32_t disk_size(const std::string& amiga_path) const;
   // Run until the game exits or QuitRequested is thrown by the host.
   int run();
 
@@ -172,8 +182,9 @@ public:
   m68k::Cpu cpu;
   bool trace = false;
   bool verbose = false;
-  std::string data_dir;
+  std::string data_dir;   // directory mode: path to unpacked files; ADF mode: path to .adf
   std::string save_dir;
+  bool data_is_adf = false;  // true when data_dir points at an ADF image
 
   // CPU speed multiplier: the CPU gets cpu_speed × 455 cycles per scanline.
   void set_cpu_speed(double s) { line_cycles_ = int64_t(CYCLES_PER_LINE * (s < 0.1 ? 0.1 : s)); }
@@ -265,6 +276,7 @@ private:
   std::vector<uint8_t> ram_;
   Host* host_ = nullptr;
   std::unique_ptr<struct Hle> hle_;
+  std::unique_ptr<Adf> adf_;
 
   // time
   int64_t line_start_ = 0;   // cpu.cycles at start of current line

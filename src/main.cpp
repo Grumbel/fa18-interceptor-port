@@ -710,9 +710,10 @@ public:
 
 void usage() {
   fprintf(stderr,
-          "usage: fa18 [options] [data-dir]\n"
-          "  data-dir         directory with the files of the original disk\n"
-          "                   (default: ./assets or the install data dir)\n"
+          "usage: fa18 [options] [data]\n"
+          "  data             path to the original .adf disk image, or a\n"
+          "                   directory of unpacked disk files (legacy)\n"
+          "                   (default: looks for a nearby .adf or ./assets)\n"
           "  --scale N        window scale (default 3)\n"
           "  --save DIR       directory for config/pilot log\n"
           "                   (default: $XDG_DATA_HOME/fa18-interceptor)\n"
@@ -785,8 +786,22 @@ int main(int argc, char** argv) {
     else data_dir = a;
   }
   if (data_dir.empty()) {
-    for (const char* cand : {"assets", "data", FA18_DATADIR}) {
-      if (std::filesystem::exists(std::string(cand) + "/F-18 Interceptor")) { data_dir = cand; break; }
+    namespace fs = std::filesystem;
+    // Prefer an ADF in the current directory / common names, then a legacy
+    // unpacked assets/ directory.
+    const char* adf_names[] = {
+      "FA-18 Interceptor (1988)(Electronic Arts).adf",
+      "FA-18 Interceptor.adf",
+      "fa18.adf",
+      "F-18 Interceptor.adf",
+    };
+    for (const char* n : adf_names) {
+      if (fs::is_regular_file(n)) { data_dir = n; break; }
+    }
+    if (data_dir.empty()) {
+      for (const char* cand : {"assets", "data", FA18_DATADIR}) {
+        if (fs::exists(std::string(cand) + "/F-18 Interceptor")) { data_dir = cand; break; }
+      }
     }
   }
   if (save_dir.empty()) {
@@ -798,7 +813,9 @@ int main(int argc, char** argv) {
   }
   std::filesystem::create_directories(save_dir);
   if (data_dir.empty()) {
-    fprintf(stderr, "Cannot find the game data (F-18 Interceptor executable).\n");
+    fprintf(stderr,
+            "Cannot find the game data.\n"
+            "Pass the path to the original ADF (or an unpacked assets directory).\n");
     usage();
     return 1;
   }

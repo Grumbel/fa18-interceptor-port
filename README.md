@@ -16,34 +16,37 @@ training, qualification, missions and the flight log (saved to disk).
 
 ## Requirements
 
-The original game files, i.e. the contents of the game disk, in `assets/`
-(`F-18 Interceptor`, `config`, `pix/`, `text/`). They can be extracted from
-an ADF with
+The original game disk image (ADF), e.g. the TOSEC dump
+`FA-18 Interceptor (1988)(Electronic Arts).adf`. The ADF is **not** shipped
+with this repository and must not be committed to it — pass its path at
+runtime and (for a recompiled build) to CMake.
 
-```bash
-python3 tools/adf.py extract "FA-18 Interceptor (1988)(Electronic Arts).adf" /tmp/fa18
-cp -r "/tmp/fa18/F-18 Interceptor" /tmp/fa18/{config,pix,text} assets/
-```
+The runtime opens the ADF directly; there is no need to unpack the disk into
+an `assets/` directory. A legacy directory of unpacked files is still
+accepted if you already have one.
 
-The recompiled code is generated from `assets/F-18 Interceptor` during the
-build (needs Python 3); without it (`-DFA18_RECOMP=OFF`) the interpreter is
-used.
+The recompiled code is generated at build time from the executable inside the
+ADF (needs Python 3). Point CMake at the image with `-DFA18_ADF=...`, or at
+an already-extracted executable with `-DFA18_EXE=...`. Without either,
+`-DFA18_RECOMP=OFF` builds the interpreter-only binary.
 
 ## Build
 
 ```bash
 nix develop          # or: install cmake, SDL2, python3
-cmake -B build
+cmake -B build -DFA18_ADF="FA-18 Interceptor (1988)(Electronic Arts).adf"
 cmake --build build
-./build/fa18
+./build/fa18 "FA-18 Interceptor (1988)(Electronic Arts).adf"
 ```
 
-or `nix build && ./result/bin/fa18`.
+or `nix build && ./result/bin/fa18 …`.
 
 ## Running
 
 ```
-fa18 [options] [data-dir]
+fa18 [options] [data]
+  data           path to the original .adf, or a directory of unpacked
+                 disk files (default: looks for a nearby .adf / ./assets)
   --speed X      CPU speed (default 4: the game caps itself at 15 fps;
                  1 = stock A500, 6-8 fps in flight and slower simulation)
   --save DIR     config / flight log directory
