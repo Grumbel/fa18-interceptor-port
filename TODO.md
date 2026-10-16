@@ -150,9 +150,10 @@ Open:
 - [x] verify leftovers: $432b8 setw d2-d5; $4136a D(2)=bits (moveq);
       $36fb8 setw d0 (move.w high-word preserve)
 - [x] $4120a: move.b/ori.b paths preserve d2 high words; moveq paths zero long
-- [ ] $438a0 disabled (menu1 DIFF@7000 with native positive-d7 path)
-- [ ] $438a8 still disabled (disc projection path)
-- [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
+- [x] $438a0/$438a8 re-enabled via trampoline to original $438b6 body
+      (native project_screen_body still wrong for positive-d7 and disc paths)
+- [ ] remaining hunk-0 C helpers
+- [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
       $393f6/$396e2, flight-log screens, ...). $39510 (mission-specific
       message/value lookup into the queue) has been translated in flow.cpp;

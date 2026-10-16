@@ -281,14 +281,22 @@ static void project_screen_body() {
   }
 }
 static void project_4389c() { D(7) = uint32_t(int32_t(int8_t(-5))); project_screen_body(); }
-static void project_438a0() { setw(7, rd16(0x5adb0)); project_screen_body(); }
-static void project_438a8() { D(7) = uint32_t(int32_t(int8_t(-4))); project_screen_body(); }
+static void project_438a0() {
+  // Native body still diverges on menu1@7000; trampoline to shared original body.
+  setw(7, rd16(0x5adb0));
+  call_c(0x438b6);
+}
+static void project_438a8() {
+  // Native body still diverges on free1@3300 disc path; trampoline to original.
+  D(7) = uint32_t(int32_t(int8_t(-4)));
+  call_c(0x438b6);
+}
 static void project_438ac() { D(7) = uint32_t(int32_t(int8_t(-3))); project_screen_body(); }
 static void project_438b0() { D(7) = uint32_t(int32_t(int8_t(-2))); project_screen_body(); }
 static void project_438b4() { D(7) = uint32_t(int32_t(int8_t(-1))); project_screen_body(); }
 NATIVE_ASM(0x4389c, project_4389c, true);
-// NATIVE_ASM(0x438a0, project_438a0, true);  // TODO: menu1 DIFF@7000
-// NATIVE_ASM(0x438a8, project_438a8, true);  // TODO: free1 DIFF@3300 disc path
+NATIVE_ASM(0x438a0, project_438a0, true);
+NATIVE_ASM(0x438a8, project_438a8, true);
 NATIVE_ASM(0x438ac, project_438ac, true);
 NATIVE_ASM(0x438b0, project_438b0, true);
 NATIVE_ASM(0x438b4, project_438b4, true);
