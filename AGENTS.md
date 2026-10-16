@@ -139,15 +139,15 @@ commit with a routine disabled "for now" without saying so in TODO.md.
 
 ```
 nix develop
-cmake -B build -DFA18_ADF=/path/to/FA-18\ Interceptor\ (1988)(Electronic\ Arts).adf
-cmake --build build
+cmake -B build && cmake --build build
 ./build/fa18 /path/to/FA-18\ Interceptor\ (1988)(Electronic\ Arts).adf
 ```
 
-Or plain CMake with system SDL2. If you already have an unpacked executable,
-pass `-DFA18_EXE=/path/to/F-18 Interceptor` instead of `-DFA18_ADF=...`.
-The ADF itself is never installed or copied into the build tree except for a
-temporary extract of the executable used by the recompiler.
+Or plain CMake with system SDL2. The ADF is a **runtime** argument only; it is
+not needed to configure or compile. Without an original executable at build
+time the binary uses the 68000 interpreter. To also enable static recompilation,
+optionally pass `-DFA18_EXE=/path/to/F-18 Interceptor` (or `-DFA18_ADF=...` to
+extract it once for the recompiler). The ADF is never installed or committed.
 
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is an

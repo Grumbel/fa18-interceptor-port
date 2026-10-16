@@ -33,13 +33,35 @@ add_library(amiga STATIC
 target_link_libraries(amiga PUBLIC m68k)
 
 # Static recompilation of the game code (tools/recomp.py) at build time.
-# Needs the original executable, either as an unpacked file or extracted
-# from an ADF (the ADF itself is never stored in the repository).
+# Optional: needs the original executable once, either as FA18_EXE or
+# extracted from FA18_ADF.  The ADF is a *runtime* argument to the binary
+# and is never required to configure or compile; without the executable
+# we fall back to the 68000 interpreter (FA18_RECOMP=OFF).
 option(FA18_RECOMP "Build with statically recompiled game code" ON)
 set(FA18_EXE "${CMAKE_SOURCE_DIR}/assets/F-18 Interceptor" CACHE FILEPATH
-    "Path to the unpacked 'F-18 Interceptor' executable")
+    "Path to the unpacked 'F-18 Interceptor' executable (build-time only)")
 set(FA18_ADF "" CACHE FILEPATH
-    "Path to the original FA-18 Interceptor ADF (used when FA18_EXE is missing)")
+    "Optional ADF used only to extract the executable for recomp at build time")
+set(RECOMP_EXE "${FA18_EXE}")
+set(RECOMP_EXTRA_DEPS "")
+if(FA18_RECOMP AND NOT EXISTS "${RECOMP_EXE}")
+  if(NOT FA18_ADF STREQUAL "" AND EXISTS "${FA18_ADF}")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(RECOMP_EXE "${CMAKE_BINARY_DIR}/F-18 Interceptor")
+    add_custom_command(
+      OUTPUT ${RECOMP_EXE}
+      COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/adf.py extract-one
+              "${FA18_ADF}" "F-18 Interceptor" ${RECOMP_EXE}
+      DEPENDS "${FA18_ADF}" ${CMAKE_SOURCE_DIR}/tools/adf.py
+      COMMENT "Extracting F-18 Interceptor from ADF for recomp")
+    set(RECOMP_EXTRA_DEPS ${RECOMP_EXE})
+  else()
+    message(STATUS
+      "FA18_RECOMP requested but no executable found (FA18_EXE=${FA18_EXE}). "
+      "Building interpreter-only; pass -DFA18_EXE=... or -DFA18_ADF=... to enable recomp.")
+    set(FA18_RECOMP OFF)
+  endif()
+endif()
 if(FA18_RECOMP)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(RECOMP_DIR ${CMAKE_BINARY_DIR}/recomp)
@@ -51,23 +73,6 @@ if(FA18_RECOMP)
       list(APPEND RECOMP_SRCS ${RECOMP_DIR}/code_${i}.cpp)
     endif()
   endforeach()
-  set(RECOMP_EXE "${FA18_EXE}")
-  set(RECOMP_EXTRA_DEPS "")
-  if(NOT EXISTS "${RECOMP_EXE}")
-    if(FA18_ADF STREQUAL "" OR NOT EXISTS "${FA18_ADF}")
-      message(FATAL_ERROR
-        "FA18_RECOMP is ON but neither FA18_EXE (${FA18_EXE}) nor FA18_ADF is available.\n"
-        "Pass -DFA18_ADF=/path/to/FA-18 Interceptor.adf or -DFA18_EXE=/path/to/F-18 Interceptor")
-    endif()
-    set(RECOMP_EXE "${CMAKE_BINARY_DIR}/F-18 Interceptor")
-    add_custom_command(
-      OUTPUT ${RECOMP_EXE}
-      COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/adf.py extract-one
-              "${FA18_ADF}" "F-18 Interceptor" ${RECOMP_EXE}
-      DEPENDS "${FA18_ADF}" ${CMAKE_SOURCE_DIR}/tools/adf.py
-      COMMENT "Extracting F-18 Interceptor from ADF for recomp")
-    set(RECOMP_EXTRA_DEPS ${RECOMP_EXE})
-  endif()
   add_custom_command(
     OUTPUT ${RECOMP_SRCS}
     COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/recomp.py ${RECOMP_EXE} ${RECOMP_DIR}

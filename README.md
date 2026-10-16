@@ -25,21 +25,21 @@ The runtime opens the ADF directly; there is no need to unpack the disk into
 an `assets/` directory. A legacy directory of unpacked files is still
 accepted if you already have one.
 
-The recompiled code is generated at build time from the executable inside the
-ADF (needs Python 3). Point CMake at the image with `-DFA18_ADF=...`, or at
-an already-extracted executable with `-DFA18_EXE=...`. Without either,
-`-DFA18_RECOMP=OFF` builds the interpreter-only binary.
+The ADF is only needed at **runtime** (pass it as the data argument). Build
+does not require it: without an original executable CMake builds the
+interpreter-only binary. Optional static recompilation needs the executable
+once at build time (`-DFA18_EXE=...`, or `-DFA18_ADF=...` to extract it).
 
 ## Build
 
 ```bash
 nix develop          # or: install cmake, SDL2, python3
-cmake -B build -DFA18_ADF="FA-18 Interceptor (1988)(Electronic Arts).adf"
+cmake -B build
 cmake --build build
 ./build/fa18 "FA-18 Interceptor (1988)(Electronic Arts).adf"
 ```
 
-or `nix build && ./result/bin/fa18 …`.
+or `nix build && ./result/bin/fa18 path/to/game.adf`.
 
 ## Running
 
