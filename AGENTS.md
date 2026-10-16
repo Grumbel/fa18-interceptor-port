@@ -149,6 +149,17 @@ time the binary uses the 68000 interpreter. To also enable static recompilation,
 optionally pass `-DFA18_EXE=/path/to/F-18 Interceptor` (or `-DFA18_ADF=...` to
 extract it once for the recompiler). The ADF is never installed or committed.
 
+### Checks
+
+```
+nix flake check                          # builds the package (interpreter-only)
+FA18_DATA=/path/to/game.adf nix flake check --impure   # + tests/check_native.sh gate
+```
+
+`checks.native` runs the full native translation gate (equivalence + per-call
+verify). It needs the ADF via `FA18_DATA` and must be evaluated with `--impure`
+because the image is not in the repository.
+
 ## License
 GPLv3+ for new code. Original game is abandonware but respect IP; this is an
 RE / educational port. Game data is not redistributable.

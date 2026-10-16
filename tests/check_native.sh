@@ -12,7 +12,9 @@ w=${1:-$(mktemp -d)}
 mkdir -p "$w"
 echo "== build"
 here_root=$(cd "$here/.." && pwd)
-if ! cmake --build "$here_root/build" -j"$(nproc)" > "$w/build.txt" 2>&1; then
+if [ -n "${FA18_SKIP_BUILD:-}" ] && [ -x "$here_root/build/fa18" ]; then
+  echo "   skipped (FA18_SKIP_BUILD, using $here_root/build/fa18)"
+elif ! cmake --build "$here_root/build" -j"$(nproc)" > "$w/build.txt" 2>&1; then
   grep -E "error|Error" "$w/build.txt" | head -20; echo "FAIL: build failed"; exit 1
 fi
 echo "== equivalence (compare_native.sh)"
