@@ -149,6 +149,7 @@ Open:
 - [x] projection body: set CCR on moveq #0/#1 and move.w d0,d0 paths
 - [x] verify leftovers: $432b8 setw d2-d5; $4136a D(2)=bits (moveq);
       $36fb8 setw d0 (move.w high-word preserve)
+- [x] $4120a: move.b/ori.b paths preserve d2 high words; moveq paths zero long
 - [ ] $438a0 disabled (menu1 DIFF@7000 with native positive-d7 path)
 - [ ] $438a8 still disabled (disc projection path)
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
