@@ -416,9 +416,54 @@ NATIVE_ASM(0x2e2b4, stick_h_right, true);
 NATIVE_ASM(0x2e2b8, stick_h_left, true);
 NATIVE_ASM(0x2e2bc, stick_h_rel, true);
 
+// $2e22c/$2e230/$2e23a (+ fall-through from $2e234): low two bits of
+// $5b4e1 (no aaa5/aaac gate; always written).  $2e234 also clears $5ab68.
+static void stick_lo(uint8_t bits, bool clear_ab68 = false) {
+  if (clear_ab68) wr8(0x5ab68, 0);
+  D(2) = bits;
+  uint8_t v = uint8_t((rd8(0x5b4e1) & 0xfc) | bits);
+  setb(1, v);
+  wr8(0x5b4e1, v);
+}
+static void stick_lo_1() { stick_lo(1); }
+static void stick_lo_2() { stick_lo(2); }
+static void stick_lo_0() { stick_lo(0); }
+static void stick_lo_0_clear() { stick_lo(0, true); }
+NATIVE_ASM(0x2e22c, stick_lo_1, true);
+NATIVE_ASM(0x2e230, stick_lo_2, true);
+NATIVE_ASM(0x2e23a, stick_lo_0, true);
+NATIVE_ASM(0x2e234, stick_lo_0_clear, true);
+
+// $2f098: mark a one-shot effect / message request.
+static void request_effect_2f098() {
+  wr8(0x5aad5, uint8_t(rd8(0x5aad5) | 0x80));
+  wr16(0x5ad3a, 0x80);
+  wr8(0x5ab35, 3);
+}
+NATIVE_ASM(0x2f098, request_effect_2f098, true);
+
 // $2f216: empty stub in the original (just rts).
 static void stub_2f216() {}
 NATIVE_C(0x2f216, stub_2f216, true);
+
+// $399ee: if *(a0) >= 0, decrement the byte (signed).
+static void dec_if_nonneg_399ee() {
+  int8_t v = int8_t(rd8(A(0)));
+  if (v >= 0) wr8(A(0), uint8_t(v - 1));
+}
+NATIVE_ASM(0x399ee, dec_if_nonneg_399ee, true);
+
+// $397a2: write a digit nibble in d1.b as ASCII to (a0)+.
+// Values > 9 become 'A'.. (add 7 then '0').
+static void put_digit_397a2() {
+  uint16_t d1 = lo(1);
+  if (int8_t(uint8_t(d1)) > 9) d1 = uint16_t(d1 + 7);
+  d1 = uint16_t(d1 + 0x30);
+  setw(1, d1);
+  wr8(A(0), uint8_t(d1));
+  A(0) = A(0) + 1;
+}
+NATIVE_ASM(0x397a2, put_digit_397a2, true);
 
 // $2d3cc / $2d3e0 / $2d3f4 / $2d408 / $2d41a: world-origin / camera offset
 // vectors (positive set at $5af36 and negated set at $5af2a).  Pure ASM:
