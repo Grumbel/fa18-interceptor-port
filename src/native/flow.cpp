@@ -46,20 +46,38 @@ NATIVE_STATE(0x21d38, st_mission_menu);
 // offset table at $540e2; the third selects a word within that record, and
 // the second is the destination slot in the queue at $5aa42. The original
 // clears the following queue word to terminate the queue.
-static void set_mission_message(int32_t mission, int32_t queue_slot,
-                                int32_t record_slot) {
-  const int16_t mission_index = int16_t(uint16_t(mission) - 3u);
-  const int16_t table_offset = int16_t(mission_index * 2);
-  const int16_t record_offset = int16_t(rd16(0x540E2u + uint32_t(int32_t(table_offset))));
-  const uint32_t record = uint32_t(int32_t(0x54006u) + int32_t(record_offset));
-  const int16_t value_offset = int16_t(uint16_t(record_slot) * 2u);
-  const int16_t value = int16_t(rd16(record + uint32_t(int32_t(value_offset))));
-  const int16_t destination_offset = int16_t(uint16_t(queue_slot) * 2u);
-  const uint32_t destination = 0x5AA42u + uint32_t(int32_t(destination_offset));
-  wr16(destination, uint16_t(value));
-  wr16(destination + 2, 0);
+//
+// Leftovers match the original: a0=$54006, a1=$540e2, a2=$5aa42,
+// d1 = selected value, d0 = queue_slot*2 (word arithmetic on the long).
+static void set_mission_message() {
+  // C stack args under the return address (no link in the native path).
+  const uint32_t sp = cpu().a[7];
+  const uint32_t mission = rd32(sp + 4);
+  const uint32_t queue_slot = rd32(sp + 8);
+  const uint32_t record_slot = rd32(sp + 12);
+
+  A(0) = 0x54006;
+  A(1) = 0x540e2;
+
+  // movel mission,d0; subqw #3,d0; addw d0,d0; a2 = a0 + a1@(d0.w)
+  D(0) = mission;
+  setw(0, lo(0) - 3);
+  setw(0, lo(0) + lo(0));
+  A(2) = A(0) + uint32_t(int16_t(rd16(A(1) + uint32_t(int16_t(lo(0))))));
+
+  // movel record_slot,d0; addw d0,d0; d1 = a2@(d0.w)
+  D(0) = record_slot;
+  setw(0, lo(0) + lo(0));
+  setw(1, rd16(A(2) + uint32_t(int16_t(lo(0)))));
+
+  // movel queue_slot,d0; addw d0,d0; a2 = $5aa42; store & terminate
+  D(0) = queue_slot;
+  setw(0, lo(0) + lo(0));
+  A(2) = 0x5aa42;
+  wr16(A(2) + uint32_t(int16_t(lo(0))), lo(1));
+  wr16(A(2) + uint32_t(int16_t(lo(0))) + 2, 0);
 }
-NATIVE_C(0x39510, set_mission_message, true);
+NATIVE_ASM(0x39510, set_mission_message, true);
 
 // $397a2: append one hexadecimal digit from d1 to the byte string at a0.
 // Values 0..9 become '0'..'9'; values 10..15 become 'A'..'F'.  The
