@@ -511,9 +511,8 @@ NATIVE_ASM(0x2d408, world_origin_2d408, true);
 
 // $2d4a6: transform (d3,d4,d5) by the 3x3 word matrix at a1+$92 and add the
 // translation at a1+$14/$18/$1c; result in d0/d1/d2 (asr #4).
-static void xform_2d4a6() {
-  uint32_t a1 = A(1);
-  uint32_t mat = a1 + 0x92;
+// Core body at $2d4b6: matrix at a2 (9 words), translation at a1+$14/$18/$1c.
+static void xform_body(uint32_t a1, uint32_t mat) {
   int16_t v3 = int16_t(lo(3)), v4 = int16_t(lo(4)), v5 = int16_t(lo(5));
   int32_t m0 = int16_t(rd16(mat + 0)), m1 = int16_t(rd16(mat + 2)), m2 = int16_t(rd16(mat + 4));
   int32_t m3 = int16_t(rd16(mat + 6)), m4 = int16_t(rd16(mat + 8)), m5 = int16_t(rd16(mat + 10));
@@ -542,14 +541,20 @@ static void xform_2d4a6() {
   D(6) = uint32_t(d6);
   D(7) = uint32_t(d7);
 }
+// $2d4a6: a1 = $5b47c, matrix at a1+$92
 static void xform_setup_2d4a6() {
   A(1) = 0x5b47c;
-  xform_2d4a6();
+  xform_body(A(1), A(1) + 0x92);
 }
+// $2d48e / $2d4a0: matrix at a1+$92 (a1 already set / computed)
 static void xform_2d48e() {
   A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
-  xform_2d4a6();
+  xform_body(A(1), A(1) + 0x92);
 }
+static void xform_2d4a0() {
+  xform_body(A(1), A(1) + 0x92);
+}
+// $2d468: jsr $422d2, a1 = $5b47c+w_$5abd6, matrix at $5af06 (a2)
 static void xform_2d468() {
   uint16_t s3 = lo(3), s4 = lo(4), s5 = lo(5);
   Regs in{};
@@ -559,17 +564,14 @@ static void xform_2d468() {
   setw(3, s3); setw(4, s4); setw(5, s5);
   A(1) = 0x5b47c + uint32_t(int16_t(rd16(0x5abd6)));
   A(2) = 0x5af06;
-  xform_2d4a6();
-}
-static void xform_2d4a0() {
-  xform_2d4a6();
+  xform_body(A(1), 0x5af06);
 }
 static void xform_2d452() {
   setw(3, 0);
   setw(4, 0);
   setw(5, uint16_t(int16_t(-5760)));
   A(1) = 0x5b47c;
-  xform_2d4a6();
+  xform_body(A(1), A(1) + 0x92);
   wr32(0x5af4e, D(0));
   wr32(0x5af52, D(1));
   wr32(0x5af56, D(2));
