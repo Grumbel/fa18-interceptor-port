@@ -408,14 +408,19 @@ static void object_pitch_flags_4136a() {
 }
 NATIVE_ASM(0x4136a, object_pitch_flags_4136a, true);
 
-// $36fb8: if selected object (offset $5acb8) is locked, clear selection.
+// $36fb8: clear selection if selected object is gone / unlocked.
+// Original: btst #6,1(a1); beq clear; btst #1,32(a1); beq rts; then clear.
+// So clear when bit6 of +1 is clear, OR when bit6 set and bit1 of +32 set.
 static void clear_lock_if_gone_36fb8() {
   int16_t d0 = int16_t(rd16(0x5acb8));
   D(0) = uint32_t(uint16_t(d0));
   if (d0 < 0) return;
   A(1) = 0x5b47c + uint32_t(uint16_t(d0));
-  if (!(rd8(A(1) + 1) & 0x40)) return;
-  if (!(rd8(A(1) + 32) & 2)) return;
+  if (rd8(A(1) + 1) & 0x40) {
+    // bit6 set: only clear if bit1 of +32 is also set
+    if (!(rd8(A(1) + 32) & 2)) return;
+  }
+  // bit6 clear, or both conditions met → clear selection
   wr16(0x5acb8, 0xffff);
   wr8(0x5ab60, 0);
   wr16(0x5ac32, 0xffff);
