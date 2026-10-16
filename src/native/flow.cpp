@@ -98,28 +98,30 @@ NATIVE_ASM(0x397a2, append_hex_digit, true);
 
 // $399f6: refresh airspeed-derived limits when $5adf2 >= 0.
 static void refresh_airspeed_limits_399f6() {
-  if (int32_t(rd32(0x5adf2)) < 0) return;
-  uint32_t d1 = rd32(0x5ae02);
-  uint32_t d0;
-  if (int32_t(d1) > 32767) {
-    d0 = 9999;
-  } else {
-    // divu.w: on overflow (quotient > $ffff) destination is unchanged
-    d0 = 800000u;
-    uint16_t divisor = uint16_t(d1);
-    if (divisor != 0) {
-      divuw(d0, divisor);
+  // Binary structure (branch targets verified):
+  //   tst.l $5adf2; blt $39a3e  — skip body, still do final long copies
+  //   body: compute d0; maybe min $5ade0; maybe max $5abd8;
+  //         ALWAYS move.w d0,$5adde  (even on 9999 path: bra $39a38)
+  //   $39a3e: move.l $5adea,$5adf2; move.l $5adee,$5adf6; rts
+  if (int32_t(rd32(0x5adf2)) >= 0) {
+    uint32_t d1 = rd32(0x5ae02);
+    uint32_t d0;
+    if (int32_t(d1) > 32767) {
+      d0 = 9999;
+    } else {
+      d0 = 800000u;
+      uint16_t divisor = uint16_t(d1);
+      if (divisor != 0)
+        divuw(d0, divisor);
+      if (int16_t(uint16_t(d0)) < int16_t(rd16(0x5ade0)))
+        wr16(0x5ade0, uint16_t(d0));
+      if (int16_t(uint16_t(d0)) > int16_t(rd16(0x5abd8)))
+        wr16(0x5abd8, uint16_t(d0));
     }
-    // comparisons and stores use the low word (quotient or low of unchanged)
-    if (int16_t(uint16_t(d0)) < int16_t(rd16(0x5ade0)))
-      wr16(0x5ade0, uint16_t(d0));
-    if (int16_t(uint16_t(d0)) > int16_t(rd16(0x5abd8))) {
-      wr16(0x5abd8, uint16_t(d0));
-      wr16(0x5adde, uint16_t(d0));
-    }
+    wr16(0x5adde, uint16_t(d0));  // always on body path
+    D(0) = d0;
+    D(1) = d1;
   }
-  D(0) = d0;
-  D(1) = d1;
   wr32(0x5adf2, rd32(0x5adea));
   wr32(0x5adf6, rd32(0x5adee));
 }

@@ -132,8 +132,9 @@ Open:
 - [x] Fix $4120a object steer flags: non-0x60 path (bit7-clear and altitude
       bands); mode 0x60 keeps 0x80/0x40 when alt skips ori (ble/bgt go to
       merge $41286, NOT moveq #0); d3 leftover = altitude on that path
-- [x] Fix $399f6 airspeed limits: use divu.w overflow semantics (quotient
-      > $ffff leaves destination unchanged) instead of truncating C /
+- [x] Fix $399f6 airspeed limits: divu.w overflow; blt skips body but still
+      copies $5adea→$5adf2 / $5adee→$5adf6; body path ALWAYS writes $5adde
+      (9999 path bras to that store, max-skip ble also falls into it)
 - [x] Fix $4389c positive-d7 path: write shifted threshold back to d2
 - [ ] remaining hunk-0 C helpers still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
