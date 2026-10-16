@@ -188,15 +188,13 @@ static void object_steer_flags_4120a() {
         bits = 0x80;
         d3 = int16_t(rd16(A(1) + 106));  // original overwrites d3
         setw(3, uint16_t(d3));
-        // alt<=80 or alt>28720 → moveq #0,d2 (clears the 0x80)
+        // alt<=80 / alt>28720: skip ori, keep 0x80 (branch to merge, NOT moveq #0)
         if (d3 <= 14400) {
-          if (d3 <= 80) bits = 0;
-          else bits = uint8_t(bits | 4);
-        } else if (d3 > 28720) {
-          bits = 0;
-        } else {
+          if (d3 > 80) bits = uint8_t(bits | 4);
+        } else if (d3 <= 28720) {
           bits = uint8_t(bits | 8);
         }
+        // else alt>28720: bits stays 0x80
       }
     } else {  // d3 < 0
       if (d3 >= int16_t(rd16(A(1) + 88))) {
@@ -206,13 +204,11 @@ static void object_steer_flags_4120a() {
         d3 = int16_t(rd16(A(1) + 106));
         setw(3, uint16_t(d3));
         if (d3 <= 14400) {
-          if (d3 <= 80) bits = 0;
-          else bits = uint8_t(bits | 4);
-        } else if (d3 > 28720) {
-          bits = 0;
-        } else {
+          if (d3 > 80) bits = uint8_t(bits | 4);
+        } else if (d3 <= 28720) {
           bits = uint8_t(bits | 8);
         }
+        // else alt>28720: bits stays 0x40
       }
     }
   } else if (rd8(A(1) + 100) & 0x80) {

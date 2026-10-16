@@ -129,9 +129,9 @@ Open:
 - [x] Fix $42eba sincos: Q2/Q4 leftover d6/d7, and table index must
       sign-extend like 68000 (0,a0,dn.w) (was zero-extending uint16_t)
 - [x] Fix $36fb8 clear-lock: bit6-clear must *clear* selection (was inverted)
-- [x] Fix $4120a object steer flags: non-0x60 path was wrong (bit7-clear
-      and altitude bands); mode 0x60 alt<=80 / >28720 must zero bits;
-      d3 leftover = altitude when the altitude path runs
+- [x] Fix $4120a object steer flags: non-0x60 path (bit7-clear and altitude
+      bands); mode 0x60 keeps 0x80/0x40 when alt skips ori (ble/bgt go to
+      merge $41286, NOT moveq #0); d3 leftover = altitude on that path
 - [x] Fix $399f6 airspeed limits: use divu.w overflow semantics (quotient
       > $ffff leaves destination unchanged) instead of truncating C /
 - [x] Fix $4389c positive-d7 path: write shifted threshold back to d2
