@@ -150,3 +150,19 @@ selects whether a second colour (ground/sea) is active.
 | `$60c84` | Temp screen points produced inside `$43364` |
 | `$63b44` | Edge-survival flags + coords after clip |
 | `$33120` | Sets `$5ab93` via table match on `$5ac40/$5ac42` |
+
+## Runtime observation (free1 scenario)
+
+Under `tests/scenarios/free1.txt` (frames ~2600–6000):
+
+- `$42f48` always takes the **simple** branch (`$5abca` bit13 = 0).
+- `$44994` runs every frame; `$5ab93` stays 0 (sky-only table match).
+- `$42f6a` / `$232aa` are **never** reached — no count-prefixed sea poly
+  is built.
+- Scene capture therefore sees `fill=0`; visible structure is mesh
+  `poly`/`line` only.
+
+Implication: in free flight the painted sea/sky split is **not** the
+complex `$60684` polygon.  It comes from the `$44994` plane blits and/or
+3D ground meshes.  Further RE of `$44994`’s per-plane minterms and any
+prior edge setup is required before a Fill2d can represent that path.

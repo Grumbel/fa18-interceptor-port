@@ -215,67 +215,13 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Sea/sky from view matrix ($5aed0): real 3D plane, not palette/HUD colours.
-  // Fixed ocean/sky so we never pick the red instrument palette entry.
-  const uint32_t sky = 0xFF6EC4F0u;    // light sky blue
-  const uint32_t water = 0xFF1A4A6Eu;  // deep water
-
+  // Backdrop from captured Fill2d prims (docs/horizon.md): the original
+  // builds a count-prefixed *screen-space* sea polygon at $60684 (complex
+  // path) or a full-view plane clear (simple path).  Capture hooks record
+  // those as Fill2d; no matrix-derived infinite plane.
+  const uint32_t sky =
+      frame.sky_rgba ? frame.sky_rgba : 0xFF6EC4F0u;
   pixels_.assign(size_t(width_) * size_t(height_), sky);
-
-  if (frame.camera.has_view_m) {
-    const int16_t* m = frame.camera.view_m;
-    // From rot_out / $3f7e2 (verified against native): view = M * world,
-    // M row-major at $5aed0.  Level-flight dump:
-    //   M = [168 0 0 / 0 0 252 / 0 -128 0]
-    //   world X → view X,  world Y → view −Z,  world Z → view Y
-    // so world +Z is up.  N_view = M*(0,0,1) = column 2 = (m[2],m[5],m[8]).
-    double cx2 = double(m[2]), cy2 = double(m[5]), cz2 = double(m[8]);
-    double L = std::sqrt(cx2 * cx2 + cy2 * cy2 + cz2 * cz2);
-    double Nx = 0, Ny = 1, Nz = 0;
-    if (L > 1.0) {
-      Nx = cx2 / L; Ny = cy2 / L; Nz = cz2 / L;
-    }
-    // Temporal coherence under continuous roll.
-    static double pNx = 0, pNy = 1, pNz = 0;
-    static bool have_prev = false;
-    if (have_prev) {
-      if (Nx * pNx + Ny * pNy + Nz * pNz < 0.0) {
-        Nx = -Nx; Ny = -Ny; Nz = -Nz;
-      }
-    } else {
-      // Inverse project_screen_body: d1/d2 = (90 - sy)/90.
-      // Bottom pixel ⇒ d1/d2 < 0; require N·(0, d1/d2, 1) < 0 (water).
-      const double vy_bot = (90.0 - (double(rows_) - 0.5)) / 90.0;
-      if (Ny * vy_bot + Nz >= 0.0) {
-        Nx = -Nx; Ny = -Ny; Nz = -Nz;
-      }
-      have_prev = true;
-    }
-    pNx = Nx; pNy = Ny; pNz = Nz;
-
-    // Exact inverse of project_screen_body ($438b6), including the post-flip:
-    //   sx0 = 160 + 160*(d0/d2);  sy0 = 90 + 90*(d1/d2);
-    //   sx  = 319 - sx0 = 159 - 160*(d0/d2);
-    //   sy  = 180 - sy0 =  90 -  90*(d1/d2);
-    // ⇒  d0/d2 = (159 - sx)/160
-    //    d1/d2 = ( 90 - sy)/ 90
-    // Horizon vanishing line: N · (d0, d1, d2) = 0.
-    const int S = scale_;
-    for (int y = 0; y < height_; ++y) {
-      const double sy = (y + 0.5) / S;
-      const double vy_over_z = (90.0 - sy) / 90.0;
-      for (int x = 0; x < width_; ++x) {
-        const double sx = (x + 0.5) / S;
-        const double vx_over_z = (159.0 - sx) / 160.0;
-        if (Nx * vx_over_z + Ny * vy_over_z + Nz < 0.0)
-          pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
-      }
-    }
-  } else {
-    for (int y = height_ / 2; y < height_; ++y)
-      for (int x = 0; x < width_; ++x)
-        pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
-  }
 
   struct DrawItem {
     const Prim* prim;
@@ -295,9 +241,8 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     items.push_back({&p, mid, depth});
   }
   std::stable_sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
-    return a.depth > b.depth;  // far → near
+    return a.depth > b.depth;  // far → near (Fill2d sky/ground behind meshes)
   });
-  // Draw all captured prims (horizon Fill2d still incomplete — may be absent).
   for (const DrawItem& it : items) {
     draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
               frame.sky_rgba, frame.ground_rgba);

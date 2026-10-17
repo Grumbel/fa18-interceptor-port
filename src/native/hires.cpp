@@ -340,80 +340,80 @@ void on_fill2d() {
   fill_polygon(*cur, sp, poly_ops());
 }
 
-// $44994 (horizon: sky/ground/sea planes) fills its screen-space polygon
-// through $44dfe directly, not through $44b50: observe the return of $44dfe at $44b00
-// Capture a horizon/sky/ground screen-space fill from verts at $60684.
-// Called from $44b00 (post-$44dfe) and from $44f46 (actual fill; $44994
-// BSRs here with d0=8,d3=0 and never touches $44b00 — that was why fill=0).
+// Horizon geometry (docs/horizon.md):
+//   Complex path: $42f6a/$42f62 transforms a finite sea quad, $43364 clips,
+//   then rebuilds $60684 as count-prefixed *screen-space* verts.  Capture at
+//   the successful RTS ($232aa) when that layout is valid.
+//   Simple path: $44994 (bit13 of $5abca clear) is a full-view plane-1 clear
+//   with no polygon — emit a view-rectangle Fill2d instead.
+//
+// $60684 layout after rebuild: word n; n × (word x, word y).
+
+static uint32_t horizon_rgba12(int idx) {
+  uint16_t c12 = native::g_machine->color_reg(idx & 31);
+  uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+  r |= r << 4; g |= g << 4; b |= b << 4;
+  return 0xFF000000u | (r << 16) | (g << 8) | b;
+}
+
+// Resolve sky / ground colours and inject a full-view sky prim once per frame.
+static void horizon_colours(bool ground, uint32_t& sky_out, uint32_t& ground_out) {
+  sky_out = horizon_rgba12(0);
+  if ((sky_out & 0xFFFFFF) == 0) sky_out = 0xFF5080C0u;
+  ground_out = 0xFF206080u;
+  if (ground) {
+    int best_score = -1;
+    for (int idx : {2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15}) {
+      uint32_t c = horizon_rgba12(idx);
+      if ((c & 0xFFFFFF) == 0) continue;
+      int dr = int((c >> 16) & 255) - int((sky_out >> 16) & 255);
+      int dg = int((c >> 8) & 255) - int((sky_out >> 8) & 255);
+      int db = int(c & 255) - int(sky_out & 255);
+      int score = dr * dr + dg * dg + db * db;
+      int blue_bias = int(c & 255) - int((c >> 16) & 255);
+      if (blue_bias > 0) score += blue_bias * blue_bias;
+      if (score > best_score) { best_score = score; ground_out = c; }
+    }
+  }
+  scene::note_env_colours(sky_out, ground ? ground_out : 0);
+  static uint64_t sky_injected_for = ~0ull;
+  uint64_t fid = scene::current().frame_id;
+  if (sky_injected_for != fid) {
+    sky_injected_for = fid;
+    scene::Prim sky_pr;
+    sky_pr.kind = scene::PrimKind::Fill2d;
+    sky_pr.n = 4;
+    sky_pr.object_index = -1;
+    sky_pr.sel = 2;
+    sky_pr.rgba = sky_out;
+    int rows = std::min(200, int(rd16(0x5ac7c)) + 1);
+    sky_pr.xyz[0][0] = 0;   sky_pr.xyz[0][1] = 0;
+    sky_pr.xyz[1][0] = 320; sky_pr.xyz[1][1] = 0;
+    sky_pr.xyz[2][0] = 320; sky_pr.xyz[2][1] = int16_t(rows);
+    sky_pr.xyz[3][0] = 0;   sky_pr.xyz[3][1] = int16_t(rows);
+    scene::note_prim(sky_pr);
+  }
+}
+
+// Capture the count-prefixed screen-space polygon at $60684 (complex path).
 void capture_horizon_fill() {
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
-  // Horizon / sky / ground / sea — screen-space plane fills, not meshes.
-  // Capture always when geometry is valid so the software renderer can draw
-  // it; hires layer still skips the second-colour-only case below.
-  if (scene::enabled()) {
+  if (!scene::enabled()) {
+    if (rd8(0x5ab93) == 0) return;
+    if (!first_prim()) return;
+    // fall through to hires-only path below
+  } else {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
     int m = n > 40 ? 40 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
-    // 1 = ground/sea (second colour active), 2 = sky-class fill
     const bool ground = rd8(0x5ab93) != 0;
     pr.sel = ground ? 1 : 2;
-    // Horizon fill clears display plane 1 inside the polygon ($4506e).
-    // Solid RGB: sky from COLOR0; ground/sea from an index that has bit1
-    // set in the playfield (2 or 3), matching the plane-clear result.
-    auto rgba12 = [](int idx) {
-      uint16_t c12 = native::g_machine->color_reg(idx & 31);
-      uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
-      r |= r << 4; g |= g << 4; b |= b << 4;
-      return 0xFF000000u | (r << 16) | (g << 8) | b;
-    };
-    // Horizon fill clears display plane 1.  Ground/sea colour is a palette
-    // entry that still looks distinct after that bit is cleared — try indices
-    // with bit1 set (2,3,6,7) and keep the one farthest from sky (COLOR0).
-    if (ground) {
-      uint32_t sky = rgba12(0);
-      if ((sky & 0xFFFFFF) == 0) sky = 0xFF5080C0u;
-      uint32_t best = 0xFF206080u;
-      int best_score = -1;
-      for (int idx : {2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15}) {
-        uint32_t c = rgba12(idx);
-        if ((c & 0xFFFFFF) == 0) continue;
-        int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
-        int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
-        int db = int(c & 255) - int(sky & 255);
-        int score = dr * dr + dg * dg + db * db;
-        int blue_bias = int(c & 255) - int((c >> 16) & 255);
-        if (blue_bias > 0) score += blue_bias * blue_bias;
-        if (score > best_score) { best_score = score; best = c; }
-      }
-      pr.rgba = best;
-      scene::note_env_colours(sky, best);
-      // Once per frame: explicit full-view sky behind the ground/sea poly so
-      // the software renderer has a real sky prim (not only the clear colour).
-      static uint64_t sky_injected_for = ~0ull;
-      uint64_t fid = scene::current().frame_id;
-      if (sky_injected_for != fid) {
-        sky_injected_for = fid;
-        scene::Prim sky_pr;
-        sky_pr.kind = scene::PrimKind::Fill2d;
-        sky_pr.n = 4;
-        sky_pr.object_index = -1;
-        sky_pr.sel = 2;
-        sky_pr.rgba = sky;
-        int rows = std::min(200, int(rd16(0x5ac7c)) + 1);
-        sky_pr.xyz[0][0] = 0;   sky_pr.xyz[0][1] = 0;
-        sky_pr.xyz[1][0] = 320; sky_pr.xyz[1][1] = 0;
-        sky_pr.xyz[2][0] = 320; sky_pr.xyz[2][1] = int16_t(rows);
-        sky_pr.xyz[3][0] = 0;   sky_pr.xyz[3][1] = int16_t(rows);
-        scene::note_prim(sky_pr);
-      }
-    } else {
-      pr.rgba = rgba12(0);
-      if ((pr.rgba & 0xFFFFFF) == 0) pr.rgba = 0xFF5080C0u;
-      scene::note_env_colours(pr.rgba, 0);
-    }
+    uint32_t sky = 0, gr = 0;
+    horizon_colours(ground, sky, gr);
+    pr.rgba = ground ? gr : sky;
     for (int i = 0; i < m; ++i) {
       pr.xyz[i][0] = int16_t(rd16(0x60686 + 4u * uint32_t(i)));
       pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));
@@ -438,14 +438,51 @@ void on_fill_horizon() {
   capture_horizon_fill();
 }
 
-// $44f46: the fill routine used by $44994 (horizon) with d0=8, d3=0, d4=0.
-// This is the path that actually draws water/ground — $44994 never enters $44b00.
+// $44f46: fill used by both the complex path (after $42f6a rebuilt $60684)
+// and the simple $44994 plane-clear.  Capture the poly when present; if the
+// count at $60684 is not a valid polygon the capture is a no-op.
 void on_fill_44f46() {
   m68k::Cpu& c = native::g_machine->cpu;
-  // Horizon plane-clear: moveq #8,d0; moveq #0,d3; moveq #0,d4; bsr $44f46
   if (int16_t(c.d[0]) != 8) return;
   if (int16_t(c.d[3]) != 0) return;
   capture_horizon_fill();
+}
+
+// Successful RTS of $42f6a/$42f62 body ($232aa): $60684 holds the rebuilt
+// count-prefixed screen-space sea polygon (docs/horizon.md).
+void on_horizon_poly_ready() {
+  if (!scene::enabled()) return;
+  int n = int16_t(rd16(0x60684));
+  if (std::getenv("FA18_HORIZON_DEBUG"))
+    std::fprintf(stderr, "[horizon] poly_ready n=%d ab93=%d\n", n, int(rd8(0x5ab93)));
+  capture_horizon_fill();
+}
+
+// Simple horizon path entry ($44994): full-view plane-1 clear, no polygon.
+// Emit a view-rectangle Fill2d so the software renderer still has sea/sky.
+void on_simple_horizon() {
+  if (!scene::enabled()) return;
+  // Only the simple path: bit13 of $5abca clear (see $42f48).
+  uint16_t flags = rd16(0x5abca);
+  if (std::getenv("FA18_HORIZON_DEBUG"))
+    std::fprintf(stderr, "[horizon] simple abca=%04x ab93=%d\n", flags, int(rd8(0x5ab93)));
+  if (flags & 0x2000) return;
+  const bool ground = rd8(0x5ab93) != 0;
+  uint32_t sky = 0, gr = 0;
+  horizon_colours(ground, sky, gr);
+  if (!ground) return;  // sky already injected by horizon_colours
+  scene::Prim pr;
+  pr.kind = scene::PrimKind::Fill2d;
+  pr.n = 4;
+  pr.object_index = -1;
+  pr.sel = 1;
+  pr.rgba = gr;
+  int rows = std::min(200, int(rd16(0x5ac7c)) + 1);
+  pr.xyz[0][0] = 0;   pr.xyz[0][1] = 0;
+  pr.xyz[1][0] = 320; pr.xyz[1][1] = 0;
+  pr.xyz[2][0] = 320; pr.xyz[2][1] = int16_t(rows);
+  pr.xyz[3][0] = 0;   pr.xyz[3][1] = int16_t(rows);
+  scene::note_prim(pr);
 }
 
 // $4397c: line between two points that must lie inside the frustum (no clipping)
@@ -656,7 +693,11 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x4397c, [] { on_line_noclip(); });
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });
   m.add_pc_hook(0x44b00, [] { on_fill_horizon(); });
-  m.add_pc_hook(0x44f46, [] { on_fill_44f46(); });  // $44994 horizon fill
+  m.add_pc_hook(0x44f46, [] { on_fill_44f46(); });
+  // Complex path: capture screen-space sea poly at successful $42f6a RTS.
+  m.add_pc_hook(0x232aa, [] { on_horizon_poly_ready(); });
+  // Simple path: full-view plane clear when $5abca bit13 is clear.
+  m.add_pc_hook(0x44994, [] { on_simple_horizon(); });
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
   m.add_pc_hook(0x438a8, [] { on_point(-4); });

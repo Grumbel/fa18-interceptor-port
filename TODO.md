@@ -554,3 +554,14 @@ docs/horizon.md.  Summary:
   observe the simple-path clear bounds.
 
 No further renderer changes until the capture path matches this layout.
+
+### Horizon capture hooks (2026-10-17 cont.)
+
+Implemented observation matching docs/horizon.md:
+- `$232aa` — capture count-prefixed screen-space poly after complex path
+- `$44994` — simple-path view-rect Fill2d when `$5ab93` ≠ 0
+- Software renderer no longer synthesises a matrix plane; draws Fill2d + meshes
+
+Runtime (free1): only simple path runs, `$5ab93=0`, so no sea Fill2d is
+produced.  Next: RE what `$44994` actually paints when `$5ab93=0` (plane
+minterms / edge masks) — that is the free-flight horizon.
