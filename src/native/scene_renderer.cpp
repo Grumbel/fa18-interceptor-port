@@ -224,32 +224,45 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   if (frame.camera.has_view_m) {
     const int16_t* m = frame.camera.view_m;
-    // World-up = column 1 of row-major M (Y-up).  Fixed axis — no mid-bank
-    // Y/Z switching.  Per-pixel N·dir test is continuous through 90° bank
-    // (no Ny-sign flip that swapped sky/water).
-    double Nx = double(m[1]);
-    double Ny = double(m[4]);
-    double Nz = double(m[7]);
-    const double nlen = std::sqrt(Nx * Nx + Ny * Ny + Nz * Nz);
-    if (nlen > 1.0) {
-      Nx /= nlen; Ny /= nlen; Nz /= nlen;
-      // Orient once: when roughly level, Ny should be >0 so lower screen
-      // (negative vyz) is water.  Only flip if clearly inverted.
-      if (Ny < -0.05) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
+    // World-up in view space.  $5aed0 is applied as v' = M*v (row-major), so
+    // world +Y maps to column 1.  Also try row 1 (M^T path) and keep the one
+    // that agrees with temporal history — prevents a 180° flip at 90° bank.
+double c1x = double(m[1]), c1y = double(m[4]), c1z = double(m[7]);
+    double r1x = double(m[3]), r1y = double(m[4]), r1z = double(m[5]);
+    double Lc = std::sqrt(c1x * c1x + c1y * c1y + c1z * c1z);
+    double Lr = std::sqrt(r1x * r1x + r1y * r1y + r1z * r1z);
+    double Nx = 0, Ny = 1, Nz = 0;
+    if (Lc > 1.0) {
+      Nx = c1x / Lc; Ny = c1y / Lc; Nz = c1z / Lc;
+    } else if (Lr > 1.0) {
+      Nx = r1x / Lr; Ny = r1y / Lr; Nz = r1z / Lr;
+    }
+    // Temporal coherence: never hard-flip on Ny sign.  Keep the hemisphere
+    // that matches the previous frame so a continuous roll stays continuous.
+    static double pNx = 0, pNy = 1, pNz = 0;
+    static bool have_prev = false;
+    if (have_prev) {
+      if (Nx * pNx + Ny * pNy + Nz * pNz < 0.0) {
+        Nx = -Nx; Ny = -Ny; Nz = -Nz;
+      }
+    } else {
+      // First frame: prefer water in the lower half when nearly level.
+      // Sample centre-bottom direction vyz < 0; want N·d < 0 there.
+      if (Ny < 0.0) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
+      have_prev = true;
+    }
+    pNx = Nx; pNy = Ny; pNz = Nz;
 
-      // Same perspective as meshes (160 / 90).  Per-pixel: water if N·d < 0.
-      const int S = scale_;
-      const double cx = 159.0, cy = 89.0, fx = 160.0, fy = 90.0;
-      for (int y = 0; y < height_; ++y) {
-        const double sy = (y + 0.5) / S;
-        const double vyz = (cy - sy) / fy;
-        for (int x = 0; x < width_; ++x) {
-          const double sx = (x + 0.5) / S;
-          const double vxz = (cx - sx) / fx;
-          // d = (vxz, vyz, 1); below horizon toward ground when N·d < 0
-          if (Nx * vxz + Ny * vyz + Nz < 0.0)
-            pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
-        }
+    const int S = scale_;
+    const double cx = 159.0, cy = 89.0, fx = 160.0, fy = 90.0;
+    for (int y = 0; y < height_; ++y) {
+      const double sy = (y + 0.5) / S;
+      const double vyz = (cy - sy) / fy;
+      for (int x = 0; x < width_; ++x) {
+        const double sx = (x + 0.5) / S;
+        const double vxz = (cx - sx) / fx;
+        if (Nx * vxz + Ny * vyz + Nz < 0.0)
+          pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
       }
     }
   } else {
