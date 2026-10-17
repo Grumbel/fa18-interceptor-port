@@ -649,11 +649,9 @@ void install(amiga::Machine& m) {
   scene_hooks = true;
   uint32_t dummy = 0;
   (void)dummy;
-  auto poly = [] { on_polygon(); };
-  // $38c0a falls into $38c0c: observe both entries, but only count once
+  // $38c0a falls into $38c0c — hook only $38c0c or every poly is captured twice.
   m.add_pc_hook(0x2112c, [] { on_game_frame(); });
-  m.add_pc_hook(0x38c0c, poly);
-  m.add_pc_hook(0x38c0a, poly);
+  m.add_pc_hook(0x38c0c, [] { on_polygon(); });
   m.add_pc_hook(0x43a56, [] { on_line(); });
   m.add_pc_hook(0x4397c, [] { on_line_noclip(); });
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });

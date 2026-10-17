@@ -450,3 +450,12 @@ Tilted least-squares fit was dominated by mesh edges (carrier/aircraft
 colour jumps).  Reverted to a flat split: sky/water from top/bottom
 *corners*, horizon row = median of a few central columns with outlier
 rejection.  Stable and matches lowres colours without chaos.
+
+### Stopped faking horizon from frame_rgb (2026-10-17)
+
+frame_rgb sampling produced a stuck grey band (hy=94, sky=444477) that
+tracked neither tilt nor low-res colours — likely wrong-time buffer /
+mesh noise.  Horizon remains uncaptured (blitter path).  Software path
+clears to neutral dark and draws meshes only.  Also: hook only $38c0c
+(was double-capturing every poly via $38c0a fall-through); near-black
+prim rgba falls back to mesh_id colour so geometry is visible.
