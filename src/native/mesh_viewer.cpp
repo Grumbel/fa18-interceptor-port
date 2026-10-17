@@ -28,19 +28,64 @@ void add_edge(Mesh& m, int a, int b) {
   m.edges.emplace_back(a, b);
 }
 
-// Wireframe: 2-D convex hull of body verts in XZ, plus fins.
-// Angular sort of inner ring + wing tips produces a star; convex hull of the
-// standard 10-vert aircraft cross is the nose/wing/tail diamond.
+// Prefer aircraft-cross topology when extremes form a ±X / ±Z cross
+// (nose, tail, wings).  Otherwise 2-D convex hull of body verts.
 void build_silhouette_edges(Mesh& m) {
   const int n = int(m.vx.size());
   if (n < 3) return;
-  struct Pt {
-    int i, x, z;
-  };
+
+  auto xi = [&](int i) { return int(m.vx[size_t(i)]); };
+  auto yi = [&](int i) { return int(m.vy[size_t(i)]); };
+  auto zi = [&](int i) { return int(m.vz[size_t(i)]); };
+
+  int nose = -1, tail = -1, left = -1, right = -1, fin = -1;
+  int minz = 99999, maxz = -99999, minx = 99999, maxx = -99999, maxy = -99999;
+  for (int i = 0; i < n; ++i) {
+    if (std::abs(yi(i)) <= 80) {
+      if (zi(i) < minz) { minz = zi(i); nose = i; }
+      if (zi(i) > maxz) { maxz = zi(i); tail = i; }
+      if (xi(i) < minx) { minx = xi(i); left = i; }
+      if (xi(i) > maxx) { maxx = xi(i); right = i; }
+    }
+    if (yi(i) > maxy) { maxy = yi(i); fin = i; }
+  }
+  const int span = std::max(maxx - minx, maxz - minz);
+  const bool is_cross = nose >= 0 && tail >= 0 && left >= 0 && right >= 0 && span >= 200 &&
+                        nose != tail && left != right &&
+                        std::abs(xi(nose)) < span / 4 && std::abs(xi(tail)) < span / 4 &&
+                        std::abs(zi(left)) < span / 4 && std::abs(zi(right)) < span / 4;
+
+  if (is_cross) {
+    // Diamond nose–L–tail–R plus fin and fuselage ring.
+    add_edge(m, nose, left);
+    add_edge(m, left, tail);
+    add_edge(m, tail, right);
+    add_edge(m, right, nose);
+    if (fin >= 0 && maxy > 80) {
+      add_edge(m, fin, nose);
+      add_edge(m, fin, tail);
+    }
+    for (int i = 0; i < n; ++i) {
+      if (std::abs(yi(i)) > 80) continue;
+      if (i == nose || i == tail || i == left || i == right) continue;
+      if (zi(i) < 0) {
+        add_edge(m, i, nose);
+        add_edge(m, i, xi(i) < 0 ? left : right);
+      } else if (zi(i) > 0) {
+        add_edge(m, i, tail);
+        add_edge(m, i, xi(i) < 0 ? left : right);
+      } else {
+        add_edge(m, i, nose);
+        add_edge(m, i, tail);
+      }
+    }
+    return;
+  }
+
+  struct Pt { int i, x, z; };
   std::vector<Pt> body;
   for (int i = 0; i < n; ++i) {
-    if (std::abs(int(m.vy[size_t(i)])) <= 80)
-      body.push_back({i, int(m.vx[size_t(i)]), int(m.vz[size_t(i)])});
+    if (std::abs(yi(i)) <= 80) body.push_back({i, xi(i), zi(i)});
   }
   if (body.size() < 3) {
     for (int i = 0; i < n; ++i) add_edge(m, i, (i + 1) % n);
@@ -48,17 +93,17 @@ void build_silhouette_edges(Mesh& m) {
   }
   std::sort(body.begin(), body.end(),
             [](const Pt& a, const Pt& b) { return a.x < b.x || (a.x == b.x && a.z < b.z); });
-  auto cross = [](const Pt& o, const Pt& a, const Pt& b) {
+  auto cross2 = [](const Pt& o, const Pt& a, const Pt& b) {
     return int64_t(a.x - o.x) * (b.z - o.z) - int64_t(a.z - o.z) * (b.x - o.x);
   };
   std::vector<Pt> lower, upper;
   for (auto& p : body) {
-    while (lower.size() >= 2 && cross(lower[lower.size() - 2], lower.back(), p) <= 0)
+    while (lower.size() >= 2 && cross2(lower[lower.size() - 2], lower.back(), p) <= 0)
       lower.pop_back();
     lower.push_back(p);
   }
   for (auto it = body.rbegin(); it != body.rend(); ++it) {
-    while (upper.size() >= 2 && cross(upper[upper.size() - 2], upper.back(), *it) <= 0)
+    while (upper.size() >= 2 && cross2(upper[upper.size() - 2], upper.back(), *it) <= 0)
       upper.pop_back();
     upper.push_back(*it);
   }
@@ -71,18 +116,13 @@ void build_silhouette_edges(Mesh& m) {
   }
   for (size_t i = 0; i < hull.size(); ++i)
     add_edge(m, hull[i], hull[(i + 1) % hull.size()]);
-  // Fins: high-|Y| → nearest hull vert
   for (int i = 0; i < n; ++i) {
-    if (std::abs(int(m.vy[size_t(i)])) <= 80) continue;
+    if (std::abs(yi(i)) <= 80) continue;
     int best = hull[0], best_d = INT_MAX;
     for (int h : hull) {
-      int dx = int(m.vx[size_t(i)]) - int(m.vx[size_t(h)]);
-      int dz = int(m.vz[size_t(i)]) - int(m.vz[size_t(h)]);
+      int dx = xi(i) - xi(h), dz = zi(i) - zi(h);
       int d = dx * dx + dz * dz;
-      if (d < best_d) {
-        best_d = d;
-        best = h;
-      }
+      if (d < best_d) { best_d = d; best = h; }
     }
     add_edge(m, i, best);
   }
