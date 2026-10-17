@@ -2,6 +2,7 @@
 // Paula audio DMA, joystick/mouse ports and the CIA-A port register.
 #include "amiga/machine.hpp"
 #include "amiga/hle.hpp"
+#include "native/scene_renderer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -277,7 +278,8 @@ void Machine::render_line(int line) {
     return;
   }
   for (int x = 0; x < FB_W; ++x) out[x] = bg;
-  const bool rec = hires_scale > 0;
+  // Record palette indices for --hires compose and FA18_SCENE_RENDER composite.
+  const bool rec = hires_scale > 0 || scene::software_render_enabled();
   if (rec) {
     if (idx_.empty()) {
       idx_.assign(size_t(FB_W) * FB_H, 0);

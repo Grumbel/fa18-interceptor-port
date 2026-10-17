@@ -169,6 +169,7 @@ Open:
       composite; SceneFrame opens at game_frame; on_line captured
 - [x] Prim::rgba from live plane-ops + palette at capture; software renderer
       uses it instead of mesh_id hash colours
+- [x] Prim-level depth sort (avg view-z); scan-out recording for SCENE_RENDER
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -326,3 +327,10 @@ draws Fill2d in the software path for debugging.
 
 Also fully restored Fill2d / horizon / on_line capture into SceneFrame
 (previous commit only landed the game_frame begin_frame hook).
+
+### Prim-level depth sort + scan-out (2026-10-17)
+
+Software renderer sorts mesh prims by average view-space z (far→near),
+falling back to object distance.  Scan-out index/palette recording is also
+enabled under FA18_SCENE_RENDER so future composite improvements can use
+the same row keys as --hires.

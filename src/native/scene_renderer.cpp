@@ -173,39 +173,51 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   pixels_.assign(size_t(width_) * size_t(height_), 0);
   cover_.assign(size_t(width_) * size_t(height_), 0);
 
-  std::vector<int> order;
-  order.reserve(frame.objects.size());
-  for (size_t i = 0; i < frame.objects.size(); ++i) order.push_back(int(i));
-  std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
-    return frame.objects[size_t(a)].distance > frame.objects[size_t(b)].distance;
-  });
-
-  std::vector<std::vector<const Prim*>> by_obj(frame.objects.size());
-  std::vector<const Prim*> unscoped;
-  for (const Prim& p : frame.prims) {
-    if (p.object_index >= 0 && size_t(p.object_index) < frame.objects.size())
-      by_obj[size_t(p.object_index)].push_back(&p);
-    else
-      unscoped.push_back(&p);
-  }
-
   // Non-mesh screen-space fills (horizon, sky, ground, sea) are left to the
   // low-res composite by default — they are not triangle meshes and re-drawing
   // them with mesh_id colours looks wrong.  FA18_SCENE_RENDER_FILLS=1 forces
   // them through the software path for debugging.
   const bool draw_fills = std::getenv("FA18_SCENE_RENDER_FILLS") != nullptr;
 
-  for (int oi : order) {
-    const ObjectDraw& o = frame.objects[size_t(oi)];
-    for (const Prim* pp : by_obj[size_t(oi)]) {
-      if (pp->kind == PrimKind::Fill2d && !draw_fills) continue;
-      draw_prim(pixels_, cover_, scale_, width_, height_, *pp, o.mesh_id);
+  // Build a draw list of mesh prims with a depth key.  Prefer average view-space
+  // z (far first); fall back to the parent object's distance when z is missing.
+  struct DrawItem {
+    const Prim* prim;
+    uint16_t mesh_id;
+    int32_t depth;  // larger = farther
+  };
+  auto prim_depth = [&](const Prim& p) -> int32_t {
+    if (p.kind == PrimKind::Fill2d) return 0x7fffffff;  // behind everything
+    if (p.n <= 0) return 0;
+    int64_t sum = 0;
+    int shift = int(p.shift) & 31;
+    for (int i = 0; i < p.n; ++i) {
+      int32_t z = p.xyz[i][2];
+      if (p.kind == PrimKind::Poly3d) z = int32_t(uint32_t(z) << shift);
+      sum += z;
     }
+    return int32_t(sum / p.n);
+  };
+
+  std::vector<DrawItem> items;
+  items.reserve(frame.prims.size());
+  for (const Prim& p : frame.prims) {
+    if (p.kind == PrimKind::Fill2d && !draw_fills) continue;
+    uint16_t mid = 0;
+    int32_t depth = prim_depth(p);
+    if (p.object_index >= 0 && size_t(p.object_index) < frame.objects.size()) {
+      const ObjectDraw& o = frame.objects[size_t(p.object_index)];
+      mid = o.mesh_id;
+      // Object distance is the game's hypot; use it when prim z is tiny/degenerate
+      if (depth == 0 && o.distance != 0) depth = o.distance;
+    }
+    items.push_back({&p, mid, depth});
   }
-  for (const Prim* pp : unscoped) {
-    if (pp->kind == PrimKind::Fill2d && !draw_fills) continue;
-    draw_prim(pixels_, cover_, scale_, width_, height_, *pp, 0);
-  }
+  std::stable_sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
+    return a.depth > b.depth;  // far → near
+  });
+  for (const DrawItem& it : items)
+    draw_prim(pixels_, cover_, scale_, width_, height_, *it.prim, it.mesh_id);
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
@@ -214,10 +226,10 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     size_t covered = 0;
     for (uint8_t c : cover_) covered += c != 0;
     std::fprintf(stderr,
-                 "[scene-render] frame %llu objects=%zu prims=%zu scale=%d "
-                 "%dx%d covered=%zu sorted_far_to_near\n",
+                 "[scene-render] frame %llu objects=%zu prims=%zu drawn=%zu scale=%d "
+                 "%dx%d covered=%zu prim_depth_sort\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
-                 frame.prims.size(), scale_, width_, height_, covered);
+                 frame.prims.size(), items.size(), scale_, width_, height_, covered);
   }
 }
 
