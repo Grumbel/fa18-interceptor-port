@@ -278,7 +278,7 @@ void on_polygon() {
     pr.kind = scene::PrimKind::Poly3d;
     pr.shift = int8_t(shift);
     pr.rgba = rgba_from_ops(poly_ops());
-    int m = n > 16 ? 16 : n;
+    int m = n > 32 ? 32 : n;
     pr.n = uint8_t(m);
     for (int i = 0; i < m; ++i) {
       uint32_t a = 0x61288 + 6u * uint32_t(i);
@@ -315,7 +315,7 @@ void on_fill2d() {
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
-    int m = n > 16 ? 16 : n;
+    int m = n > 32 ? 32 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
     pr.rgba = rgba_from_ops(poly_ops());
@@ -342,18 +342,22 @@ void on_fill_horizon() {
   // polygon is visible and gets filled (bnes $44b14 otherwise).  The result
   // is read from d0, not from the flags (recompiled code keeps those lazily).
   if (native::g_machine->cpu.d[0] != 0) return;
-  if (rd8(0x5ab93) == 0) return;            // no second colour: sky fill only
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
   // Horizon / sky / ground / sea — screen-space plane fills, not meshes.
+  // Capture always when geometry is valid so the software renderer can draw
+  // it; hires layer still skips the second-colour-only case below.
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
-    int m = n > 16 ? 16 : n;
+    int m = n > 32 ? 32 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
-    pr.sel = 1;  // horizon-class
-    uint16_t c12 = native::g_machine->color_reg(0);
+    pr.sel = rd8(0x5ab93) ? 1 : 2;  // 1 = ground/sea class, 2 = sky-only class
+    // Horizon path clears a plane bit rather than a flat colour; approximate
+    // with COLOR0 (sky) or COLOR1 when a second colour is active.
+    int cidx = rd8(0x5ab93) ? 1 : 0;
+    uint16_t c12 = native::g_machine->color_reg(cidx);
     uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
     r |= r << 4; g |= g << 4; b |= b << 4;
     pr.rgba = 0xFF000000u | (r << 16) | (g << 8) | b;
@@ -364,6 +368,7 @@ void on_fill_horizon() {
     }
     scene::note_prim(pr);
   }
+  if (rd8(0x5ab93) == 0) return;            // hires: no second colour, sky only
   if (!first_prim()) return;
   std::vector<V2> sp;
   for (int i = 0; i < n; ++i)

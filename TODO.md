@@ -169,6 +169,7 @@ Open:
 - [x] Prim::rgba from live plane-ops + palette at capture
 - [x] Prim-level depth sort (avg view-z); scan-out recording for SCENE_RENDER
 - [x] Present: full rendered view + HUD rows only from low-res (no 3D composite)
+- [x] Prim verts 32; horizon always captured; SCENE_RENDER installs hooks alone
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -354,3 +355,11 @@ software path now:
 
 Gaps in capture are visible.  Coverage dilation / mesh_id-only overlay
 were removed.
+
+### Capture completeness for software renderer (2026-10-17)
+
+- Prim vertex capacity raised 16 → 32 (original polys can have up to 40).
+- Horizon Fill2d always captured when geometry is valid (not only when
+  `$5ab93` indicates a second colour); sel distinguishes ground vs sky-class.
+- `ensure_software_renderer` installs remaster PC hooks if the machine is
+  already live so FA18_SCENE_RENDER works without `--hires`.

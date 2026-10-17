@@ -1,5 +1,6 @@
 #include "native/scene_renderer.hpp"
 #include "amiga/machine.hpp"
+#include "native/remaster.hpp"
 #include "native/runtime.hpp"
 
 #include <algorithm>
@@ -245,6 +246,10 @@ void ensure_software_renderer() {
   static SoftwareSceneRenderer instance(scale);
   g_soft = &instance;
   set_renderer(g_soft);
+  // Prim observation shares remaster PC hooks.  Install them when the
+  // machine already exists (set_hires_scale also installs at startup).
+  if (native::g_machine && !remaster::scene_hooks)
+    remaster::install(*native::g_machine);
 }
 
 bool software_render_enabled() { return g_soft != nullptr; }
