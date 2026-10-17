@@ -630,6 +630,7 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       `4070 4022/4020 C016` clusters; verts + DL + shared edge sublists at
       DL-relative offsets.  PP safe to ignore for wireframe.  Docs:
       mesh_format.md “On-disk location”.
-- [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds
-      (mission zone + low attitude); optional offline mesh viewer tool
-      using H54 parse; attr-word → pen confirmation.
+- [x] **`tools/mesh_parse.py`**: offline H54 → verts/edges → OBJ.  Five
+      aircraft records; edge indices = word/6; first mesh 10 verts / 8 edges.
+- [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds;
+      attr-word → pen confirmation; expand parser beyond aircraft tags.

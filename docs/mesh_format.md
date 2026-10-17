@@ -545,6 +545,21 @@ vertex indices 0..N).
 handler is a nop; primary walker only tests bit14 skip.  Safe to ignore
 for a wireframe viewer.
 
+### Offline tool: `tools/mesh_parse.py`
+
+```bash
+python3 tools/mesh_parse.py --hunk 54 assets/F-18_Interceptor
+python3 tools/mesh_parse.py --obj aircraft.obj --hunk 54 assets/F-18_Interceptor
+```
+
+Parses `7FFF 7FFF` records with aircraft tags, extracts verts (stop at
+`$40xx` or |coord| > 4096), follows DL offset table, decodes
+`$800C`/`$C00C` edges (index = word/6).  Writes Wavefront OBJ lines.
+
+Verified on H54: five records (pp `$22`, `$20`, `$20`, —, —) with 8–10
+usable verts; first aircraft has 8 edges and attr words
+`$180D`/`$1007`/… matching the live `$00C39738` catalogue entry.
+
 ### Aircraft topology (e.g. `$00C39738`)
 
 ```
