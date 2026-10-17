@@ -86,6 +86,14 @@ const SceneFrame& current() { return frame; }
 void set_renderer(ISceneRenderer* r) { renderer_ = r; }
 ISceneRenderer* renderer() { return renderer_; }
 
+uint32_t rgba_from_color_reg(int idx) {
+  if (!native::g_machine) return 0;
+  uint16_t c12 = native::g_machine->color_reg(idx & 31);
+  uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+  r |= r << 4; g |= g << 4; b |= b << 4;
+  return 0xFF000000u | (r << 16) | (g << 8) | b;
+}
+
 void begin_frame(uint64_t frame_id) {
   if (!enabled()) return;
   // Idempotent: game_frame opens the frame early (horizon/sky); $2fc14
@@ -94,6 +102,16 @@ void begin_frame(uint64_t frame_id) {
   frame = SceneFrame{};
   frame.frame_id = frame_id;
   current_object_ = -1;
+  // Default environment colours from the live playfield palette.
+  // COLOR0 is the background/sky; ground/sea is typically a nearby index
+  // (bitplane 1 cleared in the horizon fill — try indices with bit1 set).
+  frame.sky_rgba = rgba_from_color_reg(0);
+  // Prefer index 2 (bit1 alone) or 3; fall back along 1..7.
+  frame.ground_rgba = rgba_from_color_reg(2);
+  if (frame.ground_rgba == frame.sky_rgba)
+    frame.ground_rgba = rgba_from_color_reg(3);
+  if (frame.ground_rgba == frame.sky_rgba)
+    frame.ground_rgba = rgba_from_color_reg(1);
 }
 
 void end_frame() {
@@ -108,6 +126,12 @@ void note_camera() {
   frame.camera.x = int32_t(native::rd32(0x5ad5a));
   frame.camera.y = int32_t(native::rd32(0x5ad5e));
   frame.camera.z = int32_t(native::rd32(0x5ad62));
+}
+
+void note_env_colours(uint32_t sky_rgba, uint32_t ground_rgba) {
+  if (!enabled()) return;
+  if (sky_rgba) frame.sky_rgba = sky_rgba;
+  if (ground_rgba) frame.ground_rgba = ground_rgba;
 }
 
 void note_object(const ObjectDraw& o) {

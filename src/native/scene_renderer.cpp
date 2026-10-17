@@ -111,8 +111,15 @@ void fill_polygon(std::vector<uint32_t>& px, int S, int Wp, int Hp,
 }
 
 void draw_prim(std::vector<uint32_t>& px, int S, int Wp, int Hp,
-               const Prim& p, uint16_t mesh_id) {
-  uint32_t c = p.rgba ? p.rgba : colour_for(mesh_id, p.kind);
+               const Prim& p, uint16_t mesh_id, uint32_t sky_rgba,
+               uint32_t ground_rgba) {
+  uint32_t c = p.rgba;
+  if (!c) {
+    if (p.kind == PrimKind::Fill2d)
+      c = (p.sel == 1) ? ground_rgba : sky_rgba;
+    else
+      c = colour_for(mesh_id, p.kind);
+  }
   if (p.kind == PrimKind::Poly3d) {
     if (p.n < 3) return;
     int shift = int(p.shift) & 31;
@@ -202,16 +209,9 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Clear the entire 3D view.  Unwritten pixels stay this colour — if horizon
-  // or a mesh is missing from the capture, you see the clear colour, not a
-  // low-res composite hiding the gap.
-  uint32_t clear = 0xFF101018u;
-  if (native::g_machine) {
-    uint16_t c12 = native::g_machine->color_reg(0);
-    uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
-    r |= r << 4; g |= g << 4; b |= b << 4;
-    clear = 0xFF000000u | (r << 16) | (g << 8) | b;
-  }
+  // Clear the entire 3D view to sky.  Ground/sea Fill2d prims paint over it;
+  // missing horizon geometry stays sky-coloured (visible gap, not low-res).
+  uint32_t clear = frame.sky_rgba ? frame.sky_rgba : 0xFF4060A0u;
   pixels_.assign(size_t(width_) * size_t(height_), clear);
 
   struct DrawItem {
@@ -235,7 +235,8 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     return a.depth > b.depth;  // far → near
   });
   for (const DrawItem& it : items)
-    draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id);
+    draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
+              frame.sky_rgba, frame.ground_rgba);
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
@@ -252,10 +253,13 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     }
     std::fprintf(stderr,
                  "[scene-render] frame %llu objects=%zu prims=%zu "
-                 "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d\n",
+                 "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d "
+                 "sky=%06x ground=%06x\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
                  frame.prims.size(), fills, polys, lines, points,
-                 scale_, width_, height_);
+                 scale_, width_, height_,
+                 unsigned(frame.sky_rgba & 0xFFFFFF),
+                 unsigned(frame.ground_rgba & 0xFFFFFF));
   }
 }
 

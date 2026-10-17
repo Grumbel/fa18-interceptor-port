@@ -359,14 +359,26 @@ void on_fill_horizon() {
     int m = n > 32 ? 32 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
-    pr.sel = rd8(0x5ab93) ? 1 : 2;  // 1 = ground/sea class, 2 = sky-only class
-    // Horizon path clears a plane bit rather than a flat colour; approximate
-    // with COLOR0 (sky) or COLOR1 when a second colour is active.
-    int cidx = rd8(0x5ab93) ? 1 : 0;
-    uint16_t c12 = native::g_machine->color_reg(cidx);
-    uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
-    r |= r << 4; g |= g << 4; b |= b << 4;
-    pr.rgba = 0xFF000000u | (r << 16) | (g << 8) | b;
+    // 1 = ground/sea (second colour active), 2 = sky-class fill
+    const bool ground = rd8(0x5ab93) != 0;
+    pr.sel = ground ? 1 : 2;
+    // Horizon fill clears display plane 1 inside the polygon ($4506e).
+    // Solid RGB: sky from COLOR0; ground/sea from an index that has bit1
+    // set in the playfield (2 or 3), matching the plane-clear result.
+    auto rgba12 = [](int idx) {
+      uint16_t c12 = native::g_machine->color_reg(idx & 31);
+      uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+      r |= r << 4; g |= g << 4; b |= b << 4;
+      return 0xFF000000u | (r << 16) | (g << 8) | b;
+    };
+    if (ground) {
+      pr.rgba = rgba12(2);
+      if (pr.rgba == rgba12(0)) pr.rgba = rgba12(3);
+      scene::note_env_colours(0, pr.rgba);
+    } else {
+      pr.rgba = rgba12(0);
+      scene::note_env_colours(pr.rgba, 0);
+    }
     for (int i = 0; i < m; ++i) {
       pr.xyz[i][0] = int16_t(rd16(0x60686 + 4u * uint32_t(i)));
       pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));

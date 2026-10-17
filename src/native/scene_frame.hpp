@@ -67,6 +67,12 @@ struct Prim {
 struct SceneFrame {
   uint64_t frame_id = 0;
   Camera camera{};
+  // Environment colours resolved from the live palette when the frame opens
+  // / when horizon fills are first seen.  Software renderer clears the view
+  // to sky_rgba and paints ground/sea Fill2d with ground_rgba when the prim
+  // does not carry its own rgba.
+  uint32_t sky_rgba = 0xFF4060A0u;
+  uint32_t ground_rgba = 0xFF204060u;
   std::vector<ObjectDraw> objects;
   std::vector<Prim> prims;
   bool complete = false;
@@ -89,6 +95,7 @@ ISceneRenderer* renderer();
 void begin_frame(uint64_t frame_id);
 void end_frame();
 void note_camera();
+void note_env_colours(uint32_t sky_rgba, uint32_t ground_rgba);
 void note_object(const ObjectDraw& o);
 // Called from the $31c8c-family path after LOD selection: marks the matching
 // ObjectDraw as rendered and records mesh_ptr + confirms distance.
