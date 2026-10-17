@@ -311,3 +311,64 @@ Chooses section/table/bitmap bases from view flags (`$5ab5c`, `$5aa7e`,
 altitude `$5ad5e`), seeds angle words from `$5ac44/$46` or `$5ac40/$42`,
 clears sort buffer `$5d684`, then walks a section script to emit entries
 that `$3127c` depth-sorts into `$649ba`.
+
+## Index words: `$5abd6` vs `$5acae`
+
+Both are **byte offsets** into `$5b47c` (not slot indices × 512).
+
+| Symbol | Typical role |
+|--------|----------------|
+| `$5abd6` | Player / camera subject (cockpit eye, matrix build, free-flight) |
+| `$5acae` | Focus object for ops, targeting, some render helpers (`obj_5b47c()`) |
+
+They often match for the player aircraft but diverge when another
+scenario entity is the ops focus.
+
+## Record pool `$5d47c` (32 bytes × 16)
+
+Compact entities.  Visibility load (`$31b22`):
+
+| Off | Size | Use |
+|-----|------|-----|
+| +1 | byte | flags (bit4 dirty, same convention) |
+| +12 | word | X-like (ext to long) |
+| +14 | word | Z-like |
+| +16 | long | Y-like |
+
+Index into pool from sorted-list high byte: `record_base + (word & $FF00) >> 3`
+(`$31b04`).  Scenario index uses `(word & $FF00) << 1` (`$31b14`).
+
+## `$31494` — visibility / occlusion on `$649ba`
+
+Called from `$2f7b8` after expand.  List entries gain state bits at +2:
+
+| Bit | Meaning |
+|-----|---------|
+| `$4000` | hidden by another object |
+| `$8000` | in front |
+
+Uses plane/polygon tests between nearest drawn entries and the rest, then
+compacts; working copy at `$5d684`.
+
+## Position tweak `$3ab16`
+
+Perspective-style correction on a scenario object at `a1`:
+
+```
+if (d6 >> 8) == 0: return
+adjust a1+20 and a1+28 from d5/d7 and a1+24
+clear a1+24
+```
+
+Related table form `$3b462` on `$5af6a + (index << 6)`.
+
+## Scene update call order (refined)
+
+```
+$2f7b8  scene_update
+  $30064  scene_build          ; section script → raw entries
+  $3127c  expand + depth sort    ; → $649ba, mesh expand $310c0
+  $31494  visibility            ; hide/sort flags on $649ba
+  …
+$2fc14  draw_scene             ; $63c7a then $649ba
+```
