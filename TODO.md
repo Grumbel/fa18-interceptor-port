@@ -616,5 +616,10 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
 - [x] **`$33120` zone match**: `$5ac40/$5ac42` = player+6/+8>>2; table
       `$331f0` keys `$0C`…`$13` + altitude + `$5ab48/$5ab4c` → `$5ab93`.
       free1 misses table.  Docs: horizon.md call-graph section.
-- [ ] Still open: exercise a mission zone where `$5ab93≠0` and `$42f6a`
-      clip succeeds (Fill2d capture); optional tile-pattern table decode.
+- [x] **Zone table `$331f0` decoded**: outer keys `$0C`…`$13` (`$5ac42`),
+      inner `$5ac40`, then altitude flag/threshold + `$5ab48/$5ab4c` pairs.
+      Most cells share record `+$9e` (alt `$C000`, wide variants).
+- [x] **`$42f6a` success = `d0=0`**: case tree `$42ff8` on `$63b44` flags;
+      fail → `$432ac` (`d0=1`, `clr $5ab96`). free1 always fails.
+- [ ] Still open: runtime capture in a zone+attitude where clip succeeds
+      (Fill2d); optional tile-pattern table decode.

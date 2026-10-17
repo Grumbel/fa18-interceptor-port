@@ -48,10 +48,25 @@ Matcher `$33160` reads:
 | `-$5ad70` | altitude |
 | `$5ab48` / `$5ab4c` | zone variant bytes |
 
-Table `$331f0` starts with keys `$0C`…`$13` then offset words into
-per-zone altitude/variant records.  free1’s start position misses the
-table → `$5ab93=0` → no post-clip `$4506e` sea fill.  `$5ab93≠0` only in
-matching mission zones (and even then only after `$42f6a` clip succeeds).
+Table `$331f0` layout:
+
+```
+word keys[] until $FFFF          ; outer: $0C..$13 (match $5ac42)
+word offsets[n_keys]             ; relative to $331f0
+  at each offset:
+    word subkeys[] until $FFFF   ; inner: match $5ac40
+    word suboffsets[]
+      at each suboffset:
+        word flag                ; 0 = altitude upper bound, else lower
+        long altitude_threshold  ; compared to -$5ad70
+        byte pairs (ab48, ab4c) until $FF  ; variant match
+```
+
+Most (key, subkey) pairs share one record at `+$9e`:
+`flag=0, alt=$C000, variants 00/05 … 05/05` (accepts wide altitude + many
+`$5ab48/$5ab4c` pairs).  free1’s quantised XZ is outside `$0C`…`$13` →
+`$5ab93=0`.  `$5ab93≠0` only when the player is inside those grid cells
+(and even then the sea fill needs `$42f6a` clip success).
 
 ## Two matrices
 
@@ -109,9 +124,23 @@ $63b44:
   +8,+10,+12,+14  word screen-ish coordinates used by the case dispatch
 ```
 
+### Success / fail after clip
+
+Case tree at `$42ff8` inspects `$63b44` flags:
+
+| Result | Exit | `d0` | Side effects |
+|--------|------|------|----------------|
+| Useful flag combo | rebuild `$60684` as count-prefixed screen poly, then… | **0** | `$5ab96=1` on some paths |
+| No usable flags | `$432ac` | **1** | `clr $5ab96` |
+
+Caller `$44afa` does `bne skip_fill` — **nonzero = fail**.  free1 always
+takes the fail path (external high camera → sea-quad corners clip out of
+the useful flag combinations).  A low, level camera over open water in a
+matching zone is the likely success case for Fill2d capture.
+
 ## Screen-space polygon rebuild
 
-After `$43364`, a large case tree (from `$22ff8`) inspects the flags and
+After `$43364`, a large case tree (from `$42ff8`) inspects the flags and
 rebuilds `$60684` as a **count-prefixed screen-space polygon**:
 
 ```
