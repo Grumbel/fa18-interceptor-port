@@ -479,3 +479,31 @@ column.  Stats dump full M[] for tuning.
 Bank flip was Ny-sign flip at 90°.  Per-pixel N·dir < 0 test is continuous.
 Fixed Y-up = column 1 only (no mid-bank axis switch).  Same 160/90
 perspective as meshes.
+
+### Horizon column-2 fix (2026-10-17)
+
+User reported roll looked plausible but horizon still wrong; suspected
+viewport or instrument ADI vs external sea/sky.
+
+Investigation:
+- Software path already restricts itself to the 3D view rectangle
+  (rows = $5ac7c+1 from top); HUD/cockpit stay low-res.  Not a viewport
+  offset issue.
+- Instrument ADI lives in the lower HUD area; the matrix-driven plane is
+  only painted inside the 3D view, so it cannot be the instrument.
+- Logged $5aed0 under free1 (level then gentle bank):
+    level   M=[168 0 0 / 0 0 252 / 0 -128 0]
+    banked  M=[166 0 20 / -31 8 249 / -1 -128 4] …
+  Column 1 = (0,0,-128) in level flight → N points along view -Z, horizon
+  at infinity / full fill.  Column 2 = (0,252,0) → N=(0,1,0), horizon
+  correctly at screen y≈90.
+- project_screen_body uses focal 160/90 and centre +160/+90; switched the
+  synthetic projection constants to match exactly (was 159/89).
+
+Fix: extract world-up from column 2 (m[2],m[5],m[8]), with the matching
+row as fallback; keep temporal hemisphere lock.  Comments in
+scene_frame.{hpp,cpp} and scene_renderer.cpp updated.
+
+Next visual check: free flight with FA18_SCENE_RENDER=2..4, confirm bank
+direction agrees with meshes and that the horizon line sits at the same
+screen row as the original low-res sea/sky edge.

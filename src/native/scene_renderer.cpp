@@ -224,18 +224,20 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   if (frame.camera.has_view_m) {
     const int16_t* m = frame.camera.view_m;
-    // World-up in view space.  $5aed0 is applied as v' = M*v (row-major), so
-    // world +Y maps to column 1.  Also try row 1 (M^T path) and keep the one
-    // that agrees with temporal history — prevents a 180° flip at 90° bank.
-double c1x = double(m[1]), c1y = double(m[4]), c1z = double(m[7]);
-    double r1x = double(m[3]), r1y = double(m[4]), r1z = double(m[5]);
-    double Lc = std::sqrt(c1x * c1x + c1y * c1y + c1z * c1z);
-    double Lr = std::sqrt(r1x * r1x + r1y * r1y + r1z * r1z);
+    // World-up (typically +Y) in view space.  Observed level-flight values of
+    // $5aed0 are e.g. [168 0 0 / 0 0 252 / 0 -128 0]: the image of world +Y
+    // is column 2 (m[2],m[5],m[8]) ≈ (0, scale, 0).  Column 1 is not up.
+    // Also consider the matching row (transpose) and keep the candidate that
+    // agrees with temporal history so a continuous roll never hard-flips.
+    double c2x = double(m[2]), c2y = double(m[5]), c2z = double(m[8]);
+    double r2x = double(m[6]), r2y = double(m[7]), r2z = double(m[8]);
+    double Lc = std::sqrt(c2x * c2x + c2y * c2y + c2z * c2z);
+    double Lr = std::sqrt(r2x * r2x + r2y * r2y + r2z * r2z);
     double Nx = 0, Ny = 1, Nz = 0;
     if (Lc > 1.0) {
-      Nx = c1x / Lc; Ny = c1y / Lc; Nz = c1z / Lc;
+      Nx = c2x / Lc; Ny = c2y / Lc; Nz = c2z / Lc;
     } else if (Lr > 1.0) {
-      Nx = r1x / Lr; Ny = r1y / Lr; Nz = r1z / Lr;
+      Nx = r2x / Lr; Ny = r2y / Lr; Nz = r2z / Lr;
     }
     // Temporal coherence: never hard-flip on Ny sign.  Keep the hemisphere
     // that matches the previous frame so a continuous roll stays continuous.
@@ -253,13 +255,16 @@ double c1x = double(m[1]), c1y = double(m[4]), c1z = double(m[7]);
     }
     pNx = Nx; pNy = Ny; pNz = Nz;
 
+    // Match project_screen_body ($438b6): screen = view * {160,90} / z + {160,90}
     const int S = scale_;
-    const double cx = 159.0, cy = 89.0, fx = 160.0, fy = 90.0;
+    const double cx = 160.0, cy = 90.0, fx = 160.0, fy = 90.0;
     for (int y = 0; y < height_; ++y) {
       const double sy = (y + 0.5) / S;
-      const double vyz = (cy - sy) / fy;
+      const double vyz = (cy - sy) / fy;  // top of screen → +vyz (sky when level)
       for (int x = 0; x < width_; ++x) {
         const double sx = (x + 0.5) / S;
+        // (cx - sx) matches the observed roll direction with the matrix above;
+        // the opposite sign would reverse bank relative to the meshes.
         const double vxz = (cx - sx) / fx;
         if (Nx * vxz + Ny * vyz + Nz < 0.0)
           pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
