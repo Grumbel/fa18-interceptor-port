@@ -124,3 +124,79 @@ $2112c  game_frame
 
 Matrix build for `$5aed0` is separate (see `docs/horizon.md`): external
 tilt/pan or player angles, not inside `$2fc14`.
+
+## Type table `$36094`
+
+Runtime-filled (static image is zeros).  **20 bytes per type index**:
+
+| Off | Size | Loaded as |
+|-----|------|-----------|
+| +0 | long | draw function → `a2`, then `jsr (a2)` |
+| +4 | long | → `a0` (mesh / aux base) |
+| +8 | long | → `$5ad2e` |
+| +12 | long | → `$5ad32` |
+| +16 | long | (remainder of stride) |
+
+Index arithmetic: `offset = type * 20` (`type<<2 + type<<4`).
+
+`$5acac` holds the type index at dispatch (hi byte of the list word for
+sorted entries).
+
+## Sorted list `$649ba` entry
+
+Walked with word index `$5aca2` (reset from `$5aca8` after scenario pass).
+Terminator: word **`$FFFF`**.
+
+| Off | Size | Role |
+|-----|------|------|
+| +0 | word | packed: type in **high byte**, flags/LOD in low (low nibble → `$5adb0`) |
+| +2 | long | object pointer |
+| +6 | 3×word | seeds `d2/d3/d4` before projection |
+| +12 | long | → `$5ac2a` |
+
+Comment in port: 24-byte stride for sort buffer copies in `$3127c`.
+
+Scenario list `$63c7a` is a denser index list (word index `$5aca2`, +2 per
+entry); each entry leads to a scenario slot and the same `$30872` / type
+dispatch path.
+
+## `$30872` — camera-relative distance step
+
+Before type dispatch, both passes call `$30872` then rely on `$308cc`.
+
+```
+d1 = $5ad6a >> $5adb0          ; camera X word, LOD shift
+d6 = $5ad70 >> $5adb0          ; camera Y (long path)
+d7 = $5ad6e >> $5adb0          ; camera Z word
+d2 = |d2 + d1|
+if $5abb3:
+  d3 = |$5ae34 >> 8|           ; precomputed height residual
+else:
+  d3 = |ext(d3) + d6|
+d4 = |d4 + d7|
+if |d3| huge → distance = 32767
+else → $308cc hypot(d2,d3,d4) → d1, $5ae38
+```
+
+So `$5ae38` is an approximate **camera-relative distance** used for LOD
+and sort keys.  `$5abb3` selects whether Y already includes camera
+(`$5ae34` path from scenario setup).
+
+## `$308cc` — table hypot
+
+Inputs: non-negative words in d2,d3,d4.  Uses table `$30930` twice
+(ratio → table → multiply chain).  Output d1 clamped to 32767, stored in
+`$5ae38`.
+
+## World-origin vectors `$5af36` / `$5af2a`
+
+`$2d3cc` / `$2d3e0` / `$2d3f4` / `$2d408` load fixed mission origins into
+d0/d1/d2, then `$2d41a` stores:
+
+```
+$5af36/$3a/$3e = (d0,d1,d2)           ; positive
+$5af2a/$2e/$32 = −(d0,d1,d2)          ; X/Z masked with $3FFFFF before neg
+```
+
+External camera (`$2f220`) and `$2f4a6` external branch consume these as
+chase/target offsets relative to the player scenario position.
