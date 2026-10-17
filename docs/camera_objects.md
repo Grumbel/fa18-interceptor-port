@@ -419,3 +419,44 @@ Camera and scene lists are finalized **before** `$2fc14` draws.  Horizon
 Mission helpers `$2d3cc`…`$2d408` install fixed `(X,Y,Z)` into `$5af36`
 and the negated pair `$5af2a`.  External chase camera is expressed relative
 to those origins plus the player scenario position.
+
+## `$4217c` — view matrix / look setup (before camera)
+
+Called every in-flight frame **before** `$2f4a6`.
+
+```
+if $5aa7d != 0:   ; external
+  $4219a
+else:             ; cockpit
+  $422f8
+```
+
+### External `$4219a`
+
+1. Resolve scenario base (`$5b47c+$5abd6`, with fallbacks via `$5acba`).
+2. Seat mode at +98 selects local offset `(d3,d4,d5)` (e.g. 0,0,1 or 0,0,−4).
+3. **`$2d4a0`**: rotate offset by matrix at **player+146** (`mulsw`), `asr #4`,
+   add player +20/24/28 → world point in d0/d1/d2.
+4. Subtract world origin `$5af36/$3a/$3e`.
+5. Optional look-angle update: `$24552` may write `$5adb8/$5adba` → copy to
+   `$5ad8c/$5ad8e` (unless `$5aaa6` freezes).
+6. **`$42290`**: build `$5aed0` from `$5ad8c/$5ad8e` via `$22b6e` + scale
+   `$42d8c`; also `$5aef4` from pan; copy `$5b4e2` words → `$5ad80`.
+
+### Cockpit `$422f8`
+
+1. Player `$5b47c+$5abd6`.
+2. `$5aef4` from player+104 (heading-related) via `$22b26`.
+3. If still cockpit: 3-angle matrix `$5aee2` from player +$66 via `$22bbe`.
+4. Continues into angle-select / `$5ad80` / `$5aed0` path documented earlier
+   (`$2247a` region — 3-angle `$22bbe` + `$42d8c`).
+
+### `$2d4a0` / `$2d4a6`
+
+```
+a2 = a1 + 146          ; 3x3 word matrix on scenario object
+(d0,d1,d2) = M * (d3,d4,d5)   ; mulsw, asr #4
+(d0,d1,d2) += a1@(20/24/28)   ; world position
+```
+
+`$2d4a6` sets `a1 = $5b47c` first; `$2d4a0` expects `a1` already set.
