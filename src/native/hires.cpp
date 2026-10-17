@@ -404,16 +404,18 @@ void capture_horizon_fill() {
     if (!first_prim()) return;
     // fall through to hires-only path below
   } else {
+    // $60684 poly from $42f6a is always the sea/ground region (screen-space).
+    // $5ab93 only gates the second-colour blitter fill in the original; for
+    // the software renderer we still need the shape as sel=1 (ground).
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
     int m = n > 40 ? 40 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
-    const bool ground = rd8(0x5ab93) != 0;
-    pr.sel = ground ? 1 : 2;
+    pr.sel = 1;
     uint32_t sky = 0, gr = 0;
-    horizon_colours(ground, sky, gr);
-    pr.rgba = ground ? gr : sky;
+    horizon_colours(/*ground=*/true, sky, gr);
+    pr.rgba = gr;
     for (int i = 0; i < m; ++i) {
       pr.xyz[i][0] = int16_t(rd16(0x60686 + 4u * uint32_t(i)));
       pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));
@@ -454,11 +456,19 @@ void on_horizon_poly_ready() {
   if (!scene::enabled()) return;
   int n = int16_t(rd16(0x60684));
   if (std::getenv("FA18_HORIZON_DEBUG"))
-    std::fprintf(stderr, "[horizon] poly_ready n=%d ab93=%d\n", n, int(rd8(0x5ab93)));
+    std::fprintf(stderr, "[horizon] poly_ready n=%d ab93=%d camY=%d\n",
+                 n, int(rd8(0x5ab93)), int32_t(rd32(0x5ad5e)));
   capture_horizon_fill();
 }
 
-// Simple horizon path entry ($44994): full-view plane-1 clear, no polygon.
+// Failure RTS of $42f6a ($232b6): clip produced no usable sea poly.
+void on_horizon_poly_fail() {
+  if (!std::getenv("FA18_HORIZON_DEBUG")) return;
+  std::fprintf(stderr, "[horizon] poly_FAIL camY=%d ab93=%d abca=%04x\n",
+               int32_t(rd32(0x5ad5e)), int(rd8(0x5ab93)), rd16(0x5abca));
+}
+
+// Simple horizon path entry ($44994): full-view plane clears + optional sea poly.
 // Emit a view-rectangle Fill2d so the software renderer still has sea/sky.
 void on_simple_horizon() {
   if (!scene::enabled()) return;
@@ -694,10 +704,20 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });
   m.add_pc_hook(0x44b00, [] { on_fill_horizon(); });
   m.add_pc_hook(0x44f46, [] { on_fill_44f46(); });
-  // Complex path: capture screen-space sea poly at successful $42f6a RTS.
-  m.add_pc_hook(0x232aa, [] { on_horizon_poly_ready(); });
-  // Simple path: full-view plane clear when $5abca bit13 is clear.
+  // Complex path: capture screen-space sea poly at $42f6a RTS.
+  // Runtime = image offset + LOAD_BASE 0x20000 (objdump shows image offsets).
+  m.add_pc_hook(0x432aa, [] { on_horizon_poly_ready(); });
+  m.add_pc_hook(0x432b6, [] { on_horizon_poly_fail(); });
+  // Simple path entry: plane clears then jsr $42f6a.
   m.add_pc_hook(0x44994, [] { on_simple_horizon(); });
+  // $44dfe entry: $60684 already holds count-prefixed screen-space poly
+  // (recomp may not hit the exact RTS at $432aa).
+  m.add_pc_hook(0x44dfe, [] {
+    if (std::getenv("FA18_HORIZON_DEBUG"))
+      std::fprintf(stderr, "[horizon] 44dfe n=%d ab93=%d\n",
+                   int(int16_t(rd16(0x60684))), int(rd8(0x5ab93)));
+    if (scene::enabled()) capture_horizon_fill();
+  });
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
   m.add_pc_hook(0x438a8, [] { on_point(-4); });

@@ -166,3 +166,21 @@ Implication: in free flight the painted sea/sky split is **not** the
 complex `$60684` polygon.  It comes from the `$44994` plane blits and/or
 3D ground meshes.  Further RE of `$44994`’s per-plane minterms and any
 prior edge setup is required before a Fill2d can represent that path.
+
+## Capture points (implemented)
+
+| Hook | Runtime addr | When |
+|------|--------------|------|
+| `$44994` entry | `$44994` | Simple-path plane clears start |
+| `$44dfe` entry | `$44dfe` | **Primary capture** — `$60684` holds count-prefixed screen-space sea poly |
+| `$432aa` / `$432b6` | success/fail RTS of `$42f6a` | Unreliable under recomp (translated blocks skip exact RTS PC) |
+
+Important: `$44994` **itself** calls `$42f6a` after the plane clears.  The
+“simple path” is not poly-free — it is plane-clears *plus* the complex
+sea-quad builder.  `$5ab93` only gates the final `$2506e` plane-1 fill of
+that poly; the poly geometry is still built and `$44dfe` still runs.
+
+### free1 runtime
+
+`$44dfe` fires with `n` in 3..13 every frame.  Software scene now reports
+`fill≥1` (sky injection + sea poly).
