@@ -6,9 +6,11 @@
 //   $2fffc/$3000e  helpers: record position -> $5ae28/$5ae34
 //   $2f364  (not used here)
 // Register-convention assembly on the live register file.
+#include "amiga/machine.hpp"
 #include "native/asmregs.hpp"
 #include "native/orig.hpp"
 #include "native/remaster.hpp"
+#include "native/scene_frame.hpp"
 #include "native/vars.hpp"
 
 namespace native {
@@ -21,6 +23,26 @@ int32_t sl(uint32_t a) { return int32_t(rd32(a)); }
 int32_t e16(uint16_t v) { return int16_t(v); }
 void negl(int r) { D(r) = uint32_t(-int32_t(D(r))); }
 constexpr uint32_t scenario_base = 0x5b47c;
+
+void capture_object(uint32_t obj_base, scene::ObjectList list, uint16_t list_word = 0) {
+  if (!scene::enabled()) return;
+  scene::ObjectDraw o;
+  o.obj_base = obj_base;
+  o.draw_fn = A(2);
+  o.aux0 = rd32(0x5ad2e);
+  o.aux1 = rd32(0x5ad32);
+  o.type_index = rd16(0x5acac);
+  o.list_word = list_word;
+  o.list = list;
+  o.eye_x = int16_t(rd16(0x5ae22));
+  o.eye_y = int16_t(rd16(0x5ae24));
+  o.eye_z = int16_t(rd16(0x5ae26));
+  o.pos_x = int32_t(rd32(0x5ae28));
+  o.pos_y = int32_t(rd32(0x5ae2c));
+  o.pos_z = int32_t(rd32(0x5ae30));
+  scene::note_object(o);
+}
+
 
 // ---- $2f220 ---------------------------------------------------------------
 void camera_position_2f220() {
@@ -239,23 +261,27 @@ void draw_scene_body() {
     wr16(0x5ae24, lo(3));
     wr16(0x5ae26, lo(4));
     call_c(0x30872);
-    A(1) = 0x36094;
-    setw(1, rd16(0x5acac));
-    setw(1, lo(1) + lo(1));
-    setw(1, lo(1) + lo(1));
-    setw(7, lo(1));
-    setw(1, lo(1) + lo(1));
-    setw(1, lo(1) + lo(1));
-    setw(1, lo(1) + lo(7));
-    A(1) += uint32_t(e16(lo(1)));
-    A(2) = rd32(A(1));
-    A(1) += 4;
-    A(0) = rd32(A(1));
-    A(1) += 4;
-    wr32(0x5ad2e, rd32(A(1)));
-    A(1) += 4;
-    wr32(0x5ad32, rd32(A(1)));
-    A(1) += 4;
+    {
+      uint32_t obj_base = A(0);
+      A(1) = 0x36094;
+      setw(1, rd16(0x5acac));
+      setw(1, lo(1) + lo(1));
+      setw(1, lo(1) + lo(1));
+      setw(7, lo(1));
+      setw(1, lo(1) + lo(1));
+      setw(1, lo(1) + lo(1));
+      setw(1, lo(1) + lo(7));
+      A(1) += uint32_t(e16(lo(1)));
+      A(2) = rd32(A(1));
+      A(1) += 4;
+      A(0) = rd32(A(1));
+      A(1) += 4;
+      wr32(0x5ad2e, rd32(A(1)));
+      A(1) += 4;
+      wr32(0x5ad32, rd32(A(1)));
+      A(1) += 4;
+      capture_object(obj_base, scene::ObjectList::Scenario);
+    }
     call_c(A(2));
     wr16(0x5aca2, rd16(0x5aca2) + 2);
   }
@@ -273,6 +299,7 @@ void draw_scene_body() {
     wr16(0x5adb0, lo(0));
     A(1) = rd32(A(0));
     A(0) += 4;
+    uint32_t sorted_obj = A(1);
     if (int16_t(rd16(A(1))) < 0) goto L2ff16;
     if (rd32(A(1)) == 203928) {
       if (sl(0x5ad5e) < -4194304) goto L2ff16;
@@ -363,6 +390,7 @@ void draw_scene_body() {
     A(1) += 4;
     wr32(0x5ad32, rd32(A(1)));
     A(1) += 4;
+    capture_object(sorted_obj, scene::ObjectList::Sorted, lo(7));
     call_c(A(2));
     A(0) = 0x649ba;
     setw(1, rd16(0x5aca2));
@@ -431,7 +459,13 @@ L2ff2e:
 }
 void draw_scene_2fc14() {
   if (remaster::scene_hooks) remaster::scene_begin();
+  if (scene::enabled()) {
+    uint64_t fid = g_machine ? g_machine->frame_count() : 0;
+    scene::begin_frame(fid);
+    scene::note_camera();
+  }
   draw_scene_body();
+  if (scene::enabled()) scene::end_frame();
   if (remaster::scene_hooks) remaster::scene_end();
 }
 NATIVE_ASM(0x2fc14, draw_scene_2fc14, true);

@@ -152,6 +152,9 @@ Open:
 - [x] $4120a: move.b/ori.b paths preserve d2 high words; moveq paths zero long
 - [x] $438a0/$438a8 re-enabled via trampoline to original $438b6 body
       (native project_screen_body still wrong for positive-d7 and disc paths)
+- [x] Scene capture API (phase 1): `scene::SceneFrame` + camera/object
+      capture in `$2fc14` (`FA18_SCENE_CAPTURE` / `FA18_SCENE_DUMP`)
+- [ ] Scene capture: fix sorted-list obj_base; mesh_id; prims[] from hires
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
