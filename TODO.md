@@ -170,6 +170,7 @@ Open:
 - [x] Prim::rgba from live plane-ops + palette at capture; software renderer
       uses it instead of mesh_id hash colours
 - [x] Prim-level depth sort (avg view-z); scan-out recording for SCENE_RENDER
+- [x] Software compose: dilate mesh coverage to hide low-res seams
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -334,3 +335,10 @@ Software renderer sorts mesh prims by average view-space z (far→near),
 falling back to object distance.  Scan-out index/palette recording is also
 enabled under FA18_SCENE_RENDER so future composite improvements can use
 the same row keys as --hires.
+
+### Coverage dilation in software compose (2026-10-17)
+
+`compose_software` dilates mesh coverage by one low-res pixel and fills the
+dilated rim from the nearest covered source.  Reduces low-res mesh flashing
+through gaps between hi-res triangles while leaving true non-mesh areas
+(horizon, HUD) on the upsampled original.

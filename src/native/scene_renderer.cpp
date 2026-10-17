@@ -273,14 +273,54 @@ bool compose_software(std::vector<uint32_t>& out, int& w, int& h) {
   }
 
   // 2. Overlay depth-sorted 3D where the scene renderer covered a pixel.
-  //    Only the view rows captured in on_scene (typically <= 200) are used.
+  //    Dilate coverage by one low-res pixel (S hi-res pixels) so seams do not
+  //    flash the underlying low-res mesh between triangle edges.
   const auto& px = g_soft->pixels();
   const auto& cover = g_soft->cover();
   const int scene_h = g_soft->height();
+  const int dilate = S;  // one low-res pixel in hi-res units
+  std::vector<uint8_t> dilated(cover.size(), 0);
   for (int y = 0; y < scene_h; ++y) {
     for (int x = 0; x < w; ++x) {
       size_t i = size_t(y) * size_t(w) + size_t(x);
-      if (cover[i]) out[i] = px[i];
+      if (!cover[i]) continue;
+      for (int dy = -dilate; dy <= dilate; ++dy) {
+        int yy = y + dy;
+        if (yy < 0 || yy >= scene_h) continue;
+        for (int dx = -dilate; dx <= dilate; ++dx) {
+          int xx = x + dx;
+          if (xx < 0 || xx >= w) continue;
+          dilated[size_t(yy) * size_t(w) + size_t(xx)] = 1;
+        }
+      }
+    }
+  }
+  // For dilated-but-not-covered pixels, sample the nearest covered neighbour
+  // so the overlay colour stays continuous.
+  for (int y = 0; y < scene_h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      size_t i = size_t(y) * size_t(w) + size_t(x);
+      if (cover[i]) {
+        out[i] = px[i];
+        continue;
+      }
+      if (!dilated[i]) continue;
+      // Search a small radius for a covered source pixel
+      bool found = false;
+      for (int r = 1; r <= dilate && !found; ++r) {
+        for (int dy = -r; dy <= r && !found; ++dy) {
+          for (int dx = -r; dx <= r; ++dx) {
+            int yy = y + dy, xx = x + dx;
+            if (yy < 0 || yy >= scene_h || xx < 0 || xx >= w) continue;
+            size_t j = size_t(yy) * size_t(w) + size_t(xx);
+            if (cover[j]) {
+              out[i] = px[j];
+              found = true;
+              break;
+            }
+          }
+        }
+      }
     }
   }
 
