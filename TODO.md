@@ -443,3 +443,10 @@ SceneFrame.  Observation only — original draw path unchanged.
 
 Sample horizon row in 11 columns, least-squares fit y = y0 + slope*(x-160).
 Paint water below that line so roll tilt matches the original frame.
+
+### Stable flat horizon (2026-10-17)
+
+Tilted least-squares fit was dominated by mesh edges (carrier/aircraft
+colour jumps).  Reverted to a flat split: sky/water from top/bottom
+*corners*, horizon row = median of a few central columns with outlier
+rejection.  Stable and matches lowres colours without chaos.

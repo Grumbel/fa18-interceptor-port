@@ -204,16 +204,33 @@ int32_t prim_depth(const Prim& p) {
 SoftwareSceneRenderer::SoftwareSceneRenderer(int scale)
     : scale_(std::max(1, std::min(8, scale))) {}
 
-// Sample sky/water colours and a tilted horizon line from the original
-// low-res frame.  The game draws horizon via a blitter plane-clear
-// ($44994 → $44f46), not $60684 polygon verts.  Observation only.
+// Sample sky/water colours and a stable horizon row from the original
+// low-res frame.  Mesh edges create many colour jumps — do not fit a
+// tilt from those.  Use corner colour averages and a median horizon row
+// from a few central columns with outlier rejection.
 struct HorizonSample {
   uint32_t sky = 0xFF5080C0u;
   uint32_t water = 0xFF206080u;
-  // Horizon as y = y0 + slope * (x - 160) in low-res pixels.
-  double y0 = 90.0;     // row at x=160
-  double slope = 0.0;   // dy/dx (roll tilt)
+  int horizon_y = 90;  // low-res row (flat split)
 };
+
+static int colour_jump_row(const uint32_t* low, int x, int view_rows) {
+  int best_y = view_rows / 2;
+  int best_score = -1;
+  for (int y = 4; y < view_rows - 4; ++y) {
+    uint32_t a = low[size_t(y - 2) * 320 + size_t(x)];
+    uint32_t b = low[size_t(y + 2) * 320 + size_t(x)];
+    int dr = int((a >> 16) & 255) - int((b >> 16) & 255);
+    int dg = int((a >> 8) & 255) - int((b >> 8) & 255);
+    int db = int(a & 255) - int(b & 255);
+    int score = dr * dr + dg * dg + db * db;
+    if (score > best_score) {
+      best_score = score;
+      best_y = y;
+    }
+  }
+  return best_score > 80 ? best_y : -1;
+}
 
 HorizonSample sample_horizon(int view_rows) {
   HorizonSample hs;
@@ -221,81 +238,65 @@ HorizonSample sample_horizon(int view_rows) {
   const uint32_t* low = native::g_machine->frame_rgb();
   if (!low) return hs;
 
-  auto avg_band = [&](int y0, int y1) -> uint32_t {
-    y0 = std::max(0, y0);
-    y1 = std::min(view_rows, y1);
-    if (y1 <= y0) return 0;
+  auto avg_rect = [&](int x0, int x1, int y0, int y1) -> uint32_t {
+    x0 = std::max(0, x0); x1 = std::min(320, x1);
+    y0 = std::max(0, y0); y1 = std::min(view_rows, y1);
+    if (x1 <= x0 || y1 <= y0) return 0;
     uint64_t r = 0, g = 0, b = 0;
     int n = 0;
     for (int y = y0; y < y1; ++y) {
-      for (int x = 40; x < 280; ++x) {
-        uint32_t c = low[size_t(y) * W + size_t(x)];
-        if ((c & 0xFFFFFF) < 0x101010) continue;
+      for (int x = x0; x < x1; ++x) {
+        uint32_t c = low[size_t(y) * 320 + size_t(x)];
+        if ((c & 0xFFFFFF) < 0x181818) continue;
         r += (c >> 16) & 255;
         g += (c >> 8) & 255;
         b += c & 255;
         ++n;
       }
     }
-    if (n < 10) return 0;
+    if (n < 8) return 0;
     return 0xFF000000u | (uint32_t(r / n) << 16) | (uint32_t(g / n) << 8) | uint32_t(b / n);
   };
 
-  uint32_t top = avg_band(0, view_rows / 3);
-  uint32_t bot = avg_band(view_rows * 2 / 3, view_rows);
-  if (top) hs.sky = top;
-  if (bot) hs.water = bot;
+  // Sky: top corners (less likely to be aircraft/carrier).
+  uint32_t sky_l = avg_rect(8, 64, 2, view_rows / 5);
+  uint32_t sky_r = avg_rect(256, 312, 2, view_rows / 5);
+  if (sky_l && sky_r) {
+    // Average the two corner samples
+    hs.sky = 0xFF000000u |
+      (((((sky_l >> 16) & 255) + ((sky_r >> 16) & 255)) / 2) << 16) |
+      (((((sky_l >> 8) & 255) + ((sky_r >> 8) & 255)) / 2) << 8) |
+      (((sky_l & 255) + (sky_r & 255)) / 2);
+  } else if (sky_l) hs.sky = sky_l;
+  else if (sky_r) hs.sky = sky_r;
 
-  // Per-column horizon: largest colour jump.  Fit slope through samples.
-  constexpr int kCols = 11;
-  double xs[kCols], ys[kCols];
-  int n_samp = 0;
-  for (int ci = 0; ci < kCols; ++ci) {
-    int x = 40 + ci * (240 / (kCols - 1));
-    int best_y = view_rows / 2;
-    int best_score = -1;
-    for (int y = 2; y < view_rows - 2; ++y) {
-      uint32_t a = low[size_t(y - 1) * W + size_t(x)];
-      uint32_t b = low[size_t(y + 1) * W + size_t(x)];
-      int dr = int((a >> 16) & 255) - int((b >> 16) & 255);
-      int dg = int((a >> 8) & 255) - int((b >> 8) & 255);
-      int db = int(a & 255) - int(b & 255);
-      int score = dr * dr + dg * dg + db * db;
-      if (score > best_score) {
-        best_score = score;
-        best_y = y;
-      }
-    }
-    if (best_score > 50) {
-      xs[n_samp] = double(x);
-      ys[n_samp] = double(best_y);
-      ++n_samp;
-    }
+  // Water: bottom corners.
+  uint32_t w_l = avg_rect(8, 64, view_rows * 4 / 5, view_rows - 2);
+  uint32_t w_r = avg_rect(256, 312, view_rows * 4 / 5, view_rows - 2);
+  if (w_l && w_r) {
+    hs.water = 0xFF000000u |
+      (((((w_l >> 16) & 255) + ((w_r >> 16) & 255)) / 2) << 16) |
+      (((((w_l >> 8) & 255) + ((w_r >> 8) & 255)) / 2) << 8) |
+      (((w_l & 255) + (w_r & 255)) / 2);
+  } else if (w_l) hs.water = w_l;
+  else if (w_r) hs.water = w_r;
+
+  // Horizon row: median of a few central columns (reject outliers).
+  int cols[] = {100, 130, 160, 190, 220};
+  int rows[5];
+  int n = 0;
+  for (int x : cols) {
+    int y = colour_jump_row(low, x, view_rows);
+    if (y >= 0) rows[n++] = y;
   }
-  if (n_samp >= 2) {
-    // Least-squares: y = y0 + slope * (x - 160)
-    double sx = 0, sy = 0, sxx = 0, sxy = 0;
-    for (int i = 0; i < n_samp; ++i) {
-      double dx = xs[i] - 160.0;
-      sx += dx;
-      sy += ys[i];
-      sxx += dx * dx;
-      sxy += dx * ys[i];
+  if (n >= 1) {
+    // insertion-sort and take median
+    for (int i = 1; i < n; ++i) {
+      int v = rows[i], j = i;
+      while (j > 0 && rows[j - 1] > v) { rows[j] = rows[j - 1]; --j; }
+      rows[j] = v;
     }
-    double n = double(n_samp);
-    double den = n * sxx - sx * sx;
-    if (std::fabs(den) > 1e-6) {
-      hs.slope = (n * sxy - sx * sy) / den;
-      hs.y0 = (sy - hs.slope * sx) / n;
-    } else {
-      hs.y0 = sy / n;
-      hs.slope = 0;
-    }
-    // Clamp slope to sane roll (about ±45° at screen scale)
-    if (hs.slope > 1.0) hs.slope = 1.0;
-    if (hs.slope < -1.0) hs.slope = -1.0;
-    if (hs.y0 < 0) hs.y0 = 0;
-    if (hs.y0 > view_rows) hs.y0 = view_rows;
+    hs.horizon_y = rows[n / 2];
   }
   return hs;
 }
@@ -309,9 +310,6 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Reconstruct sky/water from the original low-res frame (matches lowres
-  // colours).  Fill2d horizon prims from $60684 are mesh-fill leftovers —
-  // prefer the sampled half-planes for the environment backdrop.
   HorizonSample hs = sample_horizon(rows_);
   if (frame.sky_rgba && (frame.sky_rgba & 0xFFFFFF) != 0 &&
       (hs.sky & 0xFFFFFF) == 0)
@@ -320,18 +318,12 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
       (hs.water & 0xFFFFFF) == 0)
     hs.water = frame.ground_rgba;
 
+  // Flat split — stable.  Tilt from image edges was dominated by meshes.
   pixels_.assign(size_t(width_) * size_t(height_), hs.sky);
-  // Water/ground below the tilted horizon: y_lr = y0 + slope*(x_lr - 160).
-  const int S = scale_;
-  for (int y = 0; y < height_; ++y) {
-    for (int x = 0; x < width_; ++x) {
-      double x_lr = (x + 0.5) / S;
-      double y_lr = (y + 0.5) / S;
-      double hy = hs.y0 + hs.slope * (x_lr - 160.0);
-      if (y_lr >= hy)
-        pixels_[size_t(y) * size_t(width_) + size_t(x)] = hs.water;
-    }
-  }
+  int hy = std::max(0, std::min(height_, hs.horizon_y * scale_));
+  for (int y = hy; y < height_; ++y)
+    for (int x = 0; x < width_; ++x)
+      pixels_[size_t(y) * size_t(width_) + size_t(x)] = hs.water;
 
   struct DrawItem {
     const Prim* prim;
@@ -383,13 +375,13 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     std::fprintf(stderr,
                  "[scene-render] frame %llu objects=%zu prims=%zu "
                  "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d "
-                 "sky=%06x water=%06x hy=%.1f slope=%.3f\n",
+                 "sky=%06x water=%06x hy=%d\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
                  frame.prims.size(), fills, polys, lines, points,
                  scale_, width_, height_,
                  unsigned(hs.sky & 0xFFFFFF),
                  unsigned(hs.water & 0xFFFFFF),
-                 hs.y0, hs.slope);
+                 hs.horizon_y);
   }
 }
 
