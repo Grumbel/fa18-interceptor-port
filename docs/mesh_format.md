@@ -560,6 +560,10 @@ Verified on H54: five records (pp `$22`, `$20`, `$20`, —, —) with 8–10
 usable verts; first aircraft has 8 edges and attr words
 `$180D`/`$1007`/… matching the live `$00C39738` catalogue entry.
 
+In-game: debug menu (**Insert** / controller Back) → **Mesh viewer**
+(`src/native/mesh_viewer.cpp`) loads the same clusters and draws an
+orbitable cyan wireframe.
+
 ### Aircraft topology (e.g. `$00C39738`)
 
 ```

@@ -1,6 +1,7 @@
 // F/A-18 Interceptor — SDL2 front end.
 #include "amiga/machine.hpp"
 #include "font6x10.hpp"
+#include "native/mesh_viewer.hpp"
 
 #include <SDL.h>
 
@@ -421,7 +422,124 @@ public:
       int s = machine->hires_scale;
       return s <= 0 ? std::string("original (320x200)") : std::to_string(s) + "x";
     };
-    const int NITEMS = 8;
+
+    // Offline aircraft wireframe browser (hunk clusters from the executable).
+    auto run_mesh_viewer = [&] {
+      std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
+      if (exe.empty() && !machine->data_is_adf) {
+        // Directory boot: read the unpacked executable from the data dir.
+        std::ifstream in(machine->data_dir + "/F-18 Interceptor", std::ios::binary);
+        if (in) exe.assign(std::istreambuf_iterator<char>(in), {});
+      }
+      if (exe.empty()) {
+        menu_status = "mesh viewer: no executable";
+        return;
+      }
+      auto meshes = mesh_viewer::load_from_exe(exe);
+      if (meshes.empty()) {
+        menu_status = "mesh viewer: no meshes";
+        return;
+      }
+      int mesh_index = 0;
+      float yaw = 0.6f, pitch = 0.35f, zoom = 1.0f;
+      int axis_cd_v = 0;
+      bool view_open = true;
+      auto text_fn = +[](std::vector<uint32_t>& buf, int bw, int bh, int x, int y,
+                         const std::string& t, int scale, uint32_t col) {
+        // Free function adapter: reimplement tiny draw so we do not need
+        // a member pointer into the App lambda.
+        for (size_t i = 0; i < t.size(); ++i) {
+          int c = uint8_t(t[i]);
+          if (c < 32 || c > 126) c = '?';
+          const uint8_t* g = &font6x10::glyphs[(c - 32) * font6x10::H];
+          for (int gy = 0; gy < font6x10::H; ++gy)
+            for (int gx = 0; gx < font6x10::W; ++gx)
+              if (g[gy] & (0x20 >> gx))
+                for (int yy = 0; yy < scale; ++yy)
+                  for (int xx = 0; xx < scale; ++xx) {
+                    int px = x + (int(i) * font6x10::W + gx) * scale + xx;
+                    int py = y + gy * scale + yy;
+                    if (px >= 0 && px < bw && py >= 0 && py < bh)
+                      buf[size_t(py) * size_t(bw) + size_t(px)] = col;
+                  }
+        }
+      };
+      while (view_open && !quit) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+          switch (e.type) {
+            case SDL_QUIT: quit = true; break;
+            case SDL_KEYDOWN:
+              switch (e.key.keysym.scancode) {
+                case SDL_SCANCODE_LEFT: --mesh_index; break;
+                case SDL_SCANCODE_RIGHT: ++mesh_index; break;
+                case SDL_SCANCODE_A: yaw -= 0.12f; break;
+                case SDL_SCANCODE_D: yaw += 0.12f; break;
+                case SDL_SCANCODE_W: pitch += 0.08f; break;
+                case SDL_SCANCODE_S: pitch -= 0.08f; break;
+                case SDL_SCANCODE_EQUALS:
+                case SDL_SCANCODE_KP_PLUS: zoom *= 1.1f; break;
+                case SDL_SCANCODE_MINUS:
+                case SDL_SCANCODE_KP_MINUS: zoom /= 1.1f; break;
+                case SDL_SCANCODE_ESCAPE:
+                case SDL_SCANCODE_INSERT:
+                case SDL_SCANCODE_BACKSPACE: view_open = false; break;
+                default: break;
+              }
+              break;
+            case SDL_CONTROLLERBUTTONDOWN:
+              switch (e.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: --mesh_index; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: ++mesh_index; break;
+                case SDL_CONTROLLER_BUTTON_B:
+                case SDL_CONTROLLER_BUTTON_BACK: view_open = false; break;
+                default: break;
+              }
+              break;
+            default: break;
+          }
+        }
+        if (pad && axis_cd_v-- <= 0) {
+          int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+          int ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+          int rx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTX);
+          int ry = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTY);
+          if (lx < -16000) { --mesh_index; axis_cd_v = 10; }
+          else if (lx > 16000) { ++mesh_index; axis_cd_v = 10; }
+          else axis_cd_v = 0;
+          if (std::abs(rx) > 8000) yaw += float(rx) / 32768.f * 0.15f;
+          if (std::abs(ry) > 8000) pitch -= float(ry) / 32768.f * 0.10f;
+          int lt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+          int rt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+          if (rt > 8000) zoom *= 1.02f;
+          if (lt > 8000) zoom /= 1.02f;
+          (void)ly;
+        }
+        if (mesh_index < 0) mesh_index = int(meshes.size()) - 1;
+        if (mesh_index >= int(meshes.size())) mesh_index = 0;
+        if (pitch > 1.4f) pitch = 1.4f;
+        if (pitch < -1.4f) pitch = -1.4f;
+        if (zoom < 0.2f) zoom = 0.2f;
+        if (zoom > 8.f) zoom = 8.f;
+
+        mesh_viewer::render_frame(cv, w, h, meshes, mesh_index, yaw, pitch, zoom, text_fn);
+        if (tex_w != w || tex_h != h) {
+          if (tex) SDL_DestroyTexture(tex);
+          tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+          tex_w = w;
+          tex_h = h;
+        }
+        SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, nullptr, nullptr);
+        SDL_RenderPresent(ren);
+        SDL_Delay(16);
+      }
+      menu_status = "mesh viewer closed";
+    };
+
+    const int NITEMS = 9;
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
       switch (item) {
         case 0: if (dir == 0) open = false; break;
@@ -445,9 +563,12 @@ public:
           if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
           break;
         case 6:
-          if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
+          if (dir == 0) run_mesh_viewer();
           break;
         case 7:
+          if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
+          break;
+        case 8:
           if (dir == 0) { quit = true; open = false; }
           break;
       }
@@ -506,6 +627,7 @@ public:
           "State slot:     " + std::to_string(menu_slot),
           "Save state",
           "Load state",
+          "Mesh viewer",
           "Send ESC to game",
           "Quit",
       };
