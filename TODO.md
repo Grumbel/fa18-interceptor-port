@@ -221,3 +221,22 @@ Fix options (pick one):
    the first N calls of each native and then inject the average).
 
 Until (2) or (3) is done the trampoline stays.
+
+### Cycle-cost measurement attempt (2026-10-17 cont.)
+
+Tried fixed `cpu().cycles += 420` (and smaller on early-fail paths) inside
+`project_screen_body`. free1 stayed identical; menu1 still diverged at the
+same frame 2900. A single average is insufficient because path length varies
+(early frustum fail vs full project + marker) and the interaction with the
+scanline scheduler is sensitive.
+
+FA18_REGS under --interpret shows many entries to $438b6 but pairing with
+the rts sites ($4394e / $43976) did not yield clean per-call deltas in the
+logging (interpreter / address mapping quirks).
+
+**Recommended next step (architectural):**
+Give `native::Def` an optional `cycle_cost` (or auto-profile the first N
+calls of each native under --native verify / a special mode, then inject
+the measured average on subsequent calls). That would let us drop the
+trampoline for $438a0/$438a8 and improve timing fidelity for every other
+native as well. Until then the trampoline stays.
