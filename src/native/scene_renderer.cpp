@@ -224,11 +224,10 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   if (frame.camera.has_view_m) {
     const int16_t* m = frame.camera.view_m;
-    // World-up (typically +Y) in view space.  Observed level-flight values of
-    // $5aed0 are e.g. [168 0 0 / 0 0 252 / 0 -128 0]: the image of world +Y
-    // is column 2 (m[2],m[5],m[8]) ≈ (0, scale, 0).  Column 1 is not up.
-    // Also consider the matching row (transpose) and keep the candidate that
-    // agrees with temporal history so a continuous roll never hard-flips.
+    // $5aed0 level-flight example: [168 0 0 / 0 0 252 / 0 -128 0]
+    // Column 2 ≈ (0,252,0) is the only column that yields a horizontal
+    // horizon through the screen centre.  Column 1 is ~view -Z and
+    // degenerates.  Use column 2; fall back to its row if needed.
     double c2x = double(m[2]), c2y = double(m[5]), c2z = double(m[8]);
     double r2x = double(m[6]), r2y = double(m[7]), r2z = double(m[8]);
     double Lc = std::sqrt(c2x * c2x + c2y * c2y + c2z * c2z);
@@ -239,8 +238,7 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     } else if (Lr > 1.0) {
       Nx = r2x / Lr; Ny = r2y / Lr; Nz = r2z / Lr;
     }
-    // Temporal coherence: never hard-flip on Ny sign.  Keep the hemisphere
-    // that matches the previous frame so a continuous roll stays continuous.
+    // Temporal coherence + force water in the lower half on the first frame.
     static double pNx = 0, pNy = 1, pNz = 0;
     static bool have_prev = false;
     if (have_prev) {
@@ -248,9 +246,12 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
         Nx = -Nx; Ny = -Ny; Nz = -Nz;
       }
     } else {
-      // First frame: prefer water in the lower half when nearly level.
-      // Sample centre-bottom direction vyz < 0; want N·d < 0 there.
-      if (Ny < 0.0) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
+      // Centre-bottom pixel must be water: N·(0, vyz_bottom, 1) < 0
+      // with vyz_bottom < 0 ⇒ prefer Ny > 0 (or flip so that holds).
+      const double vyz_bot = (89.0 - (rows_ - 0.5)) / 90.0;
+      if (Nx * 0 + Ny * vyz_bot + Nz >= 0.0) {
+        Nx = -Nx; Ny = -Ny; Nz = -Nz;
+      }
       have_prev = true;
     }
     pNx = Nx; pNy = Ny; pNz = Nz;

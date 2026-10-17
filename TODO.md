@@ -504,6 +504,18 @@ Fix: extract world-up from column 2 (m[2],m[5],m[8]), with the matching
 row as fallback; keep temporal hemisphere lock.  Comments in
 scene_frame.{hpp,cpp} and scene_renderer.cpp updated.
 
-Next visual check: free flight with FA18_SCENE_RENDER=2..4, confirm bank
-direction agrees with meshes and that the horizon line sits at the same
-screen row as the original low-res sea/sky edge.
+### Horizon column-2 retry with correct side (2026-10-17)
+
+Previous column-2 attempt was reported "much worse".  Likely the plane
+test or first-frame sign put water on top.
+
+- First-frame sign is now forced so that the centre-bottom pixel is water
+  (N·dir_bottom < 0), independent of Ny sign.
+- Temporal lock kept.  Projection centre/focal set to exact 160/90.
+- Player-body matrix at +$92 is a clean rotation (scale 16384) with
+  column 1 = (0,1,0), but it did not change under free1 stick input in
+  the observed frames; $5aed0 does change, so it remains the source.
+
+If still wrong, next step is to abandon pure-matrix horizon and either
+(1) capture the real blitter edge state, or (2) fit pitch from a low-res
+centre-column colour jump while taking bank from the matrix.
