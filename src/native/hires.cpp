@@ -342,12 +342,10 @@ void on_fill2d() {
 
 // $44994 (horizon: sky/ground/sea planes) fills its screen-space polygon
 // through $44dfe directly, not through $44b50: observe the return of $44dfe at $44b00
-void on_fill_horizon() {
-  pending_3d = false;
-  // called at the return of $44dfe (bounds/edge set-up): d0 = 0 means the
-  // polygon is visible and gets filled (bnes $44b14 otherwise).  The result
-  // is read from d0, not from the flags (recompiled code keeps those lazily).
-  if (native::g_machine->cpu.d[0] != 0) return;
+// Capture a horizon/sky/ground screen-space fill from verts at $60684.
+// Called from $44b00 (post-$44dfe) and from $44f46 (actual fill; $44994
+// BSRs here with d0=8,d3=0 and never touches $44b00 — that was why fill=0).
+void capture_horizon_fill() {
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
   // Horizon / sky / ground / sea — screen-space plane fills, not meshes.
@@ -376,10 +374,12 @@ void on_fill_horizon() {
     // with bit1 set (2,3,6,7) and keep the one farthest from sky (COLOR0).
     if (ground) {
       uint32_t sky = rgba12(0);
-      uint32_t best = rgba12(2);
+      if ((sky & 0xFFFFFF) == 0) sky = 0xFF5080C0u;
+      uint32_t best = 0xFF206080u;
       int best_score = -1;
       for (int idx : {2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15}) {
         uint32_t c = rgba12(idx);
+        if ((c & 0xFFFFFF) == 0) continue;
         int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
         int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
         int db = int(c & 255) - int(sky & 255);
@@ -411,6 +411,7 @@ void on_fill_horizon() {
       }
     } else {
       pr.rgba = rgba12(0);
+      if ((pr.rgba & 0xFFFFFF) == 0) pr.rgba = 0xFF5080C0u;
       scene::note_env_colours(pr.rgba, 0);
     }
     for (int i = 0; i < m; ++i) {
@@ -429,6 +430,22 @@ void on_fill_horizon() {
   PlaneOps o;
   o.clr = 1 << 1;  // $4506e with d0=8, d3=0: clear display plane 1 inside the polygon
   fill_polygon(*cur, sp, o);
+}
+
+void on_fill_horizon() {
+  // $44b00: after $44dfe setup.  d0==0 means the polygon is visible.
+  if (native::g_machine->cpu.d[0] != 0) return;
+  capture_horizon_fill();
+}
+
+// $44f46: the fill routine used by $44994 (horizon) with d0=8, d3=0, d4=0.
+// This is the path that actually draws water/ground — $44994 never enters $44b00.
+void on_fill_44f46() {
+  m68k::Cpu& c = native::g_machine->cpu;
+  // Horizon plane-clear: moveq #8,d0; moveq #0,d3; moveq #0,d4; bsr $44f46
+  if (int16_t(c.d[0]) != 8) return;
+  if (int16_t(c.d[3]) != 0) return;
+  capture_horizon_fill();
 }
 
 // $4397c: line between two points that must lie inside the frustum (no clipping)
@@ -641,6 +658,7 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x4397c, [] { on_line_noclip(); });
   m.add_pc_hook(0x44b50, [] { on_fill2d(); });
   m.add_pc_hook(0x44b00, [] { on_fill_horizon(); });
+  m.add_pc_hook(0x44f46, [] { on_fill_44f46(); });  // $44994 horizon fill
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
   m.add_pc_hook(0x438a8, [] { on_point(-4); });

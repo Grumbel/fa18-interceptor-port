@@ -108,13 +108,19 @@ void begin_frame(uint64_t frame_id) {
   frame.frame_id = frame_id;
   current_object_ = -1;
   // Default environment colours from the live playfield palette.
+  // COLOR0 is often 0 (black) in this game — the sky is a filled plane, not
+  // the backdrop.  Fall back to a mid blue so a missing fill is obvious but
+  // not a void.
   frame.sky_rgba = rgba_from_color_reg(0);
+  if ((frame.sky_rgba & 0xFFFFFF) == 0)
+    frame.sky_rgba = 0xFF5080C0u;
   frame.ground_rgba = rgba_from_color_reg(2);
   {
     uint32_t sky = frame.sky_rgba;
     int best_score = -1;
     for (int idx : {2, 3, 6, 7, 4, 5, 1, 8, 9, 10, 11, 12, 13, 14, 15}) {
       uint32_t c = rgba_from_color_reg(idx);
+      if ((c & 0xFFFFFF) == 0) continue;  // skip black
       int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
       int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
       int db = int(c & 255) - int(sky & 255);
@@ -126,6 +132,8 @@ void begin_frame(uint64_t frame_id) {
         frame.ground_rgba = c;
       }
     }
+    if ((frame.ground_rgba & 0xFFFFFF) == 0)
+      frame.ground_rgba = 0xFF206080u;  // fallback water
   }
 }
 

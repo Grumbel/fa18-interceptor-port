@@ -176,6 +176,7 @@ Open:
 - [x] Horizon: distinct water palette pick; sky prim inject; sky under ground
 - [x] Horizon two-pass (fills then meshes); water palette bias toward blue
 - [x] Prim xyz capacity 40; dump sel/rgba; note HUD-in-view gap
+- [x] Horizon: hook \$44f46 (actual fill path); non-black sky/water fallback
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -414,3 +415,13 @@ dump prints sel and rgba on prims for horizon/water debugging.
 Known gap: HUD elements drawn into the 3D view rectangle (not below it)
 are not in SceneFrame yet — they will be missing until those draws are
 captured as prims.  Not papered over by low-res composite.
+
+### Horizon fill was never captured (2026-10-17)
+
+Root cause: `$44994` BSRs `$44f46` with d0=8 directly and never enters
+`$44b00`.  Hook was only on `$44b00` → fill=0 always, view cleared to
+COLOR0 (black).
+
+Fix: hook `$44f46` when d0=8,d3=0; capture verts from `$60684`.  If
+COLOR0 is black, fall back to mid-blue sky / teal water so the view is
+not a void.
