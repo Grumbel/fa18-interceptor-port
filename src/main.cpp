@@ -425,14 +425,10 @@ public:
 
     // Offline aircraft wireframe browser (hunk clusters from the executable).
     auto run_mesh_viewer = [&] {
+      // Geometry from the ADF only ("F-18 Interceptor" executable on the disk).
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
-      if (exe.empty() && !machine->data_is_adf) {
-        // Directory boot: read the unpacked executable from the data dir.
-        std::ifstream in(machine->data_dir + "/F-18 Interceptor", std::ios::binary);
-        if (in) exe.assign(std::istreambuf_iterator<char>(in), {});
-      }
       if (exe.empty()) {
-        menu_status = "mesh viewer: no executable";
+        menu_status = "mesh viewer: need ADF with F-18 Interceptor";
         return;
       }
       auto meshes = mesh_viewer::load_from_exe(exe);
