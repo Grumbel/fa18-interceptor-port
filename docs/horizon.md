@@ -109,13 +109,82 @@ There is no infinite-plane test left to re-derive from the matrix.
 
 ## Blitter fill (`$44994` / `$44f46`)
 
-When bit13 of `$5abca` is clear, `$44994` does a direct blitter plane-clear
-of display plane 1 over the view rectangle (height from `$5ac7c`), using
-plane pointers at `$5a9ae`.  It does **not** consume the `$60684` polygon.
+When bit13 of `$5abca` is clear, `$42f48` calls `$44994`.  That routine
+does four full-view-rectangle blits into the planes listed at `$5a9ae`,
+then always tries the sea-quad builder (`$42f6a`).  The plane clears do
+**not** consume a pre-built `$60684` polygon.
 
-When the complex path has run, `$44b00` / `$44f46` can fill using the
-screen-space polygon.  `$5ab93` (set by `$33120` sky/ground table match)
-selects whether a second colour (ground/sea) is active.
+### `$44994` register setup (common)
+
+| Reg / mem | Value |
+|-----------|--------|
+| `a2` | `$5a9ae` — four long plane pointers at `+0/+4/+8/+0c` |
+| `a0` | `$dff000` |
+| `d6` (BLTSIZE) | `($5ac7c << 6) + 20` → height `$5ac7c`, width 20 words (320 px) |
+| Dest base | each plane pointer **+ 40** (skip one 320-px row = 40 bytes) |
+| BLTCON1 | 0 |
+| BLTAFWM / BLTALWM | `$FFFF` |
+| BLTBDAT | `$FFFF` (first blit; left for later) |
+| BLTAMOD / BLTBMOD / BLTDMOD | 1 |
+
+Busy-wait on `DMACONR` bit 14 (`btst #6,$2(a0)`) before each start.
+Blits 2–4 also bump word counters at `$5ac14` / `$5ac18` / `$5ac1c`
+while waiting (high/low halfword max tracking).
+
+### Four plane blits
+
+| # | Dest | BLTCON0 | When `$5ab93==0` | When `$5ab93≠0` |
+|---|------|---------|------------------|-----------------|
+| 1 | `a2@+0 + 40` | `$0100` | clear plane 0 | same |
+| 2 | `a2@+4 + 40` | `$03FA` | plane-1 special | same |
+| 3 | `a2@+8 + 40` | `$0100` | clear plane 2 | `$03FA` |
+| 4 | `a2@+C + 40` | `$0100` | clear plane 3 | same |
+
+BLTCON0 (HRM channel bits).  This codebase’s blitter core maps the enable
+nibble reversed so `$0100` is treated as DEST-enable + LF=0 (zero-fill):
+
+| Value | Channels (HRM) | LF | Effective role here |
+|-------|----------------|-----|---------------------|
+| `$0100` | USEA | `$00` | zero-fill the dest rectangle |
+| `$03FA` | USEA\|USEB | `$FA` | plane-1 (and optionally plane-2) sky op |
+
+free1 (`$5ab93=0`) **clears planes 0, 2, 3** and runs `$03FA` only on
+**plane 1**.  That matches observed playfield indices:
+
+- sky ≈ index 6 = planes 1+2
+- ground ≈ index 4 = plane 2 only
+
+i.e. plane 1 is set in the sky region and clear in the ground region
+relative to a plane-2 backdrop.  The sky/ground split in free1 is
+therefore **not** a horizontal blitter edge from `$44994` alone; the four
+blits paint whole rectangles.  The visible horizon comes from later
+terrain / `$44b50` fills that clear plane 1 below the terrain silhouette.
+
+### After the plane blits
+
+```
+$44ae6  push $5a9da
+$44aec  $5a9da ← a2@(12)          ; plane-3 ptr into sea context
+$44af4  jsr $42f6a                 ; sea-quad with matrix $5aed0
+$44afa  bne skip_fill
+$44afc  bsr $44dfe                 ; poly fill if clip succeeded
+$44b02  tst $5ab93
+$44b08  beq skip                   ; free1: no extra $2506e
+$44b0a  moveq #8,d0 / clr d3/d4
+$44b10  bsr $4506e                 ; plane-1 poly fill when ground colour on
+$44b14  pop $5a9da
+$44b1a  tst $5aa7d
+$44b20  bne done                   ; external view: skip second matrix
+$44b22  jsr $42f62                 ; cockpit: sea-quad with $5aee2
+        … copy $60684 → $60726 on success
+```
+
+`$5ab93` (set by `$33120` sky/ground table match on `$5ac40/$5ac42`)
+only gates the **extra** `$4506e` plane-1 fill after a successful sea
+poly — not the four full-view blits.
+
+When the complex path has run, `$44b00` / `$44f46` can also fill using the
+screen-space polygon built from the sea quad.
 
 ## Why matrix-only reconstruction fails
 
@@ -129,15 +198,16 @@ selects whether a second colour (ground/sea) is active.
    from `$42f6a`, then the count-prefixed screen-space form.  Capture that
    reads a count at `$60684` only works after the rebuild, not right after
    the matrix multiply.
-4. The simple `$44994` path never builds a polygon at all.
+4. The simple `$44994` path’s four blits are full-view rectangles; they do
+   not encode a horizon line.  The free1 split is terrain-driven.
 
 ## Correct observation points for a remaster
 
 | When | What to read |
 |------|----------------|
 | After `$42f6a` returns success | `$60684` screen-space poly (count + verts) — this is what the fill uses |
-| During `$44994` simple path | No poly; the fill is a full-view plane-1 clear bounded by `$5ac7c` |
-| `$5ab93` | 0 = sky only; ≠0 = ground/sea second colour |
+| During `$44994` simple path | Four full-view plane blits (see table); no horizon edge |
+| `$5ab93` | 0 = plane-2 stays clear; ≠0 = plane-2 gets `$03FA` + extra poly fill |
 | `$5ac7c` | Last row of the 3D view (0-based); rows = value+1 |
 
 ## Related addresses

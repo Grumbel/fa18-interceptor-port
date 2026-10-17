@@ -563,8 +563,8 @@ Implemented observation matching docs/horizon.md:
 - Software renderer no longer synthesises a matrix plane; draws Fill2d + meshes
 
 Runtime (free1): only simple path runs, `$5ab93=0`, so no sea Fill2d is
-produced.  Next: RE what `$44994` actually paints when `$5ab93=0` (plane
-minterms / edge masks) — that is the free-flight horizon.
+produced.  `$44994` plane sequence when `$5ab93=0` is now documented
+(four full-view blits; no horizon edge — see tip below).
 
 ### Horizon RE update (2026-10-17 evening)
 
@@ -580,3 +580,29 @@ See docs/horizon.md "Deeper free1 findings".
 - `$5aed0` has two builders: 2-angle external (`$22b6e`) vs 3-angle from
   `$5ad82/86/8a` (`$22bbe`); both row-scaled by `$5ad36..3a`.
 - See docs/horizon.md “Camera position” and “Two builders for $5aed0”.
+
+### `$44994` plane sequence when `$5ab93=0` (2026-10-17)
+
+Disassembled `$44994` end-to-end.  Four full-view blits into `$5a9ae`
+planes (dest = plane_ptr+40, BLTSIZE = `$5ac7c<<6|20`):
+
+| # | Plane | BLTCON0 (`$5ab93=0`) |
+|---|-------|----------------------|
+| 1 | 0 | `$0100` zero-fill |
+| 2 | 1 | `$03FA` (sky plane op) |
+| 3 | 2 | `$0100` zero-fill |
+| 4 | 3 | `$0100` zero-fill |
+
+Then `jsr $42f6a` (sea quad); `$5ab93` only gates the post-clip `$4506e`
+plane-1 poly fill, not these blits.  free1 horizon is **not** an edge from
+`$44994` — the four ops paint whole rectangles; the visible split is
+terrain / `$44b50` clearing plane 1.  Full write-up in docs/horizon.md
+“Blitter fill”.
+
+Next candidates:
+- [ ] Decode `$03FA` LF=$FA against real plane-1 contents (what pattern is
+      left in plane 1 after the blit — solid 1s, or a prior edge mask?)
+- [ ] Trace `$3f284` terrain / `$44b50` `$2506e` path that produces the
+      free1 sky/ground silhouette
+- [ ] Cockpit / open-water case where `$5ab93≠0` and the sea-quad poly
+      actually survives clip (to validate Fill2d capture)
