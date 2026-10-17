@@ -150,8 +150,8 @@ void note_camera() {
   frame.camera.y = int32_t(native::rd32(0x5ad5e));
   frame.camera.z = int32_t(native::rd32(0x5ad62));
   // Main 3D transform matrix used by rot_out / object projection ($5aed0).
-  // Level-flight layout: world +Z → view Y (column 2 is up).  $5af18 is a
-  // secondary path that previously produced HUD-like flat attitude.
+  // Level-flight: world +Z → view +Y (visual up); world +Y → view −Z.
+  // Ground plane is world Y=0; horizon uses column 1.  $5af18 is secondary.
   for (int i = 0; i < 9; ++i)
     frame.camera.view_m[i] = int16_t(native::rd16(0x5aed0 + uint32_t(i) * 2));
   frame.camera.has_view_m = true;

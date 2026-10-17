@@ -285,3 +285,50 @@ Reproducing that in the software renderer means either:
 
 The sea-quad path remains important for modes where `$5ab93≠0` and
 `$42f6a` succeeds (e.g. other missions / altitudes).
+
+## World model — ground plane and horizon (correct axes)
+
+### Coordinates
+
+| Quantity | Address / form | Meaning |
+|----------|----------------|---------|
+| Camera X/Y/Z | `$5ad5a` / `$5ad5e` / `$5ad62` | World position |
+| Altitude | `-$5ad5e` | Height above sea (`view_change_flags`) |
+| Ground / sea | world **Y = 0** | Constant-altitude plane |
+| View matrix R | `$5aed0` 3×3 row-major | `V = R * (P − C)`, products `asr #8` |
+
+Sea-quad builder `$42f6a` places corners at fixed world X/Z with
+`Y = swap($5ad5e)>>2` (high word of camera Y, scaled) — a finite patch
+of the same constant-Y plane, not a different orientation.
+
+### Level-flight R (from dumps)
+
+```
+[168   0    0]     world +X → view +X
+[  0   0  252]     world +Z → view +Y
+[  0 −128   0]     world +Y → view −Z
+```
+
+Column 1 = `(m[1], m[4], m[7]) = (0, 0, −128)` is the image of world **+Y**.
+
+### Horizon line
+
+Screen ray (inverse of `project_screen_body`):
+
+```
+vx/vz = (159 − sx) / 160
+vy/vz = ( 90 − sy) /  90
+```
+
+Direction in world (camera-relative): `D = Rᵀ V` (R rotation).
+Component along altitude: `D_y = column1 · V`.
+
+Horizon: `column1 · (vx, vy, vz) = 0`.
+Ground (ray hits Y=0 in front): `column1 · (vx/vz, vy/vz, 1) > 0`
+when `C.y < 0` (normal flight).
+
+Level flight → `D_y ∝ −vy` → horizon at `sy = 90`; below = ground.
+
+**Earlier error:** using column 2 (world +Z → view up) treated the wrong
+plane.  Column 2 is the *visual up* axis in view space after attitude is
+applied; the *ground* is still world Y = 0.

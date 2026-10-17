@@ -215,13 +215,45 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Backdrop from captured Fill2d prims (docs/horizon.md): the original
-  // builds a count-prefixed *screen-space* sea polygon at $60684 (complex
-  // path) or a full-view plane clear (simple path).  Capture hooks record
-  // those as Fill2d; no matrix-derived infinite plane.
-  const uint32_t sky =
-      frame.sky_rgba ? frame.sky_rgba : 0xFF6EC4F0u;
+  // World model (from flight + rot_out + $5ad5e):
+  //   • Camera position ($5ad5a, $5ad5e, $5ad62); altitude = -$5ad5e.
+  //   • Ground / sea is the plane world Y = 0.
+  //   • View: V = R * (P - C) with R the 3×3 at $5aed0 (row-major, asr #8).
+  //   • R maps world +Y → view via column 1 = (m[1], m[4], m[7]).
+  //   • Level-flight R: column1 = (0,0,-128) → horizon is the screen midline
+  //     (vy = 0); below-center rays have D_world.y > 0 and hit the ground.
+  // Screen ray (project_screen_body inverse):
+  //   vx/vz = (159 - sx)/160,  vy/vz = (90 - sy)/90.
+  // Horizon: column1 · (vx, vy, vz) = 0.
+  // Ground pixels: column1 · (vx/vz, vy/vz, 1) has the sign that yields
+  //   t = -C.y / D_world.y > 0 (C.y < 0 in flight).
+  const uint32_t sky = 0xFF003366u;     // playfield idx 6 / COLOR6
+  const uint32_t ground = 0xFF115511u;  // playfield idx 4 / COLOR4
   pixels_.assign(size_t(width_) * size_t(height_), sky);
+
+  if (frame.camera.has_view_m) {
+    const int16_t* m = frame.camera.view_m;
+    // column 1 = image of world +Y (altitude axis)
+    const double Nx = double(m[1]);
+    const double Ny = double(m[4]);
+    const double Nz = double(m[7]);
+    const int S = scale_;
+    for (int y = 0; y < height_; ++y) {
+      const double sy = (y + 0.5) / double(S);
+      const double vy_over_z = (90.0 - sy) / 90.0;
+      for (int x = 0; x < width_; ++x) {
+        const double sx = (x + 0.5) / double(S);
+        const double vx_over_z = (159.0 - sx) / 160.0;
+        // D_world.y ∝ Nx*vx + Ny*vy + Nz*vz ; ground when > 0 (see above)
+        if (Nx * vx_over_z + Ny * vy_over_z + Nz > 0.0)
+          pixels_[size_t(y) * size_t(width_) + size_t(x)] = ground;
+      }
+    }
+  } else {
+    for (int y = height_ / 2; y < height_; ++y)
+      for (int x = 0; x < width_; ++x)
+        pixels_[size_t(y) * size_t(width_) + size_t(x)] = ground;
+  }
 
   struct DrawItem {
     const Prim* prim;
