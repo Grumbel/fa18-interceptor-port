@@ -55,7 +55,7 @@ struct Prim {
   PrimKind kind = PrimKind::Poly3d;
   uint8_t n = 0;             // vertex count (capped)
   int8_t shift = 0;          // poly: $61284 shift applied to stored verts
-  int16_t sel = 0;           // point: d7 size; Fill2d: 1 = horizon-class
+  int16_t sel = 0;           // point: 0/1/2 size or -4 disc (r in xyz[1][0]); Fill2d: 1=ground 2=sky
   int16_t object_index = -1; // index into SceneFrame::objects (-1 = non-mesh)
   // Live colour at capture time (ARGB).  0 = unknown → consumer may fall
   // back to mesh_id hash.  Resolved from plane-ops + COLOR00..31 when the

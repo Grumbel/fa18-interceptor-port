@@ -429,23 +429,9 @@ void on_point(int sel) {
   int16_t x = int16_t(c.d[0]), y = int16_t(c.d[1]), z = int16_t(c.d[2]);
   if (z <= 0 || std::abs(int(x)) >= z || std::abs(int(y)) >= z) return;
   int d7 = sel == INT32_MIN ? int16_t(rd16(0x5adb0)) : sel;
-  if (scene::enabled()) {
-    scene::Prim pr;
-    pr.kind = scene::PrimKind::Point;
-    pr.n = 1;
-    pr.sel = int16_t(d7);
-    pr.rgba = rgba_from_ops(line_ops());
-    pr.xyz[0][0] = x;
-    pr.xyz[0][1] = y;
-    pr.xyz[0][2] = z;
-    scene::note_prim(pr);
-  }
-  if (!first_prim()) return;
-  V2 sp = project({double(x), double(y), double(z)});
-  // low-res pixel centre of the projected position (the original rounds
-  // to integer screen coordinates; +1 row as at $43902)
-  double cx = sp.x + 0.5, cy = sp.y + 0.5 + 1.0;
+  // Resolve size kind at capture time (limit from -40(a6) is only valid now).
   int kind;  // 0: 1x1, 1: 2x1, 2: 2x2, 3: disc
+  int disc_r = 0;
   if (d7 >= 0) {
     int limit = int16_t(rd16(c.a[6] - 40));
     if ((48 >> d7) >= limit) kind = 2;
@@ -454,20 +440,39 @@ void on_point(int sel) {
   } else if (d7 == -1) kind = 0;
   else if (d7 == -2) kind = 1;
   else if (d7 == -3) kind = 2;
-  else if (d7 == -4) kind = 3;
-  else return;
+  else if (d7 == -4) {
+    kind = 3;
+    disc_r = std::min(127, int(int16_t(c.d[6])));
+    if (disc_r < 1) disc_r = 1;
+  } else return;
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Point;
+    pr.n = 1;
+    // sel encodes resolved kind: 0/1/2 size, or -4 for disc (radius in xyz[1][0])
+    pr.sel = kind == 3 ? int16_t(-4) : int16_t(kind);
+    pr.rgba = rgba_from_ops(line_ops());
+    pr.xyz[0][0] = x;
+    pr.xyz[0][1] = y;
+    pr.xyz[0][2] = z;
+    if (kind == 3) pr.xyz[1][0] = int16_t(disc_r);
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
+  V2 sp = project({double(x), double(y), double(z)});
+  // low-res pixel centre of the projected position (the original rounds
+  // to integer screen coordinates; +1 row as at $43902)
+  double cx = sp.x + 0.5, cy = sp.y + 0.5 + 1.0;
   PlaneOps o = line_ops();
   Layer& L = *cur;
   if (kind == 0) fill_rect(L, cx, cy, 1, 1, o);
   else if (kind == 1) fill_rect(L, cx - 0.5, cy, 2, 1, o);
   else if (kind == 2) fill_rect(L, cx, cy, 2, 2, o);
   else {
-    int r = std::min<int>(127, int16_t(c.d[6]));
-    if (r < 1) r = 1;
     std::vector<V2> circ;
     for (int i = 0; i < 48; ++i) {
       double a = 2 * M_PI * i / 48;
-      circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
+      circ.push_back({cx + disc_r * std::cos(a), cy + disc_r * std::sin(a)});
     }
     fill_polygon(L, circ, poly_ops());
   }

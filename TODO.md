@@ -171,6 +171,7 @@ Open:
 - [x] Present: full rendered view + HUD rows only from low-res (no 3D composite)
 - [x] Prim verts 32; horizon always captured; SCENE_RENDER installs hooks alone
 - [x] Thin-poly stroke; copy-plane rgba approx from \$5ac4c
+- [x] Point size kind + disc radius captured and rendered
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -371,3 +372,9 @@ were removed.
   matching the --hires path, not a zero-area fill.
 - Copy-plane ops ($45014) no longer leave Prim::rgba = 0; approximate with
   $5ac4c → COLOR so the software path has a real tint instead of mesh_id hash.
+
+### Point/disc capture for software renderer (2026-10-17)
+
+Point prims now store the **resolved** size kind at capture time (0/1/2 or
+disc -4 with radius in xyz[1][0]), because -40(a6) limit is only valid during
+the original draw.  Software renderer draws 1x1 / 2x1 / 2x2 / disc to match.

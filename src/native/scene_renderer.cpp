@@ -143,13 +143,29 @@ void draw_prim(std::vector<uint32_t>& px, int S, int Wp, int Hp,
     if (v.z <= 0) return;
     V2 sp = project(v);
     double cx = sp.x + 0.5, cy = sp.y + 0.5 + 1.0;
-    int size = 1;
-    if (p.sel <= -2) size = 2;
-    int x0 = int(std::floor(cx * S - size * S / 2.0));
-    int y0 = int(std::floor(cy * S - size * S / 2.0));
-    for (int yy = 0; yy < size * S; ++yy)
-      for (int xx = 0; xx < size * S; ++xx)
-        put(px, Wp, Hp, x0 + xx, y0 + yy, c);
+    // sel: 0=1x1, 1=2x1, 2=2x2, -4=disc (radius in xyz[1][0])
+    if (p.sel == -4) {
+      int r = int(p.xyz[1][0]);
+      if (r < 1) r = 1;
+      std::vector<V2> circ;
+      for (int i = 0; i < 48; ++i) {
+        double a = 2 * M_PI * i / 48;
+        circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
+      }
+      fill_polygon(px, S, Wp, Hp, circ, c);
+    } else {
+      double w = 1, h = 1, ox = 0;
+      if (p.sel == 1) { w = 2; ox = -0.5; }
+      else if (p.sel >= 2) { w = 2; h = 2; }
+      int x0 = int(std::floor((cx + ox - w / 2) * S + 0.5));
+      int x1 = int(std::floor((cx + ox + w / 2) * S + 0.5));
+      int y0 = int(std::floor((cy - h / 2) * S + 0.5));
+      int y1 = int(std::floor((cy + h / 2) * S + 0.5));
+      if (x1 <= x0) x1 = x0 + 1;
+      if (y1 <= y0) y1 = y0 + 1;
+      for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x) put(px, Wp, Hp, x, y, c);
+    }
   } else if (p.kind == PrimKind::Fill2d) {
     if (p.n < 3) return;
     std::vector<V2> sp;
