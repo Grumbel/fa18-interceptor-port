@@ -292,8 +292,9 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
       auto rd32 = [](uint32_t a) { return native::rd32(a); };
       auto rd8 = [](uint32_t a) { return native::rd8(a); };
       uint32_t player = 0x5b47c + uint32_t(int32_t(int16_t(rd16(0x5abd6))));
-      std::fprintf(stderr, "[attitude] frame %llu aa7d=%d player=%08x\n",
-                   (unsigned long long)frame.frame_id, int(rd8(0x5aa7d)), player);
+      std::fprintf(stderr, "[attitude] frame %llu aa7d=%d player=%08x 5ac7c=%d rows=%d\n",
+                   (unsigned long long)frame.frame_id, int(rd8(0x5aa7d)), player,
+                   int(rd16(0x5ac7c)), int(rd16(0x5ac7c))+1);
       std::fprintf(stderr, "  cam XYZ=%d %d %d  alt=%d\n",
                    int32_t(rd32(0x5ad5a)), int32_t(rd32(0x5ad5e)), int32_t(rd32(0x5ad62)),
                    -int32_t(rd32(0x5ad5e)));

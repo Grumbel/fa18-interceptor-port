@@ -502,3 +502,76 @@ So external “level” is **pitch angle 90°** in this convention (not 0°).
 `lsr #3` on d0,d2,d4; `$22dd6` + `$22eba` → three sin/cos pairs; full
 Euler product into `(a1)+`.  Used for `$5aed0` when angles come from
 `$5ad82/86/8a`, and for `$5aee2` / `$5af18`.
+
+## Viewport and projection — is the horizon “squished”?
+
+### `$5ac7c` = last valid 3D-view row (0-based)
+
+| Value | Rows (`+1`) | Where set |
+|------:|------------:|-----------|
+| 179 | 180 | some external / full |
+| 167 | 168 | common external / in-flight (`ui_state`, `flow`) |
+| 144 | 145 | cockpit-related paths |
+
+`$44994` plane clears and `project_screen_body` both honour this:
+projected `sy` is rejected if `sy > $5ac7c`.
+
+Software path: `rows_ = $5ac7c+1`, compose copies only that many rows from
+the soft buffer; below that, low-res HUD/cockpit is shown.
+
+### `project_screen_body` vertical map (exact)
+
+```
+sy_tmp = 90 + 90*(vy/vz)     ; clamp to [0, 179]
+sy     = -(sy_tmp - 179) + 1 ; = 180 - sy_tmp
+if sy > $5ac7c → reject
+```
+
+So for `vy = 0` (level look along view axis):
+
+```
+sy_tmp = 90  →  sy = 90
+```
+
+The **optical midline stays at sy = 90** regardless of `$5ac7c` being 167
+or 144.  Shortening the view does **not** rescale the projection to fit
+the shorter window; it only **clips** the bottom.  There is no vertical
+squish in the original projector.
+
+Inverse used for the infinite-plane horizon:
+
+```
+vy/vz = (90 - sy) / 90
+vx/vz = (159 - sx) / 160
+```
+
+(hires helper uses `89.0 - 90*vy/vz` — off-by-one vs the assembly’s
+`90 - 90*vy/vz`; worth aligning later, not a half-range error.)
+
+### Row scales ≠ viewport squish
+
+`$5ad36/38/3a` (e.g. 168, 252, 128) scale matrix **rows** after build.
+That changes effective FOV ratios (`vy/vz` vs `vx/vz`) when pitched, but
+for a **level** matrix (column1 ∝ (0,0,−1)) the horizon equation still
+forces `vy = 0` → **sy = 90**.  Scales do not move the level horizon.
+
+### free1 observation vs this
+
+Level `$5aed0`, observed sky/ground transition at **y ≈ 46**, not 90.
+That gap is **not** explained by:
+
+- wrong `$5ac7c` (clip only),
+- row scales (level horizon fixed at 90),
+- compose squish (1:1 copy of view rows).
+
+It remains explained by the painted split being **terrain / fills**, not
+the infinite world-Y=0 line alone — or by a different surface than Y=0.
+
+### Compose path (software)
+
+```
+out[0 .. scene_h)     ← software pixels (width 320*S, height rows_*S)
+out[view_rows .. H)   ← low-res frame (cockpit/HUD)
+```
+
+No vertical resampling of the 3D view.
