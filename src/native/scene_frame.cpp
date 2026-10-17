@@ -149,6 +149,10 @@ void note_camera() {
   frame.camera.x = int32_t(native::rd32(0x5ad5a));
   frame.camera.y = int32_t(native::rd32(0x5ad5e));
   frame.camera.z = int32_t(native::rd32(0x5ad62));
+  // View rotation at $5af18 (same matrix $3223e projects through).
+  for (int i = 0; i < 9; ++i)
+    frame.camera.view_m[i] = int16_t(native::rd16(0x5af18 + uint32_t(i) * 2));
+  frame.camera.has_view_m = true;
 }
 
 void note_env_colours(uint32_t sky_rgba, uint32_t ground_rgba) {

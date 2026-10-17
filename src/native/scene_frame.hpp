@@ -15,6 +15,10 @@ namespace scene {
 
 struct Camera {
   int32_t x = 0, y = 0, z = 0;  // $5ad5a / $5ad5e / $5ad62 after $2f220
+  // 3x3 row-major int16 view matrix at $5af18 (world/object → view).
+  // Used to reconstruct the sea/sky horizon as a real plane, not a blit.
+  int16_t view_m[9] = {};
+  bool has_view_m = false;
 };
 
 enum class ObjectList : uint8_t { Scenario = 0, Sorted = 1 };

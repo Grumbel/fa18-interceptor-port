@@ -459,3 +459,10 @@ mesh noise.  Horizon remains uncaptured (blitter path).  Software path
 clears to neutral dark and draws meshes only.  Also: hook only $38c0c
 (was double-capturing every poly via $38c0a fall-through); near-black
 prim rgba falls back to mesh_id colour so geometry is visible.
+
+### 3D horizon from view matrix (2026-10-17)
+
+Capture `$5af18` 3x3 view matrix on the camera.  Reconstruct sea/sky as
+the plane through world-up in view space: N = M*(0,1,0), horizon where
+N·dir = 0, projected with the same 160/90 perspective as meshes.  Proper
+3D backdrop from camera pose — not blitter imitation or frame_rgb sample.

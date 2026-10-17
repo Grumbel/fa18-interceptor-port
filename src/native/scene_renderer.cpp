@@ -214,11 +214,56 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Horizon is a blitter plane-clear, not mesh verts and not recoverable
-  // reliably from frame_rgb (wrong timing / feedback).  Clear to a neutral
-  // backdrop; draw captured meshes on top.  Missing sky/water is visible.
-  uint32_t clear = 0xFF1a1a22u;
-  pixels_.assign(size_t(width_) * size_t(height_), clear);
+  // Reconstruct sea/sky from the view matrix: world-up (0,1,0) in view space
+  // is the ground-plane normal.  Horizon at infinity is N·dir = 0 projected
+  // through the same 160/90 perspective as mesh prims.  Real 3D backdrop —
+  // not a blitter imitation or frame_rgb sample.
+  uint32_t sky = frame.sky_rgba ? frame.sky_rgba : 0xFF5080C0u;
+  uint32_t water = frame.ground_rgba ? frame.ground_rgba : 0xFF206080u;
+  if ((sky & 0xFFFFFF) == 0) sky = 0xFF5080C0u;
+  if ((water & 0xFFFFFF) == 0) water = 0xFF206080u;
+  // Prefer distinct water: if ground_rgba collapsed to sky, force teal.
+  if ((water & 0xFFFFFF) == (sky & 0xFFFFFF)) water = 0xFF1a5070u;
+
+  pixels_.assign(size_t(width_) * size_t(height_), sky);
+
+  if (frame.camera.has_view_m) {
+    // N = M * (0,1,0) = column 1 of row-major M (m01, m11, m21).
+    const int16_t* m = frame.camera.view_m;
+    double Nx = double(m[1]);
+    double Ny = double(m[4]);
+    double Nz = double(m[7]);
+    const double nlen = std::sqrt(Nx * Nx + Ny * Ny + Nz * Nz);
+    if (nlen > 1.0) {
+      Nx /= nlen; Ny /= nlen; Nz /= nlen;
+      // Per hi-res column: vx/vz from screen x, solve vy/vz from N·d = 0.
+      // sx = 159 - 160*(vx/vz)  →  vx/vz = (159 - sx) / 160
+      // sy =  89 -  90*(vy/vz)  →  sy = 89 - 90 * vy/vz
+      const int S = scale_;
+      for (int x = 0; x < width_; ++x) {
+        double sx = (x + 0.5) / S;  // low-res x
+        double vxz = (159.0 - sx) / 160.0;
+        double hy_lr;
+        if (std::fabs(Ny) < 1e-6) {
+          // Looking nearly along the ground plane — whole column one side.
+          hy_lr = (Nz + Nx * vxz) > 0 ? -1e6 : 1e6;
+        } else {
+          double vyz = -(Nz + Nx * vxz) / Ny;
+          hy_lr = 89.0 - 90.0 * vyz;
+        }
+        int y0 = int(std::floor(hy_lr * S));
+        if (y0 < 0) y0 = 0;
+        if (y0 > height_) y0 = height_;
+        for (int y = y0; y < height_; ++y)
+          pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
+      }
+    }
+  } else {
+    // No matrix yet: flat half (better than nothing).
+    for (int y = height_ / 2; y < height_; ++y)
+      for (int x = 0; x < width_; ++x)
+        pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
+  }
 
   struct DrawItem {
     const Prim* prim;
@@ -259,13 +304,24 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
         case PrimKind::Point: ++points; break;
       }
     }
+    double hy_c = 89.0;
+    if (frame.camera.has_view_m) {
+      const int16_t* m = frame.camera.view_m;
+      double Nx = m[1], Ny = m[4], Nz = m[7];
+      double nlen = std::sqrt(Nx*Nx + Ny*Ny + Nz*Nz);
+      if (nlen > 1.0 && std::fabs(Ny) > 1e-6) {
+        Nx /= nlen; Ny /= nlen; Nz /= nlen;
+        hy_c = 89.0 - 90.0 * (-Nz / Ny);
+      }
+    }
     std::fprintf(stderr,
                  "[scene-render] frame %llu objects=%zu prims=%zu "
                  "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d "
-                 "\n",
+                 "sky=%06x water=%06x hy=%.1f\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
                  frame.prims.size(), fills, polys, lines, points,
-                 scale_, width_, height_);
+                 scale_, width_, height_,
+                 unsigned(sky & 0xFFFFFF), unsigned(water & 0xFFFFFF), hy_c);
   }
 }
 
