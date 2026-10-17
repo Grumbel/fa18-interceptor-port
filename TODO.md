@@ -177,6 +177,7 @@ Open:
 - [x] Horizon two-pass (fills then meshes); water palette bias toward blue
 - [x] Prim xyz capacity 40; dump sel/rgba; note HUD-in-view gap
 - [x] Horizon: hook \$44f46 (actual fill path); non-black sky/water fallback
+- [x] Horizon: sample sky/water/hy from low-res frame (blitter path, not \$60684)
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -425,3 +426,15 @@ COLOR0 (black).
 Fix: hook `$44f46` when d0=8,d3=0; capture verts from `$60684`.  If
 COLOR0 is black, fall back to mid-blue sky / teal water so the view is
 not a void.
+
+### Horizon is a blitter clear, not $60684 verts (2026-10-17)
+
+`$44994` → `$44f46` is a blitter plane-clear driven by edge state, not
+the `$60684` polygon buffer (that is for mesh `$44b50` fills).  Capturing
+`$60684` at `$44f46` was wrong — either empty or stale mesh verts — so the
+view was a flat fallback blue.
+
+Software renderer now **samples the original low-res frame** for sky
+(top band), water (bottom band), and horizon row (largest centre-column
+colour jump).  Colours match lowres; meshes still drawn on top from
+SceneFrame.  Observation only — original draw path unchanged.

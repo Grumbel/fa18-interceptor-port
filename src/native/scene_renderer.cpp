@@ -204,6 +204,66 @@ int32_t prim_depth(const Prim& p) {
 SoftwareSceneRenderer::SoftwareSceneRenderer(int scale)
     : scale_(std::max(1, std::min(8, scale))) {}
 
+// Sample sky/water colours and horizon row from the original low-res frame.
+// The game draws horizon via a blitter plane-clear ($44994 → $44f46), not
+// $60684 polygon verts — those are for mesh fills.  Observation only.
+struct HorizonSample {
+  uint32_t sky = 0xFF5080C0u;
+  uint32_t water = 0xFF206080u;
+  int horizon_y = 90;  // low-res row where sky meets water
+};
+
+HorizonSample sample_horizon(int view_rows) {
+  HorizonSample hs;
+  if (!native::g_machine) return hs;
+  const uint32_t* low = native::g_machine->frame_rgb();
+  if (!low) return hs;
+
+  auto avg_band = [&](int y0, int y1) -> uint32_t {
+    y0 = std::max(0, y0);
+    y1 = std::min(view_rows, y1);
+    if (y1 <= y0) return 0;
+    uint64_t r = 0, g = 0, b = 0;
+    int n = 0;
+    for (int y = y0; y < y1; ++y) {
+      for (int x = 40; x < 280; ++x) {  // skip edges
+        uint32_t c = low[size_t(y) * W + size_t(x)];
+        // Ignore pure black (uncleared) and very dark
+        if ((c & 0xFFFFFF) < 0x101010) continue;
+        r += (c >> 16) & 255;
+        g += (c >> 8) & 255;
+        b += c & 255;
+        ++n;
+      }
+    }
+    if (n < 10) return 0;
+    return 0xFF000000u | (uint32_t(r / n) << 16) | (uint32_t(g / n) << 8) | uint32_t(b / n);
+  };
+
+  uint32_t top = avg_band(0, view_rows / 3);
+  uint32_t bot = avg_band(view_rows * 2 / 3, view_rows);
+  if (top) hs.sky = top;
+  if (bot) hs.water = bot;
+
+  // Horizon row: largest colour jump along the centre column.
+  int best_y = view_rows / 2;
+  int best_score = -1;
+  for (int y = 2; y < view_rows - 2; ++y) {
+    uint32_t a = low[size_t(y - 1) * W + 160];
+    uint32_t b = low[size_t(y + 1) * W + 160];
+    int dr = int((a >> 16) & 255) - int((b >> 16) & 255);
+    int dg = int((a >> 8) & 255) - int((b >> 8) & 255);
+    int db = int(a & 255) - int(b & 255);
+    int score = dr * dr + dg * dg + db * db;
+    if (score > best_score) {
+      best_score = score;
+      best_y = y;
+    }
+  }
+  if (best_score > 50) hs.horizon_y = best_y;
+  return hs;
+}
+
 void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   rows_ = 200;
   if (native::g_machine) {
@@ -213,10 +273,23 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   width_ = W * scale_;
   height_ = rows_ * scale_;
 
-  // Clear the entire 3D view to sky.  Ground/sea Fill2d prims paint over it;
-  // missing horizon geometry stays sky-coloured (visible gap, not low-res).
-  uint32_t clear = frame.sky_rgba ? frame.sky_rgba : 0xFF4060A0u;
-  pixels_.assign(size_t(width_) * size_t(height_), clear);
+  // Reconstruct sky/water from the original low-res frame (matches lowres
+  // colours).  Fill2d horizon prims from $60684 are mesh-fill leftovers —
+  // prefer the sampled half-planes for the environment backdrop.
+  HorizonSample hs = sample_horizon(rows_);
+  if (frame.sky_rgba && (frame.sky_rgba & 0xFFFFFF) != 0 &&
+      (hs.sky & 0xFFFFFF) == 0)
+    hs.sky = frame.sky_rgba;
+  if (frame.ground_rgba && (frame.ground_rgba & 0xFFFFFF) != 0 &&
+      (hs.water & 0xFFFFFF) == 0)
+    hs.water = frame.ground_rgba;
+
+  pixels_.assign(size_t(width_) * size_t(height_), hs.sky);
+  // Water/ground below the sampled horizon line.
+  int hy = hs.horizon_y * scale_;
+  for (int y = hy; y < height_; ++y)
+    for (int x = 0; x < width_; ++x)
+      pixels_[size_t(y) * size_t(width_) + size_t(x)] = hs.water;
 
   struct DrawItem {
     const Prim* prim;
@@ -238,17 +311,18 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   std::stable_sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
     return a.depth > b.depth;  // far → near
   });
-  // Pass 1: environment fills only (sky under ground/sea).
+  // Environment (sky/water) already painted from low-res sample.
+  // Draw remaining Fill2d that are not horizon-class (sel 1/2), then meshes.
   for (const DrawItem& it : items) {
     if (it.prim->kind != PrimKind::Fill2d) continue;
+    if (it.prim->sel == 1 || it.prim->sel == 2) continue;  // horizon handled above
     draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
-              frame.sky_rgba, frame.ground_rgba);
+              hs.sky, hs.water);
   }
-  // Pass 2: meshes / lines / points on top of the horizon.
   for (const DrawItem& it : items) {
     if (it.prim->kind == PrimKind::Fill2d) continue;
     draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
-              frame.sky_rgba, frame.ground_rgba);
+              hs.sky, hs.water);
   }
 
   last_frame_id_ = frame.frame_id;
@@ -267,12 +341,13 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     std::fprintf(stderr,
                  "[scene-render] frame %llu objects=%zu prims=%zu "
                  "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d "
-                 "sky=%06x ground=%06x\n",
+                 "sky=%06x water=%06x hy=%d\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
                  frame.prims.size(), fills, polys, lines, points,
                  scale_, width_, height_,
-                 unsigned(frame.sky_rgba & 0xFFFFFF),
-                 unsigned(frame.ground_rgba & 0xFFFFFF));
+                 unsigned(hs.sky & 0xFFFFFF),
+                 unsigned(hs.water & 0xFFFFFF),
+                 hs.horizon_y);
   }
 }
 
