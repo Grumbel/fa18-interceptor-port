@@ -1,6 +1,7 @@
 // Scene capture API: read-only snapshot of the 3D scene spine for remaster
 // backends (hi-res software, future OpenGL).  Off by default — enable with
-// FA18_SCENE_CAPTURE=1 (or FA18_SCENE_DUMP=1, which implies capture).
+// FA18_SCENE_CAPTURE=1, FA18_SCENE_DUMP=1, or FA18_SCENE_RENDER=<scale>
+// (the last also installs SoftwareSceneRenderer and presents via frame_hires).
 //
 // Design: pure observation.  PC hooks / note_* calls extract state while the
 // original (recompiled or interpreted) draw path runs unchanged.  Cycle count,

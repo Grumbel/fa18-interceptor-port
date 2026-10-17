@@ -1,4 +1,5 @@
 #include "native/scene_frame.hpp"
+#include "native/scene_renderer.hpp"
 #include "amiga/machine.hpp"
 #include "native/runtime.hpp"
 
@@ -21,7 +22,10 @@ void check_env() {
   if (env_checked) return;
   env_checked = true;
   dump_on = std::getenv("FA18_SCENE_DUMP") != nullptr;
-  capture_on = dump_on || std::getenv("FA18_SCENE_CAPTURE") != nullptr;
+  // FA18_SCENE_RENDER implies capture so the software renderer receives frames.
+  capture_on = dump_on || std::getenv("FA18_SCENE_CAPTURE") != nullptr
+               || std::getenv("FA18_SCENE_RENDER") != nullptr;
+  ensure_software_renderer();
 }
 
 const char* kind_name(PrimKind k) {

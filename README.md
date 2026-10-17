@@ -112,6 +112,11 @@ All off by default; the original behaviour is untouched.
 
 - `--hires N`: render the 3D view at N times resolution (HUD and cockpit
   stay low-res).
+- `FA18_SCENE_RENDER=<N>`: alternative software path — captures the 3D
+  scene spine into a `SceneFrame`, depth-sorts objects by distance, and
+  rasterizes the captured prims at N× resolution (mesh-coloured).  The
+  original draw path is unchanged; this only observes.  Implies scene
+  capture.  `--hires` takes priority if both are set.
 - `--analog`: left stick flies analog (dead zone, proportional pitch and
   rudder) instead of the thresholded digital directions.
 - **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog

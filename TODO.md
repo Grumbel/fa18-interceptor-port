@@ -162,6 +162,8 @@ Open:
       - distance = $5ae38 (hypot) at object dispatch; confirmed at render select
       - ISceneRenderer + set_renderer(); called from end_frame()
 - [x] Scene capture: prim → object link (`Prim::object_index`, `ObjectDraw::prim_count`)
+- [x] Software ISceneRenderer: depth-sort by distance, rasterize prims
+      (`FA18_SCENE_RENDER=<scale>`, presents via frame_hires)
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -270,3 +272,20 @@ code path and cycle counts are unchanged.
 stamp `Prim::object_index` and increment `ObjectDraw::prim_count`.  Enables
 an ISceneRenderer to group geometry by mesh/distance without parsing draw
 order.  Still observation-only.
+
+### Software scene renderer (2026-10-17)
+
+Concrete `ISceneRenderer` in `scene_renderer.cpp`:
+
+- Enable: `FA18_SCENE_RENDER=<scale>` (1..8); implies capture.
+- On each completed `SceneFrame`: depth-sort objects by `distance`
+  (far → near, painter's algorithm), rasterize attributed prims
+  (poly / line / point) into an RGB buffer coloured by `mesh_id`.
+- Presentation: when active and a frame exists, `Machine` presents via
+  `frame_hires` (same host path as `--hires`).  `--hires` still takes
+  priority if both are set.
+- Stats: `FA18_SCENE_RENDER_STATS=1` logs object/prim counts per frame.
+- Still observation-only; original cycles and memory are untouched.
+
+Next: richer colours from live plane ops, optional HUD composite, or
+an OpenGL `ISceneRenderer` using the same `SceneFrame`.

@@ -4,6 +4,7 @@
 #include "amiga/hunk.hpp"
 #include "native/runtime.hpp"
 #include "native/scene_frame.hpp"
+#include "native/scene_renderer.hpp"
 
 #include <algorithm>
 #include <cstdarg>
@@ -572,7 +573,13 @@ void Machine::end_of_frame() {
   if (host_) {
     if (hires_scale > 0 && remaster::compose(*this, hires_fb_))
       host_->frame_hires(hires_fb_.data(), FB_W * hires_scale, FB_H * hires_scale);
-    else
+    else if (scene::software_render_enabled()) {
+      int sw = 0, sh = 0;
+      if (scene::compose_software(hires_fb_, sw, sh))
+        host_->frame_hires(hires_fb_.data(), sw, sh);
+      else
+        host_->frame(fb_.data());
+    } else
       host_->frame(fb_.data());
     host_->audio(audio_buf_.data(), audio_buf_.size() / 2);
   }
