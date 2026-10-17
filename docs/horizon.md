@@ -133,12 +133,12 @@ while waiting (high/low halfword max tracking).
 
 ### Four plane blits
 
-| # | Dest | BLTCON0 | When `$5ab93==0` | When `$5ab93≠0` |
-|---|------|---------|------------------|-----------------|
-| 1 | `a2@+0 + 40` | `$0100` | clear plane 0 | same |
-| 2 | `a2@+4 + 40` | `$03FA` | plane-1 special | same |
-| 3 | `a2@+8 + 40` | `$0100` | clear plane 2 | `$03FA` |
-| 4 | `a2@+C + 40` | `$0100` | clear plane 3 | same |
+| # | Dest (table) | BLTCON0 | `$5ab93==0` | `$5ab93≠0` | Display plane |
+|---|--------------|---------|-------------|------------|---------------|
+| 1 | `a2@+0 + 40` | `$0100` | clear | clear | 3 |
+| 2 | `a2@+4 + 40` | `$03FA` | ones | ones | **2** |
+| 3 | `a2@+8 + 40` | `$0100` / `$03FA` | clear | ones | 1 |
+| 4 | `a2@+C + 40` | `$0100` | clear | clear | 0 |
 
 BLTCON0 values and effective fill (this port’s blitter maps the enable
 nibble so bit8 = DEST; that matches observed free1 colours even though
@@ -151,23 +151,46 @@ it differs from a strict HRM reading of `$0100` / `$03FA`):
 
 LF=`$FA` with A=`$FFFF` yields all-ones regardless of B and C (every
 minterm term that has `a` is set, and `a` is 1).  Blit 1 writes BLTADAT
-=`$FFFF` before the plane-1 `$03FA` pass, so plane 1 becomes solid 1s.
+=`$FFFF` before the `$03FA` pass.
 
-free1 (`$5ab93=0`) therefore ends `$44994` with:
+### Plane table vs display plane
 
-| Plane | Content after `$44994` |
-|-------|------------------------|
-| 0 | 0 |
-| 1 | 1 (solid) |
-| 2 | 0 |
-| 3 | 0 |
+`$5a9ae` holds four long pointers.  Display plane *p* is table entry
+`3−p` (entry 3 = lowest address = BPL1; see `hires.cpp` `plane_ptr`):
 
-Playfield index with only plane 1 set = **2**, not the observed sky (6)
-or ground (4).  Plane 2 must be painted later (terrain / meshes).  The
-four `$44994` blits are full-view rectangles — they do **not** encode a
-horizon edge.  The visible free1 split is produced downstream when
-terrain / `$44b50` clears plane 1 under ground geometry while plane 2 is
-set in both bands (sky 6 = planes 1+2, ground 4 = plane 2 only).
+| Blit # | Table entry | BLTCON0 free1 | Display plane | After `$44994` |
+|--------|-------------|---------------|---------------|----------------|
+| 1 | 0 (`a2+0`) | `$0100` clear | 3 | 0 |
+| 2 | 1 (`a2+4`) | `$03FA` ones | **2** | **1** |
+| 3 | 2 (`a2+8`) | `$0100` clear | 1 | 0 |
+| 4 | 3 (`a2+C`) | `$0100` clear | 0 | 0 |
+
+Result: only **display plane 2** is set → playfield index **4** =
+ground (`#115511`).  Sky index **6** (planes 1+2) needs a later **SET
+of display plane 1** over the upper view.
+
+`$44b50` maps `$5a9df` mask bits to table offsets `d0 = 12,8,4,0` for
+bits 0–3 → display planes 0–3.  So mask bit1 → display plane 1.
+
+### free1 plane-ops model (`$5a9de` / `$5a9e0` / `$5ac4c`)
+
+Already captured in `hires.cpp` `poly_ops()`:
+
+| Word | Role |
+|------|------|
+| `$5a9de` bits 0–3 | plane mask (which display planes the fill touches) |
+| `$5a9e0` ≥ 0 | bit *b* set → SET plane *b*; clear → CLR plane *b* |
+| `$5a9e0` < 0 | SET/CLR taken from `$5ac4c` colour bits instead |
+| `$5a9e2` bit *b* | XOR that plane instead of set/clear |
+
+`$3f284` free1 low-detail (`$5aaa8=0`) stores mask=`2`, w1=`2` → **SET
+display plane 1** on every terrain poly.  High-detail (`$5aaa8≠0`) stores
+mask=`15`, w1=`−1` with `$5ac4c=6` → SET planes 1+2, CLR 0+3 (colour 6).
+
+Either way, terrain polys paint **sky (index 6)** over the ground-4
+backdrop.  Regions not covered stay ground.  The visible horizon is the
+silhouette of those sky-coloured terrain/mesh fills — not a blitter edge
+from `$44994`.
 
 ### After the plane blits
 

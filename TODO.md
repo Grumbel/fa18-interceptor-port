@@ -586,17 +586,15 @@ See docs/horizon.md "Deeper free1 findings".
 Disassembled `$44994` end-to-end.  Four full-view blits into `$5a9ae`
 planes (dest = plane_ptr+40, BLTSIZE = `$5ac7c<<6|20`):
 
-| # | Plane | BLTCON0 (`$5ab93=0`) | Effect |
-|---|-------|----------------------|--------|
-| 1 | 0 | `$0100` | zero-fill (also sets BLTADAT=`$FFFF`) |
-| 2 | 1 | `$03FA` | **one-fill** (LF=`$FA` + A=`$FFFF` → solid 1s) |
-| 3 | 2 | `$0100` | zero-fill |
-| 4 | 3 | `$0100` | zero-fill |
+| # | Table | Display plane | BLTCON0 | Effect |
+|---|-------|---------------|---------|--------|
+| 1 | 0 | 3 | `$0100` | zero (sets BLTADAT=`$FFFF`) |
+| 2 | 1 | **2** | `$03FA` | **ones** → ground index 4 |
+| 3 | 2 | 1 | `$0100` | zero |
+| 4 | 3 | 0 | `$0100` | zero |
 
-Then `jsr $42f6a`; `$5ab93` only gates post-clip `$4506e`.  After
-`$44994` free1 has plane1=1, planes 0/2/3=0 (index 2 only) — sky/ground
-indices 6/4 require later plane-2 sets + plane-1 clears.  Docs:
-horizon.md “Blitter fill”.
+Then `jsr $42f6a`.  free1 backdrop = index **4** (ground).  Sky (6)
+comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
 
 ### `$03FA` / `$3f284` follow-up (2026-10-17)
 
@@ -605,6 +603,9 @@ horizon.md “Blitter fill”.
 - [x] `$3f284` prologue: `link a6,#-70`; always called when `$5ab93=0`;
       altitude from `-$5ad70`; writes `$5a9de` plane flags used by `$44b50`;
       LOD split at scaled altitude 1016; `$5ac4c=6` colour/mode.
-- [ ] Still open: which `$3f284` / `$44b50` ops set **plane 2** (needed for
-      both sky=6 and ground=4) and which clear **plane 1** under terrain.
-- [ ] Cockpit / open-water case where `$5ab93≠0` and sea-quad survives clip.
+- [x] **Plane table mapping corrected**: `$44994` `$03FA` fills table
+      entry 1 = **display plane 2** → free1 backdrop index **4** (ground).
+      Sky (6) = later SET of display plane 1 via `$3f284`/`$44b50` plane-ops
+      (mask bit1 / colour 6).  Model matches `hires.cpp` `poly_ops()`.
+- [ ] Still open: exact tile geometry in `$3f284` body (which screen
+      regions get the plane-1 SET); cockpit / `$5ab93≠0` sea-quad survival.
