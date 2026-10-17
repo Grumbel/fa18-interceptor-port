@@ -161,6 +161,7 @@ Open:
       - mesh_id = type_index ($5acac / $36094 key); mesh_ptr = $5ad2a after LOD
       - distance = $5ae38 (hypot) at object dispatch; confirmed at render select
       - ISceneRenderer + set_renderer(); called from end_frame()
+- [x] Scene capture: prim → object link (`Prim::object_index`, `ObjectDraw::prim_count`)
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -262,3 +263,10 @@ timing or game memory:
 HD/hires continues to use its own PC hooks; it can later switch to
 consuming `SceneFrame` through `ISceneRenderer` if desired. Original
 code path and cycle counts are unchanged.
+
+### Scene capture prim→object link (2026-10-17)
+
+`note_object` sets the current object cursor; subsequent `note_prim` calls
+stamp `Prim::object_index` and increment `ObjectDraw::prim_count`.  Enables
+an ISceneRenderer to group geometry by mesh/distance without parsing draw
+order.  Still observation-only.
