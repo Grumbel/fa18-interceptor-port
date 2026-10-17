@@ -167,6 +167,8 @@ Open:
 - [x] Software scene renderer: composite HUD/cockpit from low-res frame
 - [x] Non-mesh fills (horizon/sky/ground): capture as Fill2d, leave to low-res
       composite; SceneFrame opens at game_frame; on_line captured
+- [x] Prim::rgba from live plane-ops + palette at capture; software renderer
+      uses it instead of mesh_id hash colours
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -314,3 +316,13 @@ look.  Mesh prims are depth-sorted and overlaid.  `FA18_SCENE_RENDER_FILLS=1`
 draws Fill2d in the software path for debugging.
 
 `on_line` also records into SceneFrame (was missing).
+
+### Live prim colours (2026-10-17)
+
+`Prim::rgba` is stamped at capture time from the live plane-ops
+(`$5a9de`/`$5a9e0`/`$5ac4c`) plus COLOR00..31.  Software renderer prefers
+`rgba` over the mesh_id hash.  Copy-plane ops (`$45014`) leave rgba=0
+(depends on destination pixel).  Horizon uses COLOR0 as an approximation.
+
+Also fully restored Fill2d / horizon / on_line capture into SceneFrame
+(previous commit only landed the game_frame begin_frame hook).

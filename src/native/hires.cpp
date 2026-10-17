@@ -127,6 +127,18 @@ inline void put(Layer& L, int x, int y, const PlaneOps& o) {
   L.cover[size_t(y / L.S) * W + size_t(x / L.S)] = 1;
 }
 
+// Resolve the flat colour a plane-op would write onto a black pixel, using
+// the live COLOR registers.  Used to stamp Prim::rgba at capture time.
+inline uint32_t rgba_from_ops(const PlaneOps& o) {
+  if (o.cp_src >= 0) return 0;  // depends on destination pixel; unknown here
+  uint8_t idx = uint8_t((0 & ~o.clr) | o.set) ^ o.xr;
+  uint16_t c12 = native::g_machine->color_reg(idx & 31);
+  uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+  r |= r << 4; g |= g << 4; b |= b << 4;
+  return 0xFF000000u | (r << 16) | (g << 8) | b;
+}
+
+
 
 // (Re)initialise the layer from the current low-res bitmap.  Called when the
 // frame starts and again just before the first primitive: whatever the game
@@ -265,6 +277,7 @@ void on_polygon() {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Poly3d;
     pr.shift = int8_t(shift);
+    pr.rgba = rgba_from_ops(poly_ops());
     int m = n > 16 ? 16 : n;
     pr.n = uint8_t(m);
     for (int i = 0; i < m; ++i) {
@@ -295,9 +308,25 @@ void on_fill2d() {
   // the fill of a 3D polygon ($38c0c calls $44b50 from $392cc) was rendered
   // from the 3D data already; anything else is a 2D polygon of its own
   if (rd32(native::g_machine->cpu.a[7]) == 0x392d2) return;
-  if (!first_prim()) return;
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
+  // Screen-space fill (not a mesh).  Captured for SceneFrame; software
+  // renderer leaves these to the low-res composite by default.
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Fill2d;
+    int m = n > 16 ? 16 : n;
+    pr.n = uint8_t(m);
+    pr.object_index = -1;
+    pr.rgba = rgba_from_ops(poly_ops());
+    for (int i = 0; i < m; ++i) {
+      pr.xyz[i][0] = int16_t(rd16(0x60686 + 4u * uint32_t(i)));
+      pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));
+      pr.xyz[i][2] = 0;
+    }
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   std::vector<V2> sp;
   for (int i = 0; i < n; ++i)
     sp.push_back({double(int16_t(rd16(0x60686 + 4u * uint32_t(i)))) + 0.5,
@@ -314,9 +343,28 @@ void on_fill_horizon() {
   // is read from d0, not from the flags (recompiled code keeps those lazily).
   if (native::g_machine->cpu.d[0] != 0) return;
   if (rd8(0x5ab93) == 0) return;            // no second colour: sky fill only
-  if (!first_prim()) return;
   int n = int16_t(rd16(0x60684));
   if (n < 3 || n > 60) return;
+  // Horizon / sky / ground / sea — screen-space plane fills, not meshes.
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Fill2d;
+    int m = n > 16 ? 16 : n;
+    pr.n = uint8_t(m);
+    pr.object_index = -1;
+    pr.sel = 1;  // horizon-class
+    uint16_t c12 = native::g_machine->color_reg(0);
+    uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+    r |= r << 4; g |= g << 4; b |= b << 4;
+    pr.rgba = 0xFF000000u | (r << 16) | (g << 8) | b;
+    for (int i = 0; i < m; ++i) {
+      pr.xyz[i][0] = int16_t(rd16(0x60686 + 4u * uint32_t(i)));
+      pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));
+      pr.xyz[i][2] = 0;
+    }
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   std::vector<V2> sp;
   for (int i = 0; i < n; ++i)
     sp.push_back({double(int16_t(rd16(0x60686 + 4u * uint32_t(i)))) + 0.5,
@@ -338,6 +386,7 @@ void on_line_noclip() {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Line;
     pr.n = 2;
+    pr.rgba = rgba_from_ops(line_ops());
     for (int i = 0; i < 2; ++i) {
       pr.xyz[i][0] = int16_t(p[i].x);
       pr.xyz[i][1] = int16_t(p[i].y);
@@ -374,6 +423,7 @@ void on_point(int sel) {
     pr.kind = scene::PrimKind::Point;
     pr.n = 1;
     pr.sel = int16_t(d7);
+    pr.rgba = rgba_from_ops(line_ops());
     pr.xyz[0][0] = x;
     pr.xyz[0][1] = y;
     pr.xyz[0][2] = z;
@@ -413,11 +463,23 @@ void on_point(int sel) {
 }
 
 void on_line() {
-  if (!first_prim()) return;
   V3 a{double(int16_t(rd16(0x61886))), double(int16_t(rd16(0x61888))), double(int16_t(rd16(0x6188a)))};
   V3 b{double(int16_t(rd16(0x6188c))), double(int16_t(rd16(0x6188e))), double(int16_t(rd16(0x61890)))};
   auto c = clip_near({a, b}, 1.0);
   if (c.size() != 2) return;
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Line;
+    pr.n = 2;
+    pr.rgba = rgba_from_ops(line_ops());
+    for (int i = 0; i < 2; ++i) {
+      pr.xyz[i][0] = int16_t(c[i].x);
+      pr.xyz[i][1] = int16_t(c[i].y);
+      pr.xyz[i][2] = int16_t(c[i].z);
+    }
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   draw_line(*cur, project(c[0]), project(c[1]), line_ops());
   ++stat_line;
 }

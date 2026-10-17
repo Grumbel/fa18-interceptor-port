@@ -108,7 +108,8 @@ void fill_polygon(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
 
 void draw_prim(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
                int S, int Wp, int Hp, const Prim& p, uint16_t mesh_id) {
-  uint32_t c = colour_for(mesh_id, p.kind);
+  // Prefer live palette colour stamped at capture; fall back to mesh_id hash.
+  uint32_t c = p.rgba ? p.rgba : colour_for(mesh_id, p.kind);
   if (p.kind == PrimKind::Poly3d) {
     if (p.n < 3) return;
     int shift = int(p.shift) & 31;

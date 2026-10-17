@@ -57,6 +57,10 @@ struct Prim {
   int8_t shift = 0;          // poly: $61284 shift applied to stored verts
   int16_t sel = 0;           // point: d7 size; Fill2d: 1 = horizon-class
   int16_t object_index = -1; // index into SceneFrame::objects (-1 = non-mesh)
+  // Live colour at capture time (ARGB).  0 = unknown → consumer may fall
+  // back to mesh_id hash.  Resolved from plane-ops + COLOR00..31 when the
+  // original draw hook fires — not a mesh attribute.
+  uint32_t rgba = 0;
   int16_t xyz[16][3];        // up to 16 verts; Fill2d uses x,y and z=0
 };
 
