@@ -572,3 +572,11 @@ free1 sky/ground = playfield idx 6 / 4 (`#003366` / `#115511`).
 Sea poly path still dead in free1.  Ground comes from `$3f284` terrain +
 `$44b50` fills (`$2506e` with d3 from `$5a9e0`), not `$42f6a`.
 See docs/horizon.md "Deeper free1 findings".
+
+### Attitude / camera RE (2026-10-17)
+
+- free1 = external (`$5aa7d=1`); camera ≠ player.
+- Cockpit camera: `$5ad5* = -eye`, eye = player_pos + R*(seat offset).
+- `$5aed0` has two builders: 2-angle external (`$22b6e`) vs 3-angle from
+  `$5ad82/86/8a` (`$22bbe`); both row-scaled by `$5ad36..3a`.
+- See docs/horizon.md “Camera position” and “Two builders for $5aed0”.

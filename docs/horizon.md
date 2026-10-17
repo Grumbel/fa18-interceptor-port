@@ -403,3 +403,58 @@ Even when `$5aed0` is level, observed sky/ground split is at **y≈46**, not 90.
 | External view | 28800 | `$5ad8c/$5ad8e`, `look_angles` |
 | Matrix builder after `lsr #3` | 3600 (=28800/8) | `$22b6e` inputs |
 | Player table angles | 7200 | matrix builders A/B in transform docs |
+
+## Camera position (`$2f4a6`) — cockpit vs external
+
+### External (`$5aa7d ≠ 0`)
+
+```
+call $2f220
+$5ad74/$78/$7c ← $5af36/$3a/$3e   ; eye from external tracker
+read back $5ad5a/$5e/$62           ; already maintained elsewhere
+```
+
+Camera is independent of the player record (matches free1 dumps).
+
+### Cockpit (`$5aa7d == 0`)
+
+Player record `a2 = $5b47c + $5abd6`:
+
+1. Local eye offset in aircraft frame from mode byte `a2+98`  
+   (e.g. `(0,4,18)` or `(0,5,20)` or `(0,1,−5)`).
+2. Rotate offset by the 3×3 words at `a2+146..162` (`mulsw`, `asr #6`).
+3. World eye = player position (`a2+20/24/28`) + rotated offset  
+   → stored at `$5ad74/$78/$7c`.
+4. `$5ad5a/$5e/$62` = **negated** world eye  
+   (X/Z of player contrib masked with `$3FFFFF` before add).
+
+So in cockpit, `$5ad5*` is `-eye_world`, not a free camera.
+
+## Two builders for `$5aed0`
+
+| Path | Entry | Angles | Builder | When |
+|------|-------|--------|---------|------|
+| External-style | `$4229c` | `$5ad8c`, `$5ad8e` (2) | `$22b6e` then `$42d8c` | free1 external |
+| Attitude-style | `$2247a` | `$5ad82`, `$5ad86`, `$5ad8a` (3) | `$22bbe` then `$42d8c` | after player angles → `$5ad80` |
+
+`$5ad80` receives player `+$66/$68/$6A` (or derived view angles) on the
+cockpit / alternate path (`$2237e`, `$22472`).
+
+`$5aee2`: 3-angle matrix from player `+$66` when `$5aa7d==0` (`$22326`).  
+`$5af18`: another 3-angle matrix (HUD / secondary, `$22450`).
+
+Both `$5aed0` builders finish with **row scale** `$42d8c` using  
+`$5ad36/$5ad38/$5ad3a` (free1: 168, 252, 128).
+
+## Player record (relevant fields)
+
+| Offset | Role |
+|--------|------|
+| +$14/$18/$1c | World position X/Y/Z |
+| +$66/$68/$6A | Attitude angles (table units) |
+| +$80 | Body matrix A |
+| +$92 | Body matrix B |
+| +$92 region +146 | Eye-offset rotation basis (cockpit) |
+| +98 | View/seat mode byte (selects eye offset) |
+
+`$5abd6` = index × stride into `$5b47c` (0 for the free1 player).
