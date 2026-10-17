@@ -196,3 +196,28 @@ Open:
     --frames around 2900) and compare leftover registers / CCR / a6 frame after the
     projection. Likely a leftover (d2/d3/d7 high words) or a marker-routine side
     effect that only the menu path exercises.
+
+### project_screen_body cycle timing (follow-up)
+
+FA18_VERIFY_ALL=1 + FA18_NATIVE_ONLY=project_438a0,project_438a8 on menu1
+(to frame 3100) reports 0 mismatches for every call. free1 remains bit-
+identical with the body enabled. Therefore the pure computational result
+(registers + memory) of the native body is correct.
+
+The remaining menu1 ram-hash divergence is caused by **emulated cycle
+count**: invoke_native does not advance `cpu.cycles` by the cost of the
+original instructions, so the NTSC scanline scheduler / copper / IRQs
+shift relative to game code. free1 is insensitive; menu1 (many more
+projection calls in the menu loop) is not.
+
+Fix options (pick one):
+1. Keep the trampoline to `$438b6` (current, zero risk).
+2. Measure average cycles of the original body (path-dependent: early
+   fail vs full project + marker jsr) and add that to `cpu.cycles` at
+   the end of `project_screen_body` (or in a wrapper). Rough estimate
+   ~400–800 cycles; needs calibration against a --native off run that
+   records entry/exit cycle deltas.
+3. Teach `Machine::invoke_native` a per-Def cycle cost (or auto-profile
+   the first N calls of each native and then inject the average).
+
+Until (2) or (3) is done the trampoline stays.

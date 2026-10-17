@@ -284,11 +284,16 @@ static void project_screen_body() {
 static void project_4389c() { D(7) = uint32_t(int32_t(int8_t(-5))); project_screen_body(); }
 static void project_438a0() {
   // Native body still diverges on menu1@7000; trampoline to shared original body.
+  // Root cause (2026-10-17): state after call is identical (FA18_VERIFY_ALL=1 shows
+  // 0 mismatches for every call), but native runs in ~0 emulated cycles while the
+  // original body burns hundreds; the resulting scanline/IRQ timing shift diverges
+  // menu1 ram-hash from ~frame 2900. free1 is insensitive to the shift.
   setw(7, rd16(0x5adb0));
   call_c(0x438b6);
 }
 static void project_438a8() {
-  // Native body still diverges on free1@3300 disc path; trampoline to original.
+  // Same cycle-timing issue as $438a0 (see above). Trampoline preserves exact
+  // cycle cost of the original body + marker.
   D(7) = uint32_t(int32_t(int8_t(-4)));
   call_c(0x438b6);
 }
