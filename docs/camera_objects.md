@@ -258,3 +258,56 @@ hunk zeros).
 | Mesh verts | local + `$5ae28`/`$5ae22` |
 | `rot_out` | × `$5aed0` → view space |
 | `project_screen_body` | view → screen |
+
+## Scenario draw list `$63c7a`
+
+Built in `$310c0` / expand path when `$5ab5c ≠ 0` and `$5ab5e == 0`:
+
+```
+$63c7a ← empty ($FFFF)
+for i in 0..15:
+  f = scenario[i].byte1
+  if (f & 0x40) and (f & 4):
+    append word i
+    append $FFFF as running terminator
+```
+
+Draw (`$2fc14`) walks with index `$5aca2` from 0, steps +2, until
+`$FFFF`.  After that pass, `$5aca2 ← $5aca8` and the sorted `$649ba`
+pass begins (24-byte stride).
+
+`$5aca4` / `$5aca6` / `$5aca8` are alternate list bases/indices set by
+`flow.cpp` when switching list modes.
+
+## More scenario fields (from ops / draw)
+
+| Offset | Use |
+|--------|-----|
+| +1 | flags: bit6 (`$40`) + bit2 (`$4`) → on `$63c7a`; bit4 dirty |
+| +20/24/28 | world position |
+| +61 | byte: LOD / priority bias (`op_35884`) |
+| +62/66/70 | longs: direction or aim vector (dot with eye-relative pos) |
+| +78 | word triple store (lattice intermediate) |
+| +110 | word: if ≥ 256, vectors at +62 are not `asr #8` |
+| +164 | base for subdivision ops (`op_352c4` / `$353ba`) |
+
+## Eye-relative geometry outside the mesh path
+
+`$5ad74/$78/$7c` (world eye from `$2f4a6`) is subtracted from object
+world pos in targeting / visibility code (`op_35884`):
+
+```
+d3/d4/d5 = obj(+20/24/28) − $5ad74/$78/$7c
+optional asr #8
+dot with obj(+62/66/70) → front/back tests, range tables at $650c4
+```
+
+So **draw** uses `$5ae28` (camera-relative, LOD-scaled) while **logic**
+often uses `$5ad74` (true eye) against raw scenario positions.
+
+## `$30064` scene_build
+
+Chooses section/table/bitmap bases from view flags (`$5ab5c`, `$5aa7e`,
+altitude `$5ad5e`), seeds angle words from `$5ac44/$46` or `$5ac40/$42`,
+clears sort buffer `$5d684`, then walks a section script to emit entries
+that `$3127c` depth-sorts into `$649ba`.
