@@ -441,7 +441,7 @@ public:
         return;
       }
       int mesh_index = 0;
-      float yaw = 0.6f, pitch = 0.35f, zoom = 1.0f;
+      float yaw = 0.0f, pitch = 1.2f, zoom = 1.0f;  // top-down
       int axis_cd_v = 0;
       bool view_open = true;
       auto text_fn = +[](std::vector<uint32_t>& buf, int bw, int bh, int x, int y,

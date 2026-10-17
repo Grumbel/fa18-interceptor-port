@@ -28,42 +28,60 @@ void add_edge(Mesh& m, int a, int b) {
   m.edges.emplace_back(a, b);
 }
 
-// Wireframe silhouette: body verts (low |Y|) in XZ angular order, plus fins.
-// $800C sublists are shared triangle strips for a solid mesh and look wrong
-// as a sparse offline wireframe when applied across different models.
+// Wireframe: 2-D convex hull of body verts in XZ, plus fins.
+// Angular sort of inner ring + wing tips produces a star; convex hull of the
+// standard 10-vert aircraft cross is the nose/wing/tail diamond.
 void build_silhouette_edges(Mesh& m) {
   const int n = int(m.vx.size());
   if (n < 3) return;
-  struct Item {
-    int i;
-    float ang;
+  struct Pt {
+    int i, x, z;
   };
-  std::vector<Item> body;
-  body.reserve(size_t(n));
+  std::vector<Pt> body;
   for (int i = 0; i < n; ++i) {
     if (std::abs(int(m.vy[size_t(i)])) <= 80)
-      body.push_back({i, std::atan2(float(m.vz[size_t(i)]), float(m.vx[size_t(i)]))});
+      body.push_back({i, int(m.vx[size_t(i)]), int(m.vz[size_t(i)])});
   }
   if (body.size() < 3) {
-    // Fallback: sequential ring
     for (int i = 0; i < n; ++i) add_edge(m, i, (i + 1) % n);
     return;
   }
-  std::sort(body.begin(), body.end(), [](const Item& a, const Item& b) { return a.ang < b.ang; });
-  for (size_t i = 0; i < body.size(); ++i)
-    add_edge(m, body[i].i, body[(i + 1) % body.size()].i);
-  // Fins / verticals: high-|Y| verts → nearest body vert in XZ
+  std::sort(body.begin(), body.end(),
+            [](const Pt& a, const Pt& b) { return a.x < b.x || (a.x == b.x && a.z < b.z); });
+  auto cross = [](const Pt& o, const Pt& a, const Pt& b) {
+    return int64_t(a.x - o.x) * (b.z - o.z) - int64_t(a.z - o.z) * (b.x - o.x);
+  };
+  std::vector<Pt> lower, upper;
+  for (auto& p : body) {
+    while (lower.size() >= 2 && cross(lower[lower.size() - 2], lower.back(), p) <= 0)
+      lower.pop_back();
+    lower.push_back(p);
+  }
+  for (auto it = body.rbegin(); it != body.rend(); ++it) {
+    while (upper.size() >= 2 && cross(upper[upper.size() - 2], upper.back(), *it) <= 0)
+      upper.pop_back();
+    upper.push_back(*it);
+  }
+  std::vector<int> hull;
+  for (size_t i = 0; i + 1 < lower.size(); ++i) hull.push_back(lower[i].i);
+  for (size_t i = 0; i + 1 < upper.size(); ++i) hull.push_back(upper[i].i);
+  if (hull.size() < 3) {
+    for (int i = 0; i < n; ++i) add_edge(m, i, (i + 1) % n);
+    return;
+  }
+  for (size_t i = 0; i < hull.size(); ++i)
+    add_edge(m, hull[i], hull[(i + 1) % hull.size()]);
+  // Fins: high-|Y| → nearest hull vert
   for (int i = 0; i < n; ++i) {
     if (std::abs(int(m.vy[size_t(i)])) <= 80) continue;
-    int best = body[0].i;
-    int best_d = INT_MAX;
-    for (auto& b : body) {
-      int dx = int(m.vx[size_t(i)]) - int(m.vx[size_t(b.i)]);
-      int dz = int(m.vz[size_t(i)]) - int(m.vz[size_t(b.i)]);
+    int best = hull[0], best_d = INT_MAX;
+    for (int h : hull) {
+      int dx = int(m.vx[size_t(i)]) - int(m.vx[size_t(h)]);
+      int dz = int(m.vz[size_t(i)]) - int(m.vz[size_t(h)]);
       int d = dx * dx + dz * dz;
       if (d < best_d) {
         best_d = d;
-        best = b.i;
+        best = h;
       }
     }
     add_edge(m, i, best);

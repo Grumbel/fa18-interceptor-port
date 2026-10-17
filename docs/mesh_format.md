@@ -564,6 +564,16 @@ In-game: debug menu (**Insert** / controller Back) → **Mesh viewer**
 (`src/native/mesh_viewer.cpp`) loads the same clusters and draws an
 orbitable cyan wireframe.
 
+
+### Offline wireframe caveat
+
+Static CODE-hunk clusters (`$0100/$0200`) are **coarse LOD / radar hulls**
+(10-vert aircraft cross, not cockpit-detail meshes).  Buildings and full
+in-flight models live in **overlays** loaded at runtime (`$00C3xxxx` live
+addresses) and are not all present as self-contained on-disk records.
+Convex-hull edges of the body verts give the plan-view diamond (nose /
+wings / tail); angular sort of the same points produced a star.
+
 ### Aircraft topology (e.g. `$00C39738`)
 
 ```

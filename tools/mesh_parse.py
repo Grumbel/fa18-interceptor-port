@@ -135,22 +135,35 @@ def parse_record(data: bytes, start: int, end: int, hunk_index: int, file_base: 
             break
         scan += 2
 
-    # Silhouette wireframe (XZ angular order of low-|Y| body verts).
-    # Shared $800C triangle lists live outside each record and are for solid
-    # draws; they look wrong when reused as offline wireframe across models.
+    # Convex hull of body verts in XZ (not angular sort — that stars).
     import math
-    body = [(i, v) for i, v in enumerate(verts) if abs(v[1]) <= 80]
+    body = [(i, v[0], v[2]) for i, v in enumerate(verts) if abs(v[1]) <= 80]
     edges: list[tuple[int, ...]] = []
     if len(body) >= 3:
-        body_sorted = sorted(body, key=lambda iv: math.atan2(iv[1][2], iv[1][0]))
-        idxs = [i for i, _ in body_sorted]
-        for a, b in zip(idxs, idxs[1:] + idxs[:1]):
-            edges.append((a, b))
-        for i, v in enumerate(verts):
-            if abs(v[1]) <= 80:
-                continue
-            near = min(body, key=lambda iv: (iv[1][0] - v[0]) ** 2 + (iv[1][2] - v[2]) ** 2)[0]
-            edges.append((i, near))
+        pts = sorted(body, key=lambda p: (p[1], p[2]))
+        def cross(o, a, b):
+            return (a[1] - o[1]) * (b[2] - o[2]) - (a[2] - o[2]) * (b[1] - o[1])
+        lower, upper = [], []
+        for p in pts:
+            while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+                lower.pop()
+            lower.append(p)
+        for p in reversed(pts):
+            while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+                upper.pop()
+            upper.append(p)
+        hull = [p[0] for p in lower[:-1] + upper[:-1]]
+        if len(hull) >= 3:
+            for a, b in zip(hull, hull[1:] + hull[:1]):
+                edges.append((a, b))
+            for i, v in enumerate(verts):
+                if abs(v[1]) <= 80:
+                    continue
+                near = min(hull, key=lambda h: (verts[h][0] - v[0]) ** 2 + (verts[h][2] - v[2]) ** 2)
+                edges.append((i, near))
+        else:
+            for i in range(len(verts)):
+                edges.append((i, (i + 1) % len(verts)))
     else:
         for i in range(len(verts)):
             edges.append((i, (i + 1) % len(verts)))
