@@ -438,3 +438,8 @@ Software renderer now **samples the original low-res frame** for sky
 (top band), water (bottom band), and horizon row (largest centre-column
 colour jump).  Colours match lowres; meshes still drawn on top from
 SceneFrame.  Observation only — original draw path unchanged.
+
+### Tilted horizon from low-res (2026-10-17)
+
+Sample horizon row in 11 columns, least-squares fit y = y0 + slope*(x-160).
+Paint water below that line so roll tilt matches the original frame.
