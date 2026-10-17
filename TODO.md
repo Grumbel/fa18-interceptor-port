@@ -611,5 +611,10 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       far (`$3f342`, 7×7, table `$57fa4`, alt>1016); camera from `$5af36`
       or player+20; tiles → `$38c0c` with plane-1 SET → sky over ground-4.
       Horizon = terrain-tile silhouette.  Docs: horizon.md “$3f284 terrain”.
-- [ ] Still open: cockpit / `$5ab93≠0` sea-quad survival; optional deeper
-      tile-pattern table decode (`$3e71a`… bands).
+- [x] **`$5abca` bit13 never set**: all stores are bits 1/14 only →
+      `$43250` complex branch dead; sea-quad always via `$44994`→`$42f6a`.
+- [x] **`$33120` zone match**: `$5ac40/$5ac42` = player+6/+8>>2; table
+      `$331f0` keys `$0C`…`$13` + altitude + `$5ab48/$5ab4c` → `$5ab93`.
+      free1 misses table.  Docs: horizon.md call-graph section.
+- [ ] Still open: exercise a mission zone where `$5ab93≠0` and `$42f6a`
+      clip succeeds (Fill2d capture); optional tile-pattern table decode.

@@ -9,16 +9,49 @@ Addresses below are runtime addresses.
 game frame path
   $211b4  jsr $42f48          ; horizon dispatcher
             │
-            ├─ bit13 of $5abca clear  →  jsr $44994   (simple blitter plane-clear)
-            └─ bit13 set              →  bsr $23250   (complex path)
+            ├─ bit13 of $5abca clear  →  jsr $44994   (always in practice)
+            └─ bit13 set              →  bsr $43250   (DEAD — bit never set)
 
-fill path (from $44994 body / $44b00)
+fill path (from $44994 body)
   $44af4  jsr $42f6a          ; build sea quad with matrix $5aed0
   $44b22  jsr $42f62          ; same with matrix $5aee2 (when $5aa7d==0)
+  $44b02  tst $5ab93          ; zone match → optional $4506e plane fill
 ```
 
 `$42f6a` / `$42f62` share a body at `$42f70`.  They return status in
 condition codes; callers branch on the result (`bne` at `$44afa`).
+
+### `$5abca` bit13 is never set
+
+Every write to `$5abca` is an ori/andi of bits 1 or 14 (`$0002`, `$4000`,
+`$FFFD`, `$BFFF`).  **No site sets or clears bit13 (`$2000`)**.  So
+`$42f48` always takes the `$44994` branch.  `$43250` (builds a full-view
+screen rect at `$60684` and may SET display plane 0 when pitch > 14400)
+is unreachable in normal play.
+
+### `$33120` — `$5ab93` zone match
+
+Called from `$2f91a` when `$5abd2` bit0 is clear (else `$33140` sets
+`$5ab94` instead).
+
+```
+$33120  lea $331f0, a0          ; zone key table
+        bsr $33160              ; match
+        sne / seq → $5ab93 = 1 / 0
+```
+
+Matcher `$33160` reads:
+
+| Input | Source |
+|-------|--------|
+| `$5ac40` / `$5ac42` | player+6 / +8 `asr #2` (quantised world XZ, set at `$2f84a`) |
+| `-$5ad70` | altitude |
+| `$5ab48` / `$5ab4c` | zone variant bytes |
+
+Table `$331f0` starts with keys `$0C`…`$13` then offset words into
+per-zone altitude/variant records.  free1’s start position misses the
+table → `$5ab93=0` → no post-clip `$4506e` sea fill.  `$5ab93≠0` only in
+matching mission zones (and even then only after `$42f6a` clip succeeds).
 
 ## Two matrices
 
