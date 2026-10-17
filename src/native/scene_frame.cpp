@@ -149,10 +149,20 @@ void note_camera() {
   frame.camera.x = int32_t(native::rd32(0x5ad5a));
   frame.camera.y = int32_t(native::rd32(0x5ad5e));
   frame.camera.z = int32_t(native::rd32(0x5ad62));
-  // View rotation at $5af18 (same matrix $3223e projects through).
+  // Main 3D transform matrix used by rot_out / object projection ($5aed0).
+  // $5af18 is a secondary path and was giving HUD-like flat attitude.
   for (int i = 0; i < 9; ++i)
-    frame.camera.view_m[i] = int16_t(native::rd16(0x5af18 + uint32_t(i) * 2));
+    frame.camera.view_m[i] = int16_t(native::rd16(0x5aed0 + uint32_t(i) * 2));
   frame.camera.has_view_m = true;
+  // If $5aed0 is still empty, fall back to the player body matrix at +$92.
+  bool any = false;
+  for (int i = 0; i < 9; ++i)
+    if (frame.camera.view_m[i]) { any = true; break; }
+  if (!any) {
+    uint32_t player = 0x5b47c + uint32_t(int32_t(int16_t(native::rd16(0x5abd6))));
+    for (int i = 0; i < 9; ++i)
+      frame.camera.view_m[i] = int16_t(native::rd16(player + 0x92 + uint32_t(i) * 2));
+  }
 }
 
 void note_env_colours(uint32_t sky_rgba, uint32_t ground_rgba) {

@@ -466,3 +466,10 @@ Capture `$5af18` 3x3 view matrix on the camera.  Reconstruct sea/sky as
 the plane through world-up in view space: N = M*(0,1,0), horizon where
 N·dir = 0, projected with the same 160/90 perspective as meshes.  Proper
 3D backdrop from camera pose — not blitter imitation or frame_rgb sample.
+
+### Horizon matrix fix (2026-10-17)
+
+`$5af18` looked HUD-like (flat, instrument colours).  Switch to `$5aed0`
+(main 3D rot_out matrix), fall back to player body matrix at +$92.
+Fixed sky/ocean colours (not red palette).  Auto-pick Y-up vs Z-up
+column.  Stats dump full M[] for tuning.
