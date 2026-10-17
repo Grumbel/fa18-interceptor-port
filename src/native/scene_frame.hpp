@@ -48,12 +48,15 @@ struct ObjectDraw {
 enum class PrimKind : uint8_t { Poly3d = 0, Line = 1, Point = 2, Fill2d = 3 };
 
 // Compact view-space (or screen-space for Fill2d) primitive snapshot.
+// Fill2d = horizon / sky / ground / sea and other non-mesh screen fills
+// (object_index -1).  The software renderer leaves these to the low-res
+// composite by default; mesh prims (Poly3d/Line/Point) are re-drawn at scale.
 struct Prim {
   PrimKind kind = PrimKind::Poly3d;
   uint8_t n = 0;             // vertex count (capped)
   int8_t shift = 0;          // poly: $61284 shift applied to stored verts
-  int16_t sel = 0;           // point: d7 size selector
-  int16_t object_index = -1; // index into SceneFrame::objects (-1 = unknown)
+  int16_t sel = 0;           // point: d7 size; Fill2d: 1 = horizon-class
+  int16_t object_index = -1; // index into SceneFrame::objects (-1 = non-mesh)
   int16_t xyz[16][3];        // up to 16 verts; Fill2d uses x,y and z=0
 };
 

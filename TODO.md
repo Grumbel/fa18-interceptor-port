@@ -165,6 +165,8 @@ Open:
 - [x] Software ISceneRenderer: depth-sort by distance, rasterize prims
       (`FA18_SCENE_RENDER=<scale>`, presents via frame_hires)
 - [x] Software scene renderer: composite HUD/cockpit from low-res frame
+- [x] Non-mesh fills (horizon/sky/ground): capture as Fill2d, leave to low-res
+      composite; SceneFrame opens at game_frame; on_line captured
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -298,3 +300,17 @@ RGB frame, then overlays only the pixels covered by depth-sorted scene
 prims.  HUD, cockpit, and menus stay from the original; the 3D view is
 the software re-render.  Same composition model as `--hires`, driven from
 `SceneFrame` instead of live PC-hook rasterization.
+
+### Non-mesh graphics in scene capture (2026-10-17)
+
+Horizon / sky / ground / sea are screen-space plane fills (`$44b00`,
+`$44b50`), not meshes.  They are now recorded as `PrimKind::Fill2d` with
+`object_index = -1` (and `sel = 1` for horizon-class).  SceneFrame opens
+at `game_frame` so fills drawn before `$2fc14` are kept.
+
+Software renderer **skips** Fill2d when compositing (default): those
+pixels come from the upsampled low-res frame, matching the original
+look.  Mesh prims are depth-sorted and overlaid.  `FA18_SCENE_RENDER_FILLS=1`
+draws Fill2d in the software path for debugging.
+
+`on_line` also records into SceneFrame (was missing).

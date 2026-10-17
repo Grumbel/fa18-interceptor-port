@@ -452,6 +452,9 @@ void scene_begin() {
 
 static void do_begin() {
   amiga::Machine& m = *native::g_machine;
+  // Open a SceneFrame at game_frame so horizon / sky drawn before $2fc14
+  // are attributed to this frame (begin_frame is idempotent per frame_id).
+  if (scene::enabled()) scene::begin_frame(m.frame_count());
   int S = m.hires_scale;
   if (S <= 0) return;
   uint32_t pl[4];

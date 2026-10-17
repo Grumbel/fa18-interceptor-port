@@ -88,6 +88,9 @@ ISceneRenderer* renderer() { return renderer_; }
 
 void begin_frame(uint64_t frame_id) {
   if (!enabled()) return;
+  // Idempotent: game_frame opens the frame early (horizon/sky); $2fc14
+  // must not wipe prims already captured this frame.
+  if (frame.frame_id == frame_id && !frame.complete) return;
   frame = SceneFrame{};
   frame.frame_id = frame_id;
   current_object_ = -1;

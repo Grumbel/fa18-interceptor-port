@@ -188,13 +188,23 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
       unscoped.push_back(&p);
   }
 
+  // Non-mesh screen-space fills (horizon, sky, ground, sea) are left to the
+  // low-res composite by default — they are not triangle meshes and re-drawing
+  // them with mesh_id colours looks wrong.  FA18_SCENE_RENDER_FILLS=1 forces
+  // them through the software path for debugging.
+  const bool draw_fills = std::getenv("FA18_SCENE_RENDER_FILLS") != nullptr;
+
   for (int oi : order) {
     const ObjectDraw& o = frame.objects[size_t(oi)];
-    for (const Prim* pp : by_obj[size_t(oi)])
+    for (const Prim* pp : by_obj[size_t(oi)]) {
+      if (pp->kind == PrimKind::Fill2d && !draw_fills) continue;
       draw_prim(pixels_, cover_, scale_, width_, height_, *pp, o.mesh_id);
+    }
   }
-  for (const Prim* pp : unscoped)
+  for (const Prim* pp : unscoped) {
+    if (pp->kind == PrimKind::Fill2d && !draw_fills) continue;
     draw_prim(pixels_, cover_, scale_, width_, height_, *pp, 0);
+  }
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
