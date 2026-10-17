@@ -635,5 +635,7 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
 - [x] **Debug-menu mesh viewer**: `Mesh viewer` item → orbit wireframe of
       H54 aircraft clusters (`src/native/mesh_viewer.*`).  Left/Right mesh,
       stick/WASD orbit, triggers zoom, B closes.
+- [x] **Mesh wireframe fix**: silhouette edges (not shared `$800C` tris);
+      `$0100/$0300` tags; mid-pair hull `FFFF FFFF`.  7 offline meshes.
 - [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds;
       attr-word → pen confirmation; expand parser beyond aircraft tags.

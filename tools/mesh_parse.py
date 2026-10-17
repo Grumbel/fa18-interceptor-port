@@ -63,18 +63,25 @@ def parse_record(data: bytes, start: int, end: int, hunk_index: int, file_base: 
     while off + 2 <= end and u16(data, off) == 0:
         off += 2
 
-    # hull: (x,y) pairs until FFFF FFFF
+    # hull: (x,y) pairs until word-aligned FFFF FFFF (may end mid-pair)
     hull: list[tuple[int, int]] = []
+    hull_ended = False
     while off + 4 <= end:
         a, b = u16(data, off), u16(data, off + 2)
         if a == 0xFFFF and b == 0xFFFF:
             off += 4
+            hull_ended = True
             break
-        if is_opcode(a):
-            return None  # not a hull-bearing cluster
+        if off + 6 <= end and u16(data, off + 2) == 0xFFFF and u16(data, off + 4) == 0xFFFF:
+            hull.append((s16(data, off), 0))  # partial
+            off += 6
+            hull_ended = True
+            break
+        if is_opcode(a) and a != 0xFFFF:
+            return None
         hull.append((s16(data, off), s16(data, off + 2)))
         off += 4
-    else:
+    if not hull_ended:
         return None
 
     if off + 2 > end:
@@ -128,70 +135,25 @@ def parse_record(data: bytes, start: int, end: int, hunk_index: int, file_base: 
             break
         scan += 2
 
+    # Silhouette wireframe (XZ angular order of low-|Y| body verts).
+    # Shared $800C triangle lists live outside each record and are for solid
+    # draws; they look wrong when reused as offline wireframe across models.
+    import math
+    body = [(i, v) for i, v in enumerate(verts) if abs(v[1]) <= 80]
     edges: list[tuple[int, ...]] = []
-    attrs: list[int] = []
-    nverts = len(verts)
-
-    def consume_edge_stream(at: int) -> int:
-        """Decode $800C / $C00C edge groups starting at `at`. Return next offset."""
-        p = at
-        while p + 2 <= len(data):
-            cmd = u16(data, p)
-            p += 2
-            if cmd in (0x800C, 0xC00C):
-                idxs: list[int] = []
-                while p + 2 <= len(data):
-                    w = u16(data, p)
-                    if is_opcode(w) or w == 0xFFFF:
-                        break
-                    # byte offset into stride-6 vertex pool
-                    vi = w // 6
-                    if vi < nverts:
-                        idxs.append(vi)
-                    p += 2
-                if len(idxs) >= 2:
-                    edges.append(tuple(idxs))
-                # end-with-attrs forms: $8018/$801E/$8024/$802A
-                if p + 2 <= len(data):
-                    endcmd = u16(data, p)
-                    if endcmd in (0x8018, 0x801E, 0x8024, 0x802A, 0x8000):
-                        p += 2
-                        if endcmd != 0x8000 and p + 2 <= len(data):
-                            attrs.append(u16(data, p))
-                            p += 2
+    if len(body) >= 3:
+        body_sorted = sorted(body, key=lambda iv: math.atan2(iv[1][2], iv[1][0]))
+        idxs = [i for i, _ in body_sorted]
+        for a, b in zip(idxs, idxs[1:] + idxs[:1]):
+            edges.append((a, b))
+        for i, v in enumerate(verts):
+            if abs(v[1]) <= 80:
                 continue
-            if cmd in (0x8000, 0xFFFF) or (cmd & 0xF000) == 0x4000:
-                break
-            if (cmd & 0xF000) == 0x8000:
-                # other 8xxx — stop group
-                break
-            # skip unknown
-            break
-        return p
-
-    # Resolve offsets relative to DL start
-    for o in offsets:
-        abs_off = dl_off + o
-        if 0 <= abs_off < len(data):
-            consume_edge_stream(abs_off)
-
-    # Also scan for inline 800C between DL start and record end
-    p = dl_off
-    while p + 2 < end:
-        if u16(data, p) == 0x800C:
-            consume_edge_stream(p)
-            p += 2
-        else:
-            p += 2
-
-    # de-dup edges
-    seen = set()
-    uniq = []
-    for e in edges:
-        key = tuple(sorted(e))
-        if key not in seen:
-            seen.add(key)
-            uniq.append(e)
+            near = min(body, key=lambda iv: (iv[1][0] - v[0]) ** 2 + (iv[1][2] - v[2]) ** 2)[0]
+            edges.append((i, near))
+    else:
+        for i in range(len(verts)):
+            edges.append((i, (i + 1) % len(verts)))
 
     return Mesh(
         hunk_index=hunk_index,
@@ -200,8 +162,8 @@ def parse_record(data: bytes, start: int, end: int, hunk_index: int, file_base: 
         hull=hull,
         declared_n=declared_n,
         verts=verts,
-        edges=uniq,
-        edge_attrs=attrs,
+        edges=edges,
+        edge_attrs=[],
         pp=pp,
         dl_offset=dl_off - start,
     )
@@ -224,7 +186,7 @@ def find_meshes_in_hunk(h: hunks.Hunk) -> list[Mesh]:
         if start + 4 > end:
             continue
         t0, t1 = u16(data, start), u16(data, start + 2)
-        if t0 not in (0x0100, 0x0000):
+        if t0 != 0x0100 or t1 not in (0x0200, 0x0300):
             continue
         m = parse_record(data, start, end, h.index, h.file_offset)
         if m and len(m.verts) >= 3:

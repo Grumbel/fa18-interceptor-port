@@ -3,6 +3,7 @@
 #include "amiga/hunk.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -27,35 +28,45 @@ void add_edge(Mesh& m, int a, int b) {
   m.edges.emplace_back(a, b);
 }
 
-void consume_edges(Mesh& m, const uint8_t* data, size_t size, size_t at) {
-  size_t p = at;
-  const int nverts = int(m.vx.size());
-  while (p + 2 <= size) {
-    uint16_t cmd = u16(data + p);
-    p += 2;
-    if (cmd == 0x800C || cmd == 0xC00C) {
-      std::vector<int> idxs;
-      while (p + 2 <= size) {
-        uint16_t w = u16(data + p);
-        if (is_opcode(w) || w == 0xFFFF) break;
-        int vi = int(w) / 6;
-        if (vi >= 0 && vi < nverts) idxs.push_back(vi);
-        p += 2;
+// Wireframe silhouette: body verts (low |Y|) in XZ angular order, plus fins.
+// $800C sublists are shared triangle strips for a solid mesh and look wrong
+// as a sparse offline wireframe when applied across different models.
+void build_silhouette_edges(Mesh& m) {
+  const int n = int(m.vx.size());
+  if (n < 3) return;
+  struct Item {
+    int i;
+    float ang;
+  };
+  std::vector<Item> body;
+  body.reserve(size_t(n));
+  for (int i = 0; i < n; ++i) {
+    if (std::abs(int(m.vy[size_t(i)])) <= 80)
+      body.push_back({i, std::atan2(float(m.vz[size_t(i)]), float(m.vx[size_t(i)]))});
+  }
+  if (body.size() < 3) {
+    // Fallback: sequential ring
+    for (int i = 0; i < n; ++i) add_edge(m, i, (i + 1) % n);
+    return;
+  }
+  std::sort(body.begin(), body.end(), [](const Item& a, const Item& b) { return a.ang < b.ang; });
+  for (size_t i = 0; i < body.size(); ++i)
+    add_edge(m, body[i].i, body[(i + 1) % body.size()].i);
+  // Fins / verticals: high-|Y| verts → nearest body vert in XZ
+  for (int i = 0; i < n; ++i) {
+    if (std::abs(int(m.vy[size_t(i)])) <= 80) continue;
+    int best = body[0].i;
+    int best_d = INT_MAX;
+    for (auto& b : body) {
+      int dx = int(m.vx[size_t(i)]) - int(m.vx[size_t(b.i)]);
+      int dz = int(m.vz[size_t(i)]) - int(m.vz[size_t(b.i)]);
+      int d = dx * dx + dz * dz;
+      if (d < best_d) {
+        best_d = d;
+        best = b.i;
       }
-      for (size_t i = 0; i + 1 < idxs.size(); ++i)
-        add_edge(m, idxs[i], idxs[i + 1]);
-      if (idxs.size() >= 3) add_edge(m, idxs.back(), idxs.front());
-      if (p + 2 <= size) {
-        uint16_t endc = u16(data + p);
-        if (endc == 0x8018 || endc == 0x801E || endc == 0x8024 || endc == 0x802A ||
-            endc == 0x8000) {
-          p += 2;
-          if (endc != 0x8000 && p + 2 <= size) p += 2;  // attr
-        }
-      }
-      continue;
     }
-    break;
+    add_edge(m, i, best);
   }
 }
 
@@ -63,22 +74,33 @@ Mesh* parse_record(std::vector<Mesh>& out, const uint8_t* data, size_t size,
                    size_t start, size_t end, int hunk_i) {
   if (end < start + 16) return nullptr;
   uint16_t t0 = u16(data + start), t1 = u16(data + start + 2);
-  if (t0 != 0x0100) return nullptr;
+  // Aircraft family: $0100/$0200 and $0100/$0300.  Other tags are different
+  // asset classes (not yet decoded for offline verts).
+  if (t0 != 0x0100 || (t1 != 0x0200 && t1 != 0x0300)) return nullptr;
 
   size_t off = start + 4;
   while (off + 2 <= end && u16(data + off) == 0) off += 2;
 
-  // hull until FFFF FFFF
+  // Hull: (x,y) pairs until word-aligned $FFFF $FFFF (not always pair-aligned
+  // from the start — $0100/$0300 records can end mid-pair).
+  bool hull_ended = false;
   while (off + 4 <= end) {
-    uint16_t a = u16(data + off), b = u16(data + off + 2);
-    if (a == 0xFFFF && b == 0xFFFF) {
+    if (u16(data + off) == 0xFFFF && u16(data + off + 2) == 0xFFFF) {
       off += 4;
+      hull_ended = true;
       break;
     }
-    if (is_opcode(a)) return nullptr;
+    // Prefer pair step; if next pair-start is past a FFFF FFFF, word-scan.
+    if (off + 6 <= end && u16(data + off + 2) == 0xFFFF && u16(data + off + 4) == 0xFFFF) {
+      off += 6;  // trailing half-pair + separator
+      hull_ended = true;
+      break;
+    }
+    uint16_t a = u16(data + off);
+    if (is_opcode(a) && a != 0xFFFF) return nullptr;
     off += 4;
   }
-  if (off + 2 > end) return nullptr;
+  if (!hull_ended || off + 2 > end) return nullptr;
 
   Mesh m;
   m.tags0 = t0;
@@ -90,7 +112,7 @@ Mesh* parse_record(std::vector<Mesh>& out, const uint8_t* data, size_t size,
     uint16_t w = u16(data + off);
     if (is_opcode(w)) break;
     int16_t x = s16(data + off), y = s16(data + off + 2), z = s16(data + off + 4);
-    if (std::max({std::abs(int(x)), std::abs(int(y)), std::abs(int(z))}) > 4096) break;
+    if (std::max({std::abs(int(x)), std::abs(int(y)), std::abs(int(z))}) > 3000) break;
     m.vx.push_back(x);
     m.vy.push_back(y);
     m.vz.push_back(z);
@@ -98,41 +120,16 @@ Mesh* parse_record(std::vector<Mesh>& out, const uint8_t* data, size_t size,
   }
   if (m.vx.size() < 3) return nullptr;
 
-  size_t dl = off;
   if (off + 4 <= end && u16(data + off) == 0x4070) {
     uint16_t nxt = u16(data + off + 2);
     if ((nxt & 0xFF00) == 0x4000) m.pp = int(nxt & 0xFF);
   }
 
-  std::vector<int> offsets;
-  size_t scan = off;
-  while (scan + 2 <= end) {
-    uint16_t w = u16(data + scan);
-    if ((w & 0xF000) == 0x8000 && (w & 0x0FFF) >= 0x10 && (w & 0x0FFF) <= 0x200) {
-      scan += 2;
-      if (scan + 2 <= end && (u16(data + scan) & 0xF000) == 0xA000) scan += 2;
-      while (scan + 2 <= end) {
-        uint16_t o = u16(data + scan);
-        if (o == 0 || o >= 0x4000) break;
-        offsets.push_back(int(o));
-        scan += 2;
-      }
-      break;
-    }
-    scan += 2;
-  }
+  build_silhouette_edges(m);
 
-  for (int o : offsets) {
-    size_t abs = dl + size_t(o);
-    if (abs < size) consume_edges(m, data, size, abs);
-  }
-  for (size_t p = dl; p + 2 < end; p += 2) {
-    if (u16(data + p) == 0x800C) consume_edges(m, data, size, p);
-  }
-
-  char buf[64];
-  std::snprintf(buf, sizeof(buf), "H%d +$%zx  %zu verts  %zu edges", hunk_i, start,
-                m.vx.size(), m.edges.size());
+  char buf[80];
+  std::snprintf(buf, sizeof(buf), "H%d +$%zx  tags %04X/%04X  %zu verts  %zu edges",
+                hunk_i, start, m.tags0, m.tags1, m.vx.size(), m.edges.size());
   m.label = buf;
   out.push_back(std::move(m));
   return &out.back();
