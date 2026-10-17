@@ -332,3 +332,74 @@ Level flight → `D_y ∝ −vy` → horizon at `sy = 90`; below = ground.
 **Earlier error:** using column 2 (world +Z → view up) treated the wrong
 plane.  Column 2 is the *visual up* axis in view space after attitude is
 applied; the *ground* is still world Y = 0.
+
+## Player vs camera (free1 live dumps, frames 3003–3066)
+
+### View mode
+
+`$5aa7d = 1` → **external / chase view**, not cockpit.
+External pan/tilt live at `$5ad8c` / `$5ad8e` (units 0..28799 = 360°).
+
+### Positions are different
+
+| | X | Y | Z |
+|-|---|---|---|
+| Camera `$5ad5a/5e/62` | ~0…−4e6 | ~−5e7…−1e7 | varies |
+| Player `base+$14/$18/$1c` | 273963296 | **1800** | 279184624 |
+
+Player sits near the ground (`Y=1800`). Camera is far above (`altitude = -$5ad5e` ≈ 1e7–5e7) and moves while the player stays fixed.
+
+Player object base = `$5b47c + $5abd6` (here `$5abd6=0` → `$5b47c`).
+
+### Orientation sources
+
+| Slot | Role in free1 |
+|------|----------------|
+| `$5ad8c` / `$5ad8e` | External tilt / pan; **drive `$5aed0`** via `$22b6e` then row-scale `$42d8c` |
+| Scales `$5ad36/38/3a` | 168, 252, 128 (FOV-related row scales on `$5aed0`) |
+| Player `+$66/$68/$6A` | 0, 2240, 0 — **frozen** (parked) |
+| Player `+$80` / `+$92` | Body matrices — **frozen** (yawed relative to world) |
+| `$5aee2` | All zero in these dumps |
+| `$5aed0` | **Live camera view matrix** (tracks external angles) |
+
+Builder path for `$5aed0` (from `$4229c`):
+
+```
+d0 = $5ad8c; d2 = $5ad8e
+lea $5aed0, a1
+bsr $22b6e          ; 2-angle matrix (tilt/pan)
+lea $5aed0, a1
+bsr $42d8c          ; scale rows by $5ad36/$5ad38/$5ad3a
+```
+
+### Predicted vs observed horizon row
+
+Infinite-plane predictor at screen centre (`column1 · ray = 0`):
+
+```
+sy ≈ 90 + 90 * m[7] / m[4]     (when m[1]≈0)
+```
+
+| frame | `$5ad8c/$8e` | `$5aed0` col1-ish | pred sy | observed hrow (idx leaves 6) |
+|------:|-------------:|-------------------:|--------:|-----------------------------:|
+| 3003 | 7200 / 0 | (0,0,−128) | 90 | **46** |
+| 3030 | 7030 / 560 | (0,8,−128) | −1350 | **0** |
+| 3046 | 6499 / 2542 | (−10,38,−127) | −211 | **57** |
+| 3062 | 6052 / 3030 | (−20,62,−124) | −90 | **54** |
+
+Even when `$5aed0` is level, observed sky/ground split is at **y≈46**, not 90. When the matrix pitches, predicted infinite-plane sy and observed hrow **move in related ways but disagree in magnitude**.
+
+### Implications
+
+1. free1’s painted split is **not** the pure infinite world-Y=0 horizon of `$5aed0` alone — terrain / other fills shift it (especially near the player’s low altitude while the camera is high).
+2. `$5aed0` **is** the live external camera orientation; player `+$92` is not.
+3. Pitch “range feels wrong” if the software horizon tracks `$5aed0`’s infinite plane while the user is looking at **terrain-dominated** low-res ground.
+4. Cockpit (`$5aa7d=0`) is a different path (player angles → `$5aee2` builder at `$22312`); not exercised by these free1 dumps.
+
+### Angle units (reference)
+
+| System | Full circle | Where |
+|--------|-------------|--------|
+| External view | 28800 | `$5ad8c/$5ad8e`, `look_angles` |
+| Matrix builder after `lsr #3` | 3600 (=28800/8) | `$22b6e` inputs |
+| Player table angles | 7200 | matrix builders A/B in transform docs |
