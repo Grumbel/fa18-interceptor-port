@@ -238,9 +238,18 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   std::stable_sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
     return a.depth > b.depth;  // far → near
   });
-  for (const DrawItem& it : items)
+  // Pass 1: environment fills only (sky under ground/sea).
+  for (const DrawItem& it : items) {
+    if (it.prim->kind != PrimKind::Fill2d) continue;
     draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
               frame.sky_rgba, frame.ground_rgba);
+  }
+  // Pass 2: meshes / lines / points on top of the horizon.
+  for (const DrawItem& it : items) {
+    if (it.prim->kind == PrimKind::Fill2d) continue;
+    draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id,
+              frame.sky_rgba, frame.ground_rgba);
+  }
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;

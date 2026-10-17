@@ -378,12 +378,14 @@ void on_fill_horizon() {
       uint32_t sky = rgba12(0);
       uint32_t best = rgba12(2);
       int best_score = -1;
-      for (int idx : {2, 3, 6, 7, 4, 5}) {
+      for (int idx : {2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15}) {
         uint32_t c = rgba12(idx);
         int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
         int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
         int db = int(c & 255) - int(sky & 255);
         int score = dr * dr + dg * dg + db * db;
+        int blue_bias = int(c & 255) - int((c >> 16) & 255);
+        if (blue_bias > 0) score += blue_bias * blue_bias;
         if (score > best_score) { best_score = score; best = c; }
       }
       pr.rgba = best;

@@ -174,6 +174,7 @@ Open:
 - [x] Point size kind + disc radius captured and rendered
 - [x] Horizon/water: sky_rgba + ground_rgba on SceneFrame; clear to sky
 - [x] Horizon: distinct water palette pick; sky prim inject; sky under ground
+- [x] Horizon two-pass (fills then meshes); water palette bias toward blue
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -397,3 +398,9 @@ geometry stays sky — not a low-res underlay.
 - Fill2d depth: sky (sel=2) behind ground/sea (sel=1).
 - When ground is captured, inject a full-view sky Fill2d once per frame so
   the sky is an explicit prim for the software (and future GL) path.
+
+### Horizon two-pass + water palette bias (2026-10-17)
+
+Software renderer draws all Fill2d (sky then ground by depth) before any
+mesh/line/point.  Ground/sea palette search covers COLOR1–15 and prefers
+entries that are both distinct from sky and relatively blue (water-like).
