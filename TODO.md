@@ -586,23 +586,25 @@ See docs/horizon.md "Deeper free1 findings".
 Disassembled `$44994` end-to-end.  Four full-view blits into `$5a9ae`
 planes (dest = plane_ptr+40, BLTSIZE = `$5ac7c<<6|20`):
 
-| # | Plane | BLTCON0 (`$5ab93=0`) |
-|---|-------|----------------------|
-| 1 | 0 | `$0100` zero-fill |
-| 2 | 1 | `$03FA` (sky plane op) |
-| 3 | 2 | `$0100` zero-fill |
-| 4 | 3 | `$0100` zero-fill |
+| # | Plane | BLTCON0 (`$5ab93=0`) | Effect |
+|---|-------|----------------------|--------|
+| 1 | 0 | `$0100` | zero-fill (also sets BLTADAT=`$FFFF`) |
+| 2 | 1 | `$03FA` | **one-fill** (LF=`$FA` + A=`$FFFF` → solid 1s) |
+| 3 | 2 | `$0100` | zero-fill |
+| 4 | 3 | `$0100` | zero-fill |
 
-Then `jsr $42f6a` (sea quad); `$5ab93` only gates the post-clip `$4506e`
-plane-1 poly fill, not these blits.  free1 horizon is **not** an edge from
-`$44994` — the four ops paint whole rectangles; the visible split is
-terrain / `$44b50` clearing plane 1.  Full write-up in docs/horizon.md
-“Blitter fill”.
+Then `jsr $42f6a`; `$5ab93` only gates post-clip `$4506e`.  After
+`$44994` free1 has plane1=1, planes 0/2/3=0 (index 2 only) — sky/ground
+indices 6/4 require later plane-2 sets + plane-1 clears.  Docs:
+horizon.md “Blitter fill”.
 
-Next candidates:
-- [ ] Decode `$03FA` LF=$FA against real plane-1 contents (what pattern is
-      left in plane 1 after the blit — solid 1s, or a prior edge mask?)
-- [ ] Trace `$3f284` terrain / `$44b50` `$2506e` path that produces the
-      free1 sky/ground silhouette
-- [ ] Cockpit / open-water case where `$5ab93≠0` and the sea-quad poly
-      actually survives clip (to validate Fill2d capture)
+### `$03FA` / `$3f284` follow-up (2026-10-17)
+
+- [x] `$03FA` is a solid 1s fill of dest when BLTADAT=`$FFFF` (proven by
+      minterm expansion; independent of B/C).
+- [x] `$3f284` prologue: `link a6,#-70`; always called when `$5ab93=0`;
+      altitude from `-$5ad70`; writes `$5a9de` plane flags used by `$44b50`;
+      LOD split at scaled altitude 1016; `$5ac4c=6` colour/mode.
+- [ ] Still open: which `$3f284` / `$44b50` ops set **plane 2** (needed for
+      both sky=6 and ground=4) and which clear **plane 1** under terrain.
+- [ ] Cockpit / open-water case where `$5ab93≠0` and sea-quad survives clip.

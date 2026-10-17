@@ -140,25 +140,34 @@ while waiting (high/low halfword max tracking).
 | 3 | `a2@+8 + 40` | `$0100` | clear plane 2 | `$03FA` |
 | 4 | `a2@+C + 40` | `$0100` | clear plane 3 | same |
 
-BLTCON0 (HRM channel bits).  This codebase’s blitter core maps the enable
-nibble reversed so `$0100` is treated as DEST-enable + LF=0 (zero-fill):
+BLTCON0 values and effective fill (this port’s blitter maps the enable
+nibble so bit8 = DEST; that matches observed free1 colours even though
+it differs from a strict HRM reading of `$0100` / `$03FA`):
 
-| Value | Channels (HRM) | LF | Effective role here |
-|-------|----------------|-----|---------------------|
-| `$0100` | USEA | `$00` | zero-fill the dest rectangle |
-| `$03FA` | USEA\|USEB | `$FA` | plane-1 (and optionally plane-2) sky op |
+| Value | LF | BLTADAT | Effective role |
+|-------|-----|---------|----------------|
+| `$0100` | `$00` | (any) | **zero-fill** dest rectangle |
+| `$03FA` | `$FA` | `$FFFF` (set by blit 1 at `$74`) | **one-fill** dest rectangle |
 
-free1 (`$5ab93=0`) **clears planes 0, 2, 3** and runs `$03FA` only on
-**plane 1**.  That matches observed playfield indices:
+LF=`$FA` with A=`$FFFF` yields all-ones regardless of B and C (every
+minterm term that has `a` is set, and `a` is 1).  Blit 1 writes BLTADAT
+=`$FFFF` before the plane-1 `$03FA` pass, so plane 1 becomes solid 1s.
 
-- sky ≈ index 6 = planes 1+2
-- ground ≈ index 4 = plane 2 only
+free1 (`$5ab93=0`) therefore ends `$44994` with:
 
-i.e. plane 1 is set in the sky region and clear in the ground region
-relative to a plane-2 backdrop.  The sky/ground split in free1 is
-therefore **not** a horizontal blitter edge from `$44994` alone; the four
-blits paint whole rectangles.  The visible horizon comes from later
-terrain / `$44b50` fills that clear plane 1 below the terrain silhouette.
+| Plane | Content after `$44994` |
+|-------|------------------------|
+| 0 | 0 |
+| 1 | 1 (solid) |
+| 2 | 0 |
+| 3 | 0 |
+
+Playfield index with only plane 1 set = **2**, not the observed sky (6)
+or ground (4).  Plane 2 must be painted later (terrain / meshes).  The
+four `$44994` blits are full-view rectangles — they do **not** encode a
+horizon edge.  The visible free1 split is produced downstream when
+terrain / `$44b50` clears plane 1 under ground geometry while plane 2 is
+set in both bands (sky 6 = planes 1+2, ground 4 = plane 2 only).
 
 ### After the plane blits
 
@@ -333,10 +342,45 @@ still gated on `$5ab93≠0` and was **not** observed in free1.
 
 ### `$3f284` terrain
 
-Always entered after `$42f48` when `$5ab93==0`.  This is a multi-LOD
-terrain/tile drawer (tables at `$1e6e8` etc., driven by altitude at
-`$5ad70`).  It is a primary candidate for the green ground band together
-with mesh fills through `$44b50`.
+Frame path (`$211c2`):
+
+```
+move.b $5ab93, d0
+beq    $211d4          ; ab93==0 → always call
+tst.b  $5aaa8
+beq    $211da          ; ab93!=0 and aaa8==0 → skip
+$211d4: jsr $3f284
+```
+
+So free1 (`$5ab93=0`) **always** enters `$3f284`.
+
+Prologue (disassembled from patched image):
+
+```
+$3f284  link a6, #-70
+        clr.b  $5ab95
+        clr.w  $61284
+        tst.b  $5aaa8
+        bne    high_detail          ; d0=15, d1=-1
+        move.w #2, d0 / d1          ; low detail
+high:   movem.w d0-d3, $5a9de       ; plane/op flags for later fills
+        move.l $5ad70, d0
+        neg.l  d0                   ; altitude
+        … scale by $5ad3a, store fp@(-40)
+        cmp.l  #1016, d0
+        ble    near
+        move.w #6, $5ac4c           ; LOD colour / mode
+        bsr    draw_far
+        move.w #6, $5ac4c
+        bsr    draw_near
+        unlk / rts
+```
+
+Multi-LOD tile drawer driven by altitude (`-$5ad70`).  Sets `$5a9de..`
+(the same flags `$44b50` later tests as `$5a9df` bits 0–3 for plane
+select).  Tile tables live just below the routine (data at `$3efb0+`).
+Primary candidate for the green ground band together with mesh fills
+through `$44b50`.
 
 ### Implications for a remaster
 
