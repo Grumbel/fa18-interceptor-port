@@ -538,3 +538,19 @@ first-frame side lock (lower half).
 
 Previous vxz = (cx-sx)/fx used the wrong X convention relative to the
 post-flip in $438b6 (bank direction could appear swapped).
+
+### Horizon research (2026-10-17) — docs/horizon.md
+
+Full call graph and data layout of the original sea/sky path are in
+docs/horizon.md.  Summary:
+
+- Sea is a finite world-space quad (table at $42f38) at camera altitude,
+  transformed by $5aed0/$5aee2, clipped by $43364, then rebuilt as a
+  count-prefixed **screen-space** polygon at $60684 (3–5 verts).
+- Simple path ($44994 when $5abca bit13 clear) is a blitter plane-1 clear
+  with no polygon at all.
+- Matrix-only infinite-plane reconstruction cannot reproduce the clipped
+  screen polygon; capture must read $60684 after $42f6a returns, or
+  observe the simple-path clear bounds.
+
+No further renderer changes until the capture path matches this layout.
