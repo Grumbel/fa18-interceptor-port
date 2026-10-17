@@ -626,5 +626,10 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       `$61286` → `$38c0c`.  Docs: horizon.md “Tile emit pipeline”.
 - [x] **`$38c0c` + free1 frame sequence**: verts at `$61286` → clip/setup
       → `$44b50` fill; end-to-end free1 path documented in horizon.md.
+- [x] **Offline aircraft mesh (H54)**: CODE hunk 54 file `$35A40` holds
+      `4070 4022/4020 C016` clusters; verts + DL + shared edge sublists at
+      DL-relative offsets.  PP safe to ignore for wireframe.  Docs:
+      mesh_format.md “On-disk location”.
 - [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds
-      (needs a mission zone + low level attitude; not free1).
+      (mission zone + low attitude); optional offline mesh viewer tool
+      using H54 parse; attr-word → pen confirmation.

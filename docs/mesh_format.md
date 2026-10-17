@@ -514,6 +514,37 @@ larger 10-vert meshes.  The parser therefore filters by the caller’s
 | `$00C3A4A8` | 4 | **8** | larger structure |
 | `$00C3A5A0` | 4 | **8** | mesh A (table slot) |
 
+### On-disk location (offline viewer)
+
+Aircraft clusters live in **CODE hunk 54** of the executable
+(`file offset 219808 / `$35A40`, size `$918`), not only in inflight RAM
+dumps.  Verified first record:
+
+```
+H54 +$84:
+  0100 0200            ; tags (aircraft family)
+  0000 ×4
+  hull 2-D pairs… FFFF FFFF
+  0005                 ; declared N (under-states)
+  10 × (x,y,z).w       ; usable verts until first $40xx opcode
+  4070 4022 C016 …     ; DL (PP=$22)  ← live $00C39738 family
+  A244 805C A23C
+  0270 02D6 02E2 0330 035C   ; byte offsets from **DL start**
+  trailing 2-D…
+  7FFF 7FFF
+```
+
+Same hunk also has `4070 4020 C016` twice (live `$00C39800` / `$00C398C6`
+family).  Edge sub-lists at `DL+offset` land later in the hunk and are
+**shared** across records (`800C` / `C00C` + attr words `$1007`, `$180D`,
+…).  Wireframe offline path: parse record → verts → follow offset table
+→ decode `$800C`/`$C00C` index lists (÷6 if pool-relative; here plain
+vertex indices 0..N).
+
+**PP** (`$22`/`$20`/`$BA`): still no runtime consumer.  Jump-table `$70`
+handler is a nop; primary walker only tests bit14 skip.  Safe to ignore
+for a wireframe viewer.
+
 ### Aircraft topology (e.g. `$00C39738`)
 
 ```
@@ -728,7 +759,9 @@ draw path).  The actual PP consumer remains open.
       simpler edge encoding without these attrs).
 - [x] Pen set from **separate draw-command stream** (`move.w (a2)+, $00C4468C`);
       `$5ee` copies pen → `$326` then draws.  Mesh edge attrs not in this path.
-- [ ] Exact meaning of group param PP (`$22`/`$20`/`$BA`) and setup `$70`
+- [~] Group param PP (`$22`/`$20`/`$BA`) / setup `$70`: **no runtime
+      consumer found**; `$70` jump-table slot is nop.  Treat as authoring
+      metadata; ignore for wireframe.  On-disk H54 parse confirmed.
 - [x] Companion transform: scale (asl d7) + translate (d2/d4) + 14-bit mask
 - [x] Walker classification: bit15=edge, bit14=skip-next, (w&$3FFF)/8=threshold
 
