@@ -372,3 +372,50 @@ $2f7b8  scene_update
   …
 $2fc14  draw_scene             ; $63c7a then $649ba
 ```
+
+## `$5acae` during draw
+
+In the `$63c7a` scenario pass (`$2fc14`):
+
+```
+index = word at $63c7a[$5aca2]
+$5acac = index                    ; type-ish / slot index
+$5acae = index * 512              ; byte offset into $5b47c
+a0 = $5b47c + $5acae
+```
+
+Sorted pass: `$5acae` from high byte of the packed list word (same
+offset encoding).  When `$5acae == $5abd6` and cockpit view, distance is
+forced to 32767 so the player body is not drawn as a mesh in the cockpit.
+
+## `game_frame` `$2112c` (in_flight) — camera / objects
+
+```
+poll_input / run_game_state
+$241f0  view toggles (external/cockpit keys)
+$2f596  view_change_flags
+$4217c  (pre-camera; view/matrix related — still ASM)
+$2f4a6  camera_position → $5ad5*, $5ad74*
+$39a54  heading_octant
+$243fa  heading alerts
+$2f7b8  scene_update
+          $30064 build
+          $3127c expand + sort
+          $31494 visibility
+$42f48  horizon dispatcher
+$3f284  terrain (when enabled)
+$43306  (post-horizon)
+…
+$2fc14  draw_scene ($63c7a then $649ba)
+$272e4  (ordering vs draw depends on $3add8)
+… cockpit instrument block if $5aa7d==0 …
+```
+
+Camera and scene lists are finalized **before** `$2fc14` draws.  Horizon
+/ terrain (`$42f48` / `$3f284`) sit between list build and object draw.
+
+## World origin presets
+
+Mission helpers `$2d3cc`…`$2d408` install fixed `(X,Y,Z)` into `$5af36`
+and the negated pair `$5af2a`.  External chase camera is expressed relative
+to those origins plus the player scenario position.
