@@ -500,14 +500,46 @@ the **lower silhouette of the terrain tile mesh**, which moves with
 camera altitude and world XZ — matching the free1 observation that
 hrow tracks terrain, not the infinite-plane horizon of `$5aed0`.
 
+### `$38c0c` — poly clip / setup before fill
+
+Terrain (and other) callers leave a record at `$61284`:
+
+```
+$61284  word  scale / flags   (cleared by $3f284 prologue)
+$61286  word  vertex_count
+        then  count × (x,y,z) words  (view-space from $5aed0 transform)
+```
+
+`$38c0c` scales verts by the scale word, clips edges into temps at
+`$60c84` / `$63c0a` / `$63b64`, and eventually reaches the shared fill
+path (`$44b50` / `$4506e`) with the plane-ops already set in `$5a9de`.
+
+### free1 frame sequence (end-to-end)
+
+```
+$211b4  jsr $42f48
+          └─ $44994
+               · 4× blitter rects → display plane 2 = ones  → index 4 ground
+               · jsr $42f6a  (sea-quad; clip fails → d0=1, no $4506e)
+$211d4  jsr $3f284
+          · plane-ops mask bit1 SET, $5ac4c=6
+          · near (and maybe far) tile mesh
+          · each tile: transform → $61286 → jsr $38c0c → $44b50
+            → SET display plane 1 where tiles land → index 6 sky
+$2fc14  object meshes / other fills (may further clear/set planes)
+```
+
+Net: sky = terrain silhouette over a ground-4 backdrop.  Sea-quad is
+attempted every frame but does not contribute in free1.
+
 ### Implications for a remaster
 
 In free flight the visible sky/ground split is **not** the `$42f6a` sea
 polygon.  It is the residual of:
 
 1. `$44994` full-view plane blits, then
-2. `$3f284` terrain, then
-3. `$2fc14` object meshes / `$44b50` fills that clear or set plane 1
+2. `$3f284` terrain via `$38c0c`/`$44b50`, then
+3. `$2fc14` object meshes / further `$44b50` fills
 
 Reproducing that in the software renderer means either:
 
