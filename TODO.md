@@ -621,5 +621,8 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       Most cells share record `+$9e` (alt `$C000`, wide variants).
 - [x] **`$42f6a` success = `d0=0`**: case tree `$42ff8` on `$63b44` flags;
       fail → `$432ac` (`d0=1`, `clr $5ab96`). free1 always fails.
-- [ ] Still open: runtime capture in a zone+attitude where clip succeeds
-      (Fill2d); optional tile-pattern table decode.
+- [x] **Tile emit pipeline**: pattern lists `$3e71a`… → type → `$3e6e8`
+      deltas → near/far grids `$58168`/`$57fa4` → mesh verts → `$5aed0` →
+      `$61286` → `$38c0c`.  Docs: horizon.md “Tile emit pipeline”.
+- [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds
+      (needs a mission zone + low level attitude; not free1).

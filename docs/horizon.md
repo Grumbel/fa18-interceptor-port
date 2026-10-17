@@ -472,6 +472,25 @@ Both passes join at `$3f364`:
 `$2f216` is a near-empty stub (`rts`); three call sites in the body are
 no-ops.
 
+#### Tile emit pipeline (shared body)
+
+1. **Pattern byte list** (altitude-band tables `$3e71a`…`$3e8aa`):
+   sequence of type indices ending in `$FF`.  Negative bytes set a
+   “second pass” flag (`fp@(-68)`).
+2. **Type → grid delta** via word table at `$3e6e8` (packed signed-byte
+   pairs, e.g. `$0101` = (+1,+1), `$FF00` = (−1,0)).  Advances the
+   current tile coordinates.
+3. **Near/far height–type grids** (`$58168` / `$57fa4`): word maps of the
+   local world.  Near values cluster at `$0800/$0802/$081A/$081C`; far at
+   `$01C2/$01AA`.  Indexed by quantised camera XZ + tile deltas.
+4. **Mesh record** (via `a3`): vertex count / type words, then pairs of
+   world deltas.  Count `>18` triggers a stub path (`$5ac96=32`,
+   `jsr $2f216` = `rts`).
+5. **Transform**: each vertex × `$5aed0` (with camera translation from
+   `$5aed2` column), scaled by `fp@(-32)`, written to `$61286`.
+6. **`jsr $38c0c`**: polygon setup → `$44b50` fill with the plane-ops
+   from the prologue (SET display plane 1 → sky index 6).
+
 #### Effect on free1 colours
 
 Plane-ops SET display plane 1 on every terrain poly → index 4 (ground
