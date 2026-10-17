@@ -607,5 +607,9 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       entry 1 = **display plane 2** → free1 backdrop index **4** (ground).
       Sky (6) = later SET of display plane 1 via `$3f284`/`$44b50` plane-ops
       (mask bit1 / colour 6).  Model matches `hires.cpp` `poly_ops()`.
-- [ ] Still open: exact tile geometry in `$3f284` body (which screen
-      regions get the plane-1 SET); cockpit / `$5ab93≠0` sea-quad survival.
+- [x] **`$3f284` structure**: near (`$3f31c`, 31×31, table `$58168`) +
+      far (`$3f342`, 7×7, table `$57fa4`, alt>1016); camera from `$5af36`
+      or player+20; tiles → `$38c0c` with plane-1 SET → sky over ground-4.
+      Horizon = terrain-tile silhouette.  Docs: horizon.md “$3f284 terrain”.
+- [ ] Still open: cockpit / `$5ab93≠0` sea-quad survival; optional deeper
+      tile-pattern table decode (`$3e71a`… bands).
