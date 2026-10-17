@@ -55,16 +55,12 @@ std::vector<V3> clip_near(const std::vector<V3>& in, double zmin) {
   return out;
 }
 
-void put(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
-         int Wp, int Hp, int x, int y, uint32_t c) {
+void put(std::vector<uint32_t>& px, int Wp, int Hp, int x, int y, uint32_t c) {
   if (x < 0 || y < 0 || x >= Wp || y >= Hp) return;
-  size_t i = size_t(y) * size_t(Wp) + size_t(x);
-  px[i] = c;
-  cover[i] = 1;
+  px[size_t(y) * size_t(Wp) + size_t(x)] = c;
 }
 
-void draw_line(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
-               int S, int Wp, int Hp, V2 a, V2 b, uint32_t c) {
+void draw_line(std::vector<uint32_t>& px, int S, int Wp, int Hp, V2 a, V2 b, uint32_t c) {
   double dx = (b.x - a.x) * S, dy = (b.y - a.y) * S;
   int n = int(std::ceil(std::max(std::fabs(dx), std::fabs(dy)))) + 1;
   for (int i = 0; i <= n; ++i) {
@@ -73,12 +69,12 @@ void draw_line(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
     int py_ = int(std::floor((a.y + (b.y - a.y) * t) * S));
     for (int yy = 0; yy < S; ++yy)
       for (int xx = 0; xx < S; ++xx)
-        put(px, cover, Wp, Hp, px_ - S / 2 + xx, py_ - S / 2 + yy, c);
+        put(px, Wp, Hp, px_ - S / 2 + xx, py_ - S / 2 + yy, c);
   }
 }
 
-void fill_polygon(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
-                  int S, int Wp, int Hp, const std::vector<V2>& pts, uint32_t c) {
+void fill_polygon(std::vector<uint32_t>& px, int S, int Wp, int Hp,
+                  const std::vector<V2>& pts, uint32_t c) {
   if (pts.size() < 3) return;
   double ymin = 1e30, ymax = -1e30;
   for (auto& p : pts) {
@@ -101,14 +97,13 @@ void fill_polygon(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
     for (size_t k = 0; k + 1 < xs.size(); k += 2) {
       int xa = std::max(0, int(std::floor(xs[k] * S)));
       int xb = std::min(Wp - 1, int(std::ceil(xs[k + 1] * S)) - 1);
-      for (int x = xa; x <= xb; ++x) put(px, cover, Wp, Hp, x, y, c);
+      for (int x = xa; x <= xb; ++x) put(px, Wp, Hp, x, y, c);
     }
   }
 }
 
-void draw_prim(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
-               int S, int Wp, int Hp, const Prim& p, uint16_t mesh_id) {
-  // Prefer live palette colour stamped at capture; fall back to mesh_id hash.
+void draw_prim(std::vector<uint32_t>& px, int S, int Wp, int Hp,
+               const Prim& p, uint16_t mesh_id) {
   uint32_t c = p.rgba ? p.rgba : colour_for(mesh_id, p.kind);
   if (p.kind == PrimKind::Poly3d) {
     if (p.n < 3) return;
@@ -126,14 +121,14 @@ void draw_prim(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
     std::vector<V2> sp;
     sp.reserve(clipped.size());
     for (auto& v : clipped) sp.push_back(project(v));
-    fill_polygon(px, cover, S, Wp, Hp, sp, c);
+    fill_polygon(px, S, Wp, Hp, sp, c);
   } else if (p.kind == PrimKind::Line) {
     if (p.n < 2) return;
     V3 a{double(p.xyz[0][0]), double(p.xyz[0][1]), double(p.xyz[0][2])};
     V3 b{double(p.xyz[1][0]), double(p.xyz[1][1]), double(p.xyz[1][2])};
     auto clipped = clip_near({a, b}, 1.0);
     if (clipped.size() < 2) return;
-    draw_line(px, cover, S, Wp, Hp, project(clipped[0]), project(clipped[1]), c);
+    draw_line(px, S, Wp, Hp, project(clipped[0]), project(clipped[1]), c);
   } else if (p.kind == PrimKind::Point) {
     if (p.n < 1) return;
     V3 v{double(p.xyz[0][0]), double(p.xyz[0][1]), double(p.xyz[0][2])};
@@ -146,14 +141,27 @@ void draw_prim(std::vector<uint32_t>& px, std::vector<uint8_t>& cover,
     int y0 = int(std::floor(cy * S - size * S / 2.0));
     for (int yy = 0; yy < size * S; ++yy)
       for (int xx = 0; xx < size * S; ++xx)
-        put(px, cover, Wp, Hp, x0 + xx, y0 + yy, c);
+        put(px, Wp, Hp, x0 + xx, y0 + yy, c);
   } else if (p.kind == PrimKind::Fill2d) {
     if (p.n < 3) return;
     std::vector<V2> sp;
     for (int i = 0; i < p.n; ++i)
       sp.push_back({double(p.xyz[i][0]) + 0.5, double(p.xyz[i][1]) + 0.5});
-    fill_polygon(px, cover, S, Wp, Hp, sp, c);
+    fill_polygon(px, S, Wp, Hp, sp, c);
   }
+}
+
+int32_t prim_depth(const Prim& p) {
+  if (p.kind == PrimKind::Fill2d) return 0x7fffffff;  // draw first (far)
+  if (p.n <= 0) return 0;
+  int64_t sum = 0;
+  int shift = int(p.shift) & 31;
+  for (int i = 0; i < p.n; ++i) {
+    int32_t z = p.xyz[i][2];
+    if (p.kind == PrimKind::Poly3d) z = int32_t(uint32_t(z) << shift);
+    sum += z;
+  }
+  return int32_t(sum / p.n);
 }
 
 }  // namespace
@@ -169,46 +177,32 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   }
   width_ = W * scale_;
   height_ = rows_ * scale_;
-  // Transparent clear: only covered pixels carry 3D colour.
-  pixels_.assign(size_t(width_) * size_t(height_), 0);
-  cover_.assign(size_t(width_) * size_t(height_), 0);
 
-  // Non-mesh screen-space fills (horizon, sky, ground, sea) are left to the
-  // low-res composite by default — they are not triangle meshes and re-drawing
-  // them with mesh_id colours looks wrong.  FA18_SCENE_RENDER_FILLS=1 forces
-  // them through the software path for debugging.
-  const bool draw_fills = std::getenv("FA18_SCENE_RENDER_FILLS") != nullptr;
+  // Clear the entire 3D view.  Unwritten pixels stay this colour — if horizon
+  // or a mesh is missing from the capture, you see the clear colour, not a
+  // low-res composite hiding the gap.
+  uint32_t clear = 0xFF101018u;
+  if (native::g_machine) {
+    uint16_t c12 = native::g_machine->color_reg(0);
+    uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
+    r |= r << 4; g |= g << 4; b |= b << 4;
+    clear = 0xFF000000u | (r << 16) | (g << 8) | b;
+  }
+  pixels_.assign(size_t(width_) * size_t(height_), clear);
 
-  // Build a draw list of mesh prims with a depth key.  Prefer average view-space
-  // z (far first); fall back to the parent object's distance when z is missing.
   struct DrawItem {
     const Prim* prim;
     uint16_t mesh_id;
-    int32_t depth;  // larger = farther
+    int32_t depth;
   };
-  auto prim_depth = [&](const Prim& p) -> int32_t {
-    if (p.kind == PrimKind::Fill2d) return 0x7fffffff;  // behind everything
-    if (p.n <= 0) return 0;
-    int64_t sum = 0;
-    int shift = int(p.shift) & 31;
-    for (int i = 0; i < p.n; ++i) {
-      int32_t z = p.xyz[i][2];
-      if (p.kind == PrimKind::Poly3d) z = int32_t(uint32_t(z) << shift);
-      sum += z;
-    }
-    return int32_t(sum / p.n);
-  };
-
   std::vector<DrawItem> items;
   items.reserve(frame.prims.size());
   for (const Prim& p : frame.prims) {
-    if (p.kind == PrimKind::Fill2d && !draw_fills) continue;
     uint16_t mid = 0;
     int32_t depth = prim_depth(p);
     if (p.object_index >= 0 && size_t(p.object_index) < frame.objects.size()) {
       const ObjectDraw& o = frame.objects[size_t(p.object_index)];
       mid = o.mesh_id;
-      // Object distance is the game's hypot; use it when prim z is tiny/degenerate
       if (depth == 0 && o.distance != 0) depth = o.distance;
     }
     items.push_back({&p, mid, depth});
@@ -217,19 +211,27 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     return a.depth > b.depth;  // far → near
   });
   for (const DrawItem& it : items)
-    draw_prim(pixels_, cover_, scale_, width_, height_, *it.prim, it.mesh_id);
+    draw_prim(pixels_, scale_, width_, height_, *it.prim, it.mesh_id);
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
 
   if (std::getenv("FA18_SCENE_RENDER_STATS")) {
-    size_t covered = 0;
-    for (uint8_t c : cover_) covered += c != 0;
+    size_t fills = 0, polys = 0, lines = 0, points = 0;
+    for (const Prim& p : frame.prims) {
+      switch (p.kind) {
+        case PrimKind::Fill2d: ++fills; break;
+        case PrimKind::Poly3d: ++polys; break;
+        case PrimKind::Line: ++lines; break;
+        case PrimKind::Point: ++points; break;
+      }
+    }
     std::fprintf(stderr,
-                 "[scene-render] frame %llu objects=%zu prims=%zu drawn=%zu scale=%d "
-                 "%dx%d covered=%zu prim_depth_sort\n",
+                 "[scene-render] frame %llu objects=%zu prims=%zu "
+                 "(fill=%zu poly=%zu line=%zu point=%zu) scale=%d %dx%d\n",
                  (unsigned long long)frame.frame_id, frame.objects.size(),
-                 frame.prims.size(), items.size(), scale_, width_, height_, covered);
+                 frame.prims.size(), fills, polys, lines, points,
+                 scale_, width_, height_);
   }
 }
 
@@ -251,75 +253,31 @@ bool compose_software(std::vector<uint32_t>& out, int& w, int& h) {
   if (!g_soft || !g_soft->has_frame() || !native::g_machine) return false;
 
   const int S = g_soft->scale();
-  w = g_soft->width();
-  h = g_soft->height();
-  // Full frame height for HUD rows below the 3D view.
+  w = W * S;
   const int out_h = H * S;
   out.assign(size_t(w) * size_t(out_h), 0xFF000000u);
 
   const uint32_t* low = native::g_machine->frame_rgb();
   if (!low) return false;
 
-  // 1. Nearest-neighbour upsample of the original low-res frame (HUD, cockpit,
-  //    menus, and the original 3D view as a fallback under the overlay).
-  for (int y = 0; y < H; ++y) {
+  const int scene_h = g_soft->height();  // hi-res rows of the 3D view
+  const int view_rows = scene_h / S;     // low-res rows owned by the 3D view
+
+  // 3D view: the software-rendered SceneFrame only — no low-res mesh under it.
+  const auto& px = g_soft->pixels();
+  for (int y = 0; y < scene_h; ++y) {
+    std::memcpy(&out[size_t(y) * size_t(w)],
+                &px[size_t(y) * size_t(w)],
+                size_t(w) * sizeof(uint32_t));
+  }
+
+  // Below the view: HUD / cockpit / menus from the original low-res frame.
+  for (int y = view_rows; y < H; ++y) {
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* row = &out[size_t(y * S + yy) * size_t(w)];
       for (int x = 0; x < W; ++x) {
         uint32_t c = low[size_t(y) * W + size_t(x)];
         for (int xx = 0; xx < S; ++xx) row[x * S + xx] = c;
-      }
-    }
-  }
-
-  // 2. Overlay depth-sorted 3D where the scene renderer covered a pixel.
-  //    Dilate coverage by one low-res pixel (S hi-res pixels) so seams do not
-  //    flash the underlying low-res mesh between triangle edges.
-  const auto& px = g_soft->pixels();
-  const auto& cover = g_soft->cover();
-  const int scene_h = g_soft->height();
-  const int dilate = S;  // one low-res pixel in hi-res units
-  std::vector<uint8_t> dilated(cover.size(), 0);
-  for (int y = 0; y < scene_h; ++y) {
-    for (int x = 0; x < w; ++x) {
-      size_t i = size_t(y) * size_t(w) + size_t(x);
-      if (!cover[i]) continue;
-      for (int dy = -dilate; dy <= dilate; ++dy) {
-        int yy = y + dy;
-        if (yy < 0 || yy >= scene_h) continue;
-        for (int dx = -dilate; dx <= dilate; ++dx) {
-          int xx = x + dx;
-          if (xx < 0 || xx >= w) continue;
-          dilated[size_t(yy) * size_t(w) + size_t(xx)] = 1;
-        }
-      }
-    }
-  }
-  // For dilated-but-not-covered pixels, sample the nearest covered neighbour
-  // so the overlay colour stays continuous.
-  for (int y = 0; y < scene_h; ++y) {
-    for (int x = 0; x < w; ++x) {
-      size_t i = size_t(y) * size_t(w) + size_t(x);
-      if (cover[i]) {
-        out[i] = px[i];
-        continue;
-      }
-      if (!dilated[i]) continue;
-      // Search a small radius for a covered source pixel
-      bool found = false;
-      for (int r = 1; r <= dilate && !found; ++r) {
-        for (int dy = -r; dy <= r && !found; ++dy) {
-          for (int dx = -r; dx <= r; ++dx) {
-            int yy = y + dy, xx = x + dx;
-            if (yy < 0 || yy >= scene_h || xx < 0 || xx >= w) continue;
-            size_t j = size_t(yy) * size_t(w) + size_t(xx);
-            if (cover[j]) {
-              out[i] = px[j];
-              found = true;
-              break;
-            }
-          }
-        }
       }
     }
   }

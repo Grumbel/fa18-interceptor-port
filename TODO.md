@@ -164,13 +164,11 @@ Open:
 - [x] Scene capture: prim → object link (`Prim::object_index`, `ObjectDraw::prim_count`)
 - [x] Software ISceneRenderer: depth-sort by distance, rasterize prims
       (`FA18_SCENE_RENDER=<scale>`, presents via frame_hires)
-- [x] Software scene renderer: composite HUD/cockpit from low-res frame
-- [x] Non-mesh fills (horizon/sky/ground): capture as Fill2d, leave to low-res
-      composite; SceneFrame opens at game_frame; on_line captured
-- [x] Prim::rgba from live plane-ops + palette at capture; software renderer
-      uses it instead of mesh_id hash colours
+- [x] Software hi-res renderer from SceneFrame (all prims, depth-sorted)
+- [x] Non-mesh fills captured as Fill2d; drawn by software path (not hidden)
+- [x] Prim::rgba from live plane-ops + palette at capture
 - [x] Prim-level depth sort (avg view-z); scan-out recording for SCENE_RENDER
-- [x] Software compose: dilate mesh coverage to hide low-res seams
+- [x] Present: full rendered view + HUD rows only from low-res (no 3D composite)
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -342,3 +340,17 @@ the same row keys as --hires.
 dilated rim from the nearest covered source.  Reduces low-res mesh flashing
 through gaps between hi-res triangles while leaving true non-mesh areas
 (horizon, HUD) on the upsampled original.
+
+### Proper software hi-res renderer (2026-10-17)
+
+Stopped compositing the original low-res 3D under the overlay.  The
+software path now:
+
+1. Clears the 3D view (COLOR0).
+2. Draws **all** captured prims (Fill2d horizon/sky/ground, Poly3d, Line,
+   Point) depth-sorted far→near with live rgba when available.
+3. Presents that buffer as the entire view rectangle.
+4. Takes only rows **below** the view from the low-res frame (HUD/cockpit).
+
+Gaps in capture are visible.  Coverage dilation / mesh_id-only overlay
+were removed.

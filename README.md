@@ -112,15 +112,12 @@ All off by default; the original behaviour is untouched.
 
 - `--hires N`: render the 3D view at N times resolution (HUD and cockpit
   stay low-res).
-- `FA18_SCENE_RENDER=<N>`: alternative software path — captures the 3D
-  scene spine into a `SceneFrame`, depth-sorts **mesh** objects by distance,
-  rasterizes mesh prims (poly/line/point) at N× resolution, then composites
-  with the original low-res frame.  Horizon, sky, ground, sea and other
-  non-mesh fills stay from the original (they are not triangle meshes).
-  HUD and cockpit also stay from the game.  Observation only.  Implies
-  scene capture.  `--hires` takes priority if both are set.
-  `FA18_SCENE_RENDER_FILLS=1` forces non-mesh fills through the software
-  path (debug).
+- `FA18_SCENE_RENDER=<N>`: software hi-res path from the captured
+  `SceneFrame` — depth-sorts all prims (fills, polys, lines, points),
+  rasterizes them at N× into the 3D view, then pastes only HUD/cockpit
+  rows from the low-res frame.  Incomplete capture shows as missing
+  geometry (not papered over by the original low-res 3D).  Observation
+  only.  Implies scene capture.  `--hires` takes priority if both are set.
 - `--analog`: left stick flies analog (dead zone, proportional pitch and
   rudder) instead of the thresholded digital directions.
 - **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog

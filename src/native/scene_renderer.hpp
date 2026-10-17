@@ -1,13 +1,14 @@
-// Concrete software ISceneRenderer: depth-sorts SceneFrame objects and
-// rasterizes their captured prims into an RGB framebuffer, then composites
-// with the original low-res frame so HUD / cockpit stay from the game.
+// Software ISceneRenderer: render the captured SceneFrame at N× resolution.
 //
-// Enable with FA18_SCENE_RENDER=<scale> (1..8).  Implies scene capture.
-// Does not alter game memory or the original draw path — it only consumes
-// the read-only SceneFrame snapshot at end_frame.
+// This is a real hi-res path driven only from the read-only SceneFrame
+// snapshot — not a composite over the original low-res 3D.  Missing prims
+// or incomplete capture show up as missing geometry; that is intentional.
 //
-// Presentation: Machine presents the buffer via frame_hires when
-// compose_software() returns true (same host path as --hires).
+// Presentation replaces the 3D view rectangle with the rendered buffer.
+// Only rows below the view (HUD / cockpit) are taken from the low-res frame.
+//
+// Enable: FA18_SCENE_RENDER=<scale> (1..8).  Implies scene capture.
+// Original game memory and cycles are untouched.
 #pragma once
 
 #include "native/scene_frame.hpp"
@@ -23,9 +24,8 @@ struct SoftwareSceneRenderer : ISceneRenderer {
 
   int scale() const { return scale_; }
   int width() const { return width_; }
-  int height() const { return height_; }
+  int height() const { return height_; }  // 3D view height in hi-res pixels
   const std::vector<uint32_t>& pixels() const { return pixels_; }
-  const std::vector<uint8_t>& cover() const { return cover_; }
   uint64_t last_frame_id() const { return last_frame_id_; }
   bool has_frame() const { return has_frame_; }
 
@@ -33,21 +33,16 @@ struct SoftwareSceneRenderer : ISceneRenderer {
   int scale_ = 1;
   int width_ = 0;
   int height_ = 0;
-  int rows_ = 200;
-  std::vector<uint32_t> pixels_;  // 3D-only colour where cover_ != 0
-  std::vector<uint8_t> cover_;    // 1 = pixel written by a scene prim
+  int rows_ = 200;  // low-res view rows
+  std::vector<uint32_t> pixels_;  // full rendered 3D view
   uint64_t last_frame_id_ = 0;
   bool has_frame_ = false;
 };
 
-// Auto-install when FA18_SCENE_RENDER is set.  Safe to call repeatedly.
 void ensure_software_renderer();
-
-// True when a software scene renderer is active.
 bool software_render_enabled();
 
-// Composite: upsample the machine's low-res RGB frame, then overlay the
-// depth-sorted 3D pixels.  Sets w/h.  False if no scene frame yet.
+// Present the rendered 3D view; HUD rows below the view come from low-res.
 bool compose_software(std::vector<uint32_t>& out, int& w, int& h);
 
 }  // namespace scene
