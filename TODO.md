@@ -164,6 +164,7 @@ Open:
 - [x] Scene capture: prim → object link (`Prim::object_index`, `ObjectDraw::prim_count`)
 - [x] Software ISceneRenderer: depth-sort by distance, rasterize prims
       (`FA18_SCENE_RENDER=<scale>`, presents via frame_hires)
+- [x] Software scene renderer: composite HUD/cockpit from low-res frame
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -289,3 +290,11 @@ Concrete `ISceneRenderer` in `scene_renderer.cpp`:
 
 Next: richer colours from live plane ops, optional HUD composite, or
 an OpenGL `ISceneRenderer` using the same `SceneFrame`.
+
+### Software scene renderer HUD composite (2026-10-17)
+
+`compose_software` now nearest-neighbour upsamples the machine's low-res
+RGB frame, then overlays only the pixels covered by depth-sorted scene
+prims.  HUD, cockpit, and menus stay from the original; the 3D view is
+the software re-render.  Same composition model as `--hires`, driven from
+`SceneFrame` instead of live PC-hook rasterization.
