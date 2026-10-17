@@ -458,3 +458,47 @@ Both `$5aed0` builders finish with **row scale** `$42d8c` using
 | +98 | View/seat mode byte (selects eye offset) |
 
 `$5abd6` = index × stride into `$5b47c` (0 for the free1 player).
+
+## Angle units and `$22b6e` (2-angle view matrix)
+
+### Units
+
+| Stage | Full circle | Notes |
+|-------|-------------|--------|
+| External `$5ad8c/$5ad8e` | **28800** | 360°; `look_angles` / pan |
+| After `lsr #3` into builders | **3600** | 28800/8; builders then `addw dN,dN` for table index |
+| Sin table `$538e8` | index 0..1800 = 0..90° | Q14: **16384 = 1.0** |
+
+`$22dd6`: `addw d0,d0` then quadrant logic; comparisons use the doubled
+value (1800/3600/5400/7200).  Effective: post-`lsr` **3600 = 360°**.
+
+free1 level: `$5ad8c=7200` → 900 after `lsr` → **90°** pitch, pan 0.
+
+### `$22b6e` matrix (pitch=`d0`, pan=`d2` after lsr)
+
+After `$22dd6`: `(s0,c0)=(sin,cos) pitch`, `(s2,c2)=(sin,cos) pan`.
+
+```
+m00 = c2>>6      m01 = 0        m02 = s2>>6
+m10 = −(s2·s0)   m11 = c0>>6    m12 = (c2·s0)     ; · = mulsw → swap → asr.w #4
+m20 = −(s2·c0)   m21 = −s0>>6   m22 = (c2·c0)
+```
+
+Then `$42d8c` scales rows by `$5ad36/$5ad38/$5ad3a` (`mulsw` + `asr #8`).
+
+### free1 level check
+
+pitch=90° `(s0,c0)=(16384,0)`, pan=0 `(s2,c2)=(0,16384)`, scales `(168,252,128)`:
+
+```
+pre-scale  [256 0 0 / 0 0 256 / 0 −256 0]
+scaled     [168 0 0 / 0 0 252 / 0 −128 0]   ← matches live $5aed0
+```
+
+So external “level” is **pitch angle 90°** in this convention (not 0°).
+
+### `$22bbe` (3-angle)
+
+`lsr #3` on d0,d2,d4; `$22dd6` + `$22eba` → three sin/cos pairs; full
+Euler product into `(a1)+`.  Used for `$5aed0` when angles come from
+`$5ad82/86/8a`, and for `$5aee2` / `$5af18`.
