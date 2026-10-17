@@ -234,10 +234,13 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
     double n1 = std::sqrt(c1[0]*c1[0]+c1[1]*c1[1]+c1[2]*c1[2]);
     double n2 = std::sqrt(c2[0]*c2[0]+c2[1]*c2[1]+c2[2]*c2[2]);
     double Nx, Ny, Nz;
-    if (n2 > n1 && n2 > 1.0 && std::fabs(c2[1]/n2 >= std::fabs(c1[1])/std::max(n1, 1.0)) {
-      Nx = c2[0]/n2; Ny = c2[1]/n2; Nz = c2[2]/n2;  // Z-up world
+    // Avoid std::max — system max() macros break the parse.
+    const double a1 = (n1 > 1e-9) ? (std::fabs(c1[1]) / n1) : 0.0;
+    const double a2 = (n2 > 1e-9) ? (std::fabs(c2[1]) / n2) : 0.0;
+    if (n2 > n1 && n2 > 1.0 && a2 >= a1) {
+      Nx = c2[0] / n2; Ny = c2[1] / n2; Nz = c2[2] / n2;  // Z-up world
     } else if (n1 > 1.0) {
-      Nx = c1[0]/n1; Ny = c1[1]/n1; Nz = c1[2]/n1;  // Y-up world
+      Nx = c1[0] / n1; Ny = c1[1] / n1; Nz = c1[2] / n1;  // Y-up world
     } else {
       Nx = 0; Ny = 1; Nz = 0;
     }
