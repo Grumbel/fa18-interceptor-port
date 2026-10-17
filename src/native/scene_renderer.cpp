@@ -77,10 +77,17 @@ void draw_line(std::vector<uint32_t>& px, int S, int Wp, int Hp, V2 a, V2 b, uin
 void fill_polygon(std::vector<uint32_t>& px, int S, int Wp, int Hp,
                   const std::vector<V2>& pts, uint32_t c) {
   if (pts.size() < 3) return;
-  double ymin = 1e30, ymax = -1e30;
+  double ymin = 1e30, ymax = -1e30, xmin = 1e30, xmax = -1e30;
   for (auto& p : pts) {
     ymin = std::min(ymin, p.y);
     ymax = std::max(ymax, p.y);
+    xmin = std::min(xmin, p.x);
+    xmax = std::max(xmax, p.x);
+  }
+  // Slivers (cables, struts): keep a one low-res-pixel stroke like the original.
+  if (std::min(xmax - xmin, ymax - ymin) < 1.5) {
+    for (size_t i = 0; i < pts.size(); ++i)
+      draw_line(px, S, Wp, Hp, pts[i], pts[(i + 1) % pts.size()], c);
   }
   int y0 = std::max(0, int(std::floor(ymin * S)));
   int y1 = std::min(Hp - 1, int(std::ceil(ymax * S)));

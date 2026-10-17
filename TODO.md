@@ -170,6 +170,7 @@ Open:
 - [x] Prim-level depth sort (avg view-z); scan-out recording for SCENE_RENDER
 - [x] Present: full rendered view + HUD rows only from low-res (no 3D composite)
 - [x] Prim verts 32; horizon always captured; SCENE_RENDER installs hooks alone
+- [x] Thin-poly stroke; copy-plane rgba approx from \$5ac4c
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -363,3 +364,10 @@ were removed.
   `$5ab93` indicates a second colour); sel distinguishes ground vs sky-class.
 - `ensure_software_renderer` installs remaster PC hooks if the machine is
   already live so FA18_SCENE_RENDER works without `--hires`.
+
+### Software renderer raster quality (2026-10-17)
+
+- Thin polys (cables/struts, bbox < 1.5 low-res px) get a stroke outline
+  matching the --hires path, not a zero-area fill.
+- Copy-plane ops ($45014) no longer leave Prim::rgba = 0; approximate with
+  $5ac4c → COLOR so the software path has a real tint instead of mesh_id hash.

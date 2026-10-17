@@ -127,11 +127,17 @@ inline void put(Layer& L, int x, int y, const PlaneOps& o) {
   L.cover[size_t(y / L.S) * W + size_t(x / L.S)] = 1;
 }
 
-// Resolve the flat colour a plane-op would write onto a black pixel, using
-// the live COLOR registers.  Used to stamp Prim::rgba at capture time.
+// Resolve a flat colour from plane-ops + live COLOR registers for Prim::rgba.
+// Copy-plane ops ($45014) depend on the destination pixel; approximate with
+// the current $5ac4c colour word so the software renderer still gets a tint.
 inline uint32_t rgba_from_ops(const PlaneOps& o) {
-  if (o.cp_src >= 0) return 0;  // depends on destination pixel; unknown here
-  uint8_t idx = uint8_t((0 & ~o.clr) | o.set) ^ o.xr;
+  uint8_t idx;
+  if (o.cp_src >= 0) {
+    uint16_t col = rd16(0x5ac4c);
+    idx = uint8_t(col & 15);
+  } else {
+    idx = uint8_t((0 & ~o.clr) | o.set) ^ o.xr;
+  }
   uint16_t c12 = native::g_machine->color_reg(idx & 31);
   uint32_t r = (c12 >> 8) & 0xF, g = (c12 >> 4) & 0xF, b = c12 & 0xF;
   r |= r << 4; g |= g << 4; b |= b << 4;
