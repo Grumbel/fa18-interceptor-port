@@ -421,6 +421,12 @@ void capture_horizon_fill() {
       pr.xyz[i][1] = int16_t(rd16(0x60688 + 4u * uint32_t(i)));
       pr.xyz[i][2] = 0;
     }
+    if (std::getenv("FA18_HORIZON_DEBUG")) {
+      std::fprintf(stderr, "[horizon] capture n=%d rgba=%08x verts:", m, pr.rgba);
+      for (int i = 0; i < m && i < 8; ++i)
+        std::fprintf(stderr, " (%d,%d)", int(pr.xyz[i][0]), int(pr.xyz[i][1]));
+      std::fprintf(stderr, "\n");
+    }
     scene::note_prim(pr);
   }
   if (rd8(0x5ab93) == 0) return;            // hires: no second colour, sky only
@@ -712,11 +718,23 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x44994, [] { on_simple_horizon(); });
   // $44dfe entry: $60684 already holds count-prefixed screen-space poly
   // (recomp may not hit the exact RTS at $432aa).
+  // $44dfe is also used by general 2D fills ($44b50).  Only capture when
+  // called from the horizon path ($44994 → bsr $44dfe → return $44b00).
   m.add_pc_hook(0x44dfe, [] {
-    if (std::getenv("FA18_HORIZON_DEBUG"))
-      std::fprintf(stderr, "[horizon] 44dfe n=%d ab93=%d\n",
-                   int(int16_t(rd16(0x60684))), int(rd8(0x5ab93)));
+    uint32_t ret = native::rd32(native::g_machine->cpu.a[7]);
+    // Only the horizon path ($44994 → $44afc bsr → return $44b00).
+    if (ret != 0x44b00) return;
+    if (std::getenv("FA18_HORIZON_DEBUG")) {
+      int n = int16_t(rd16(0x60684));
+      std::fprintf(stderr, "[horizon] SEA n=%d ab93=%d\n", n, int(rd8(0x5ab93)));
+    }
     if (scene::enabled()) capture_horizon_fill();
+  });
+  // Count $42f6a outcomes via $5ab96 (set 1 on success path before RTS).
+  m.add_pc_hook(0x42f6a, [] {
+    if (!std::getenv("FA18_HORIZON_DEBUG")) return;
+    // log entry; success/fail checked at $44994 after return is hard — use end hooks
+    std::fprintf(stderr, "[horizon] 42f6a enter camY=%d\n", int32_t(rd32(0x5ad5e)));
   });
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });

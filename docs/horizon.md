@@ -184,3 +184,58 @@ that poly; the poly geometry is still built and `$44dfe` still runs.
 
 `$44dfe` fires with `n` in 3..13 every frame.  Software scene now reports
 `fill≥1` (sky injection + sea poly).
+
+## free1 observation (2026-10-17, deeper)
+
+### Call path under recomp
+
+| Event | Count (≈3100 frames) |
+|-------|----------------------|
+| `$44994` entry (simple path) | every frame |
+| `$42f6a` entry | most frames |
+| `$44dfe` with return `$44b00` (horizon) | **never** |
+| `$44dfe` with return `$44b5e` (general `$44b50` fill) | many (mesh 2D fills) |
+
+So `$42f6a` runs but **always fails the clip** before `$44dfe` on the
+horizon path.  No count-prefixed sea poly is ever installed for free1.
+
+Camera Y at `$5ad5e` is large negative fixed-point (e.g. `-50331648`).
+Sea-corner Y is `swap($5ad5e)>>2` — same height as the camera in the
+builder’s coordinate system — so the “sea quad” is coplanar with the
+eye and routinely clips away.
+
+### What the low-res frame actually shows
+
+Center column (x=160) at free1 frame ~3003:
+
+```
+y=0..45   #003366  sky blue
+y=50..140 #115511  ground green
+y=145+    #003366  (below view / other)
+```
+
+There **is** a sky/ground split around y≈45–50.  It is **not** produced
+by the `$42f6a` sea poly (that path never reaches `$44dfe`).  Candidates:
+
+1. **3D mesh fills** drawn through `$44b50` / `$38c0c` (scene capture often
+   reports `poly=0` early — may be a capture gap, or ground uses another
+   path).
+2. **Blitter line+fill** with edge tables set outside `$42f6a`.
+3. Something in the plane-clear sequence at `$44994` that is not a full
+   rectangle (modulo/offset quirks) — less likely given BLTSIZE math.
+
+### Capture mistake corrected
+
+Hooking all `$44dfe` calls captured **mesh 2D fills** (return `$44b5e`),
+not the sea poly.  Those verts are small scattered polygons (buildings /
+terrain details), colour `#003300`.  Filtering to return `$44b00` yields
+zero captures in free1 — consistent with `$42f6a` always failing.
+
+### Next RE steps
+
+1. Why `$42f6a` fails: dump `$63b44` flags and view-space corners at
+   `$60684` on the failure RTS (`$432b6`).
+2. Trace what paints `#115511` into the playfield — watch blitter writes
+   or `$38c0c` / `$44b50` with ground colour after `$44994`.
+3. Confirm whether ground is a large projected mesh (capture gap) or a
+   dedicated blitter horizon edge fill.
