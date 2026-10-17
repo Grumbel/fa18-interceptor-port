@@ -624,5 +624,7 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
 - [x] **Tile emit pipeline**: pattern lists `$3e71a`… → type → `$3e6e8`
       deltas → near/far grids `$58168`/`$57fa4` → mesh verts → `$5aed0` →
       `$61286` → `$38c0c`.  Docs: horizon.md “Tile emit pipeline”.
+- [x] **`$38c0c` + free1 frame sequence**: verts at `$61286` → clip/setup
+      → `$44b50` fill; end-to-end free1 path documented in horizon.md.
 - [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds
       (needs a mission zone + low level attitude; not free1).
