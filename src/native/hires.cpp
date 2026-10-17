@@ -371,10 +371,42 @@ void on_fill_horizon() {
       r |= r << 4; g |= g << 4; b |= b << 4;
       return 0xFF000000u | (r << 16) | (g << 8) | b;
     };
+    // Horizon fill clears display plane 1.  Ground/sea colour is a palette
+    // entry that still looks distinct after that bit is cleared — try indices
+    // with bit1 set (2,3,6,7) and keep the one farthest from sky (COLOR0).
     if (ground) {
-      pr.rgba = rgba12(2);
-      if (pr.rgba == rgba12(0)) pr.rgba = rgba12(3);
-      scene::note_env_colours(0, pr.rgba);
+      uint32_t sky = rgba12(0);
+      uint32_t best = rgba12(2);
+      int best_score = -1;
+      for (int idx : {2, 3, 6, 7, 4, 5}) {
+        uint32_t c = rgba12(idx);
+        int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
+        int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
+        int db = int(c & 255) - int(sky & 255);
+        int score = dr * dr + dg * dg + db * db;
+        if (score > best_score) { best_score = score; best = c; }
+      }
+      pr.rgba = best;
+      scene::note_env_colours(sky, best);
+      // Once per frame: explicit full-view sky behind the ground/sea poly so
+      // the software renderer has a real sky prim (not only the clear colour).
+      static uint64_t sky_injected_for = ~0ull;
+      uint64_t fid = scene::current().frame_id;
+      if (sky_injected_for != fid) {
+        sky_injected_for = fid;
+        scene::Prim sky_pr;
+        sky_pr.kind = scene::PrimKind::Fill2d;
+        sky_pr.n = 4;
+        sky_pr.object_index = -1;
+        sky_pr.sel = 2;
+        sky_pr.rgba = sky;
+        int rows = std::min(200, int(rd16(0x5ac7c)) + 1);
+        sky_pr.xyz[0][0] = 0;   sky_pr.xyz[0][1] = 0;
+        sky_pr.xyz[1][0] = 320; sky_pr.xyz[1][1] = 0;
+        sky_pr.xyz[2][0] = 320; sky_pr.xyz[2][1] = int16_t(rows);
+        sky_pr.xyz[3][0] = 0;   sky_pr.xyz[3][1] = int16_t(rows);
+        scene::note_prim(sky_pr);
+      }
     } else {
       pr.rgba = rgba12(0);
       scene::note_env_colours(pr.rgba, 0);

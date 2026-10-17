@@ -173,6 +173,7 @@ Open:
 - [x] Thin-poly stroke; copy-plane rgba approx from \$5ac4c
 - [x] Point size kind + disc radius captured and rendered
 - [x] Horizon/water: sky_rgba + ground_rgba on SceneFrame; clear to sky
+- [x] Horizon: distinct water palette pick; sky prim inject; sky under ground
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -388,3 +389,11 @@ prims stamp matching rgba and update those env colours via
 `note_env_colours`.  Software renderer clears the 3D view to sky, then
 paints ground/sea fills (sel=1) and other prims on top.  Missing horizon
 geometry stays sky — not a low-res underlay.
+
+### Horizon/water draw order and colour pick (2026-10-17)
+
+- Ground/sea colour: pick the palette index among {2,3,6,7,4,5} farthest
+  from COLOR0 so water is not identical to sky.
+- Fill2d depth: sky (sel=2) behind ground/sea (sel=1).
+- When ground is captured, inject a full-view sky Fill2d once per frame so
+  the sky is an explicit prim for the software (and future GL) path.

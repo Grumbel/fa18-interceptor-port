@@ -113,12 +113,14 @@ void fill_polygon(std::vector<uint32_t>& px, int S, int Wp, int Hp,
 void draw_prim(std::vector<uint32_t>& px, int S, int Wp, int Hp,
                const Prim& p, uint16_t mesh_id, uint32_t sky_rgba,
                uint32_t ground_rgba) {
-  uint32_t c = p.rgba;
-  if (!c) {
-    if (p.kind == PrimKind::Fill2d)
-      c = (p.sel == 1) ? ground_rgba : sky_rgba;
-    else
-      c = colour_for(mesh_id, p.kind);
+  uint32_t c;
+  if (p.kind == PrimKind::Fill2d) {
+    // Horizon/sky/ground: prefer env colours so water matches the clear sky.
+    if (p.sel == 1) c = p.rgba ? p.rgba : ground_rgba;
+    else if (p.sel == 2) c = p.rgba ? p.rgba : sky_rgba;
+    else c = p.rgba ? p.rgba : ground_rgba;
+  } else {
+    c = p.rgba ? p.rgba : colour_for(mesh_id, p.kind);
   }
   if (p.kind == PrimKind::Poly3d) {
     if (p.n < 3) return;
@@ -183,7 +185,9 @@ void draw_prim(std::vector<uint32_t>& px, int S, int Wp, int Hp,
 }
 
 int32_t prim_depth(const Prim& p) {
-  if (p.kind == PrimKind::Fill2d) return 0x7fffffff;  // draw first (far)
+  // Fill2d: sky (sel=2) behind ground/sea (sel=1); both behind meshes.
+  if (p.kind == PrimKind::Fill2d)
+    return (p.sel == 1) ? 0x7ffffffe : 0x7fffffff;
   if (p.n <= 0) return 0;
   int64_t sum = 0;
   int shift = int(p.shift) & 31;

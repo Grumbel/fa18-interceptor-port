@@ -42,9 +42,12 @@ void dump_frame() {
   if (!dump_on || !frame.complete) return;
   static uint64_t last_detail = 0;
   std::fprintf(stderr,
-               "[scene] frame %llu camera=(%d,%d,%d) objects=%zu prims=%zu\n",
+               "[scene] frame %llu camera=(%d,%d,%d) objects=%zu prims=%zu "
+               "sky=%06x ground=%06x\n",
                (unsigned long long)frame.frame_id, frame.camera.x, frame.camera.y,
-               frame.camera.z, frame.objects.size(), frame.prims.size());
+               frame.camera.z, frame.objects.size(), frame.prims.size(),
+               unsigned(frame.sky_rgba & 0xFFFFFF),
+               unsigned(frame.ground_rgba & 0xFFFFFF));
   if (frame.frame_id >= last_detail + 60) {
     last_detail = frame.frame_id;
     for (size_t i = 0; i < frame.objects.size() && i < 24; ++i) {
@@ -103,15 +106,23 @@ void begin_frame(uint64_t frame_id) {
   frame.frame_id = frame_id;
   current_object_ = -1;
   // Default environment colours from the live playfield palette.
-  // COLOR0 is the background/sky; ground/sea is typically a nearby index
-  // (bitplane 1 cleared in the horizon fill — try indices with bit1 set).
   frame.sky_rgba = rgba_from_color_reg(0);
-  // Prefer index 2 (bit1 alone) or 3; fall back along 1..7.
   frame.ground_rgba = rgba_from_color_reg(2);
-  if (frame.ground_rgba == frame.sky_rgba)
-    frame.ground_rgba = rgba_from_color_reg(3);
-  if (frame.ground_rgba == frame.sky_rgba)
-    frame.ground_rgba = rgba_from_color_reg(1);
+  {
+    uint32_t sky = frame.sky_rgba;
+    int best_score = -1;
+    for (int idx : {2, 3, 6, 7, 4, 5, 1}) {
+      uint32_t c = rgba_from_color_reg(idx);
+      int dr = int((c >> 16) & 255) - int((sky >> 16) & 255);
+      int dg = int((c >> 8) & 255) - int((sky >> 8) & 255);
+      int db = int(c & 255) - int(sky & 255);
+      int score = dr * dr + dg * dg + db * db;
+      if (score > best_score) {
+        best_score = score;
+        frame.ground_rgba = c;
+      }
+    }
+  }
 }
 
 void end_frame() {
