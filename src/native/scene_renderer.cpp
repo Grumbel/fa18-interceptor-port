@@ -224,45 +224,33 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   if (frame.camera.has_view_m) {
     const int16_t* m = frame.camera.view_m;
-    // World-up in view space.  Try Y-up (column 1) and Z-up (column 2); pick
-    // the axis whose view-space image has the larger |Y| component (more
-    // "vertical on screen" when level) so roll shows up in Nx.
-    auto col = [&](int c) {
-      return std::array<double, 3>{double(m[c]), double(m[3 + c]), double(m[6 + c])};
-    };
-    auto c1 = col(1), c2 = col(2);
-    double n1 = std::sqrt(c1[0]*c1[0]+c1[1]*c1[1]+c1[2]*c1[2]);
-    double n2 = std::sqrt(c2[0]*c2[0]+c2[1]*c2[1]+c2[2]*c2[2]);
-    double Nx, Ny, Nz;
-    // Avoid std::max — system max() macros break the parse.
-    const double a1 = (n1 > 1e-9) ? (std::fabs(c1[1]) / n1) : 0.0;
-    const double a2 = (n2 > 1e-9) ? (std::fabs(c2[1]) / n2) : 0.0;
-    if (n2 > n1 && n2 > 1.0 && a2 >= a1) {
-      Nx = c2[0] / n2; Ny = c2[1] / n2; Nz = c2[2] / n2;  // Z-up world
-    } else if (n1 > 1.0) {
-      Nx = c1[0] / n1; Ny = c1[1] / n1; Nz = c1[2] / n1;  // Y-up world
-    } else {
-      Nx = 0; Ny = 1; Nz = 0;
-    }
-    // If "up" points down in view, flip so water stays below.
-    if (Ny < 0) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
+    // World-up = column 1 of row-major M (Y-up).  Fixed axis — no mid-bank
+    // Y/Z switching.  Per-pixel N·dir test is continuous through 90° bank
+    // (no Ny-sign flip that swapped sky/water).
+    double Nx = double(m[1]);
+    double Ny = double(m[4]);
+    double Nz = double(m[7]);
+    const double nlen = std::sqrt(Nx * Nx + Ny * Ny + Nz * Nz);
+    if (nlen > 1.0) {
+      Nx /= nlen; Ny /= nlen; Nz /= nlen;
+      // Orient once: when roughly level, Ny should be >0 so lower screen
+      // (negative vyz) is water.  Only flip if clearly inverted.
+      if (Ny < -0.05) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
 
-    const int S = scale_;
-    for (int x = 0; x < width_; ++x) {
-      double sx = (x + 0.5) / S;
-      double vxz = (159.0 - sx) / 160.0;
-      double hy_lr;
-      if (std::fabs(Ny) < 1e-6) {
-        hy_lr = (Nz + Nx * vxz) > 0 ? -1e6 : 1e6;
-      } else {
-        double vyz = -(Nz + Nx * vxz) / Ny;
-        hy_lr = 89.0 - 90.0 * vyz;
+      // Same perspective as meshes (160 / 90).  Per-pixel: water if N·d < 0.
+      const int S = scale_;
+      const double cx = 159.0, cy = 89.0, fx = 160.0, fy = 90.0;
+      for (int y = 0; y < height_; ++y) {
+        const double sy = (y + 0.5) / S;
+        const double vyz = (cy - sy) / fy;
+        for (int x = 0; x < width_; ++x) {
+          const double sx = (x + 0.5) / S;
+          const double vxz = (cx - sx) / fx;
+          // d = (vxz, vyz, 1); below horizon toward ground when N·d < 0
+          if (Nx * vxz + Ny * vyz + Nz < 0.0)
+            pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
+        }
       }
-      int y0 = int(std::floor(hy_lr * S));
-      if (y0 < 0) y0 = 0;
-      if (y0 > height_) y0 = height_;
-      for (int y = y0; y < height_; ++y)
-        pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
     }
   } else {
     for (int y = height_ / 2; y < height_; ++y)

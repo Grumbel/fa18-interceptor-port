@@ -473,3 +473,9 @@ N·dir = 0, projected with the same 160/90 perspective as meshes.  Proper
 (main 3D rot_out matrix), fall back to player body matrix at +$92.
 Fixed sky/ocean colours (not red palette).  Auto-pick Y-up vs Z-up
 column.  Stats dump full M[] for tuning.
+
+### Horizon continuous N·d (2026-10-17)
+
+Bank flip was Ny-sign flip at 90°.  Per-pixel N·dir < 0 test is continuous.
+Fixed Y-up = column 1 only (no mid-bank axis switch).  Same 160/90
+perspective as meshes.
