@@ -575,3 +575,51 @@ out[view_rows .. H)   ← low-res frame (cockpit/HUD)
 ```
 
 No vertical resampling of the 3D view.
+
+## Measured: original hrow vs external tilt (free1)
+
+`FA18_ATTITUDE_DUMP=1` logs original playfield centre-column transition
+(idx 6 → not 6) together with `$5ad8c` tilt and `$5aed0` columns.
+
+### Phase A — tilt locked at 7200 (level matrix)
+
+| frame | tilt | hrow | c1 | notes |
+|------:|-----:|-----:|------|------|
+| 3003 | 7200 | **46** | (0,0,−128) | level matrix |
+| 3015 | 7200 | 40 | same | |
+| 3017 | 7200 | 33 | same | |
+| 3019 | 7200 | 24 | same | |
+| 3021 | 7200 | 13 | same | |
+| 3025 | 7200 | **0** | same | no sky at centre |
+
+Matrix and tilt **unchanged** while hrow walks 46 → 0.  Camera altitude
+was falling in earlier dumps.  So the painted split is **not** the
+infinite-plane horizon of `$5aed0`; it moves with camera/terrain geometry.
+
+### Phase B — tilt decreases (external look)
+
+| frame | tilt | pan | hrow | c1 (m1,m4,m7) |
+|------:|-----:|----:|-----:|----------------|
+| 3030 | 7030 | 560 | 0 | (0,8,−128) |
+| 3046 | 6499 | 2542 | 57 | (0,38,−127) |
+| 3062 | 6052 | 3030 | 54 | (0,62,−124) |
+| 3094 | 5269 | 3037 | 48 | (0,102,−117) |
+| 3126 | 4901 | 3181 | 33 | (0,121,−113) |
+| 3150 | 4476 | 3195 | 13 | (0,140,−106) |
+| 3157 | 4253 | 3197 | 0 | (0,150,−103) |
+
+Tilt 7200→4253 (Δ ≈ 33.8° on the 28800 circle) while hrow is entangled
+with terrain/ship fills.  **Cannot read pitch→horizon gain** from free1
+alone.
+
+### Viewport
+
+`$5ac7c = 179` (180 rows) for all of these samples — not a short cockpit
+window.
+
+### Conclusion for “pitch doesn’t move enough”
+
+In free1 the original’s sky/ground edge is **terrain/object driven**, so
+matching `$5aed0`’s infinite plane cannot reproduce that edge’s motion.
+Need a cockpit / open-water case where the sea-quad or plane fill
+dominates before attributing a focal-length error to the soft horizon.

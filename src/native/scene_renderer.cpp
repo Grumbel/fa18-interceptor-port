@@ -283,39 +283,12 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
 
-  // Research dump: player vs camera vs matrices vs observed horizon row.
+  // Original low-res horizon row vs external tilt (research; no renderer change).
   if (std::getenv("FA18_ATTITUDE_DUMP") && native::g_machine) {
     static int dumps = 0;
-    if (dumps < 12 && frame.frame_id >= 3030) {
-      ++dumps;
+    if (dumps < 50 && frame.frame_id >= 3000) {
       auto rd16 = [](uint32_t a) { return native::rd16(a); };
-      auto rd32 = [](uint32_t a) { return native::rd32(a); };
       auto rd8 = [](uint32_t a) { return native::rd8(a); };
-      uint32_t player = 0x5b47c + uint32_t(int32_t(int16_t(rd16(0x5abd6))));
-      std::fprintf(stderr, "[attitude] frame %llu aa7d=%d player=%08x 5ac7c=%d rows=%d\n",
-                   (unsigned long long)frame.frame_id, int(rd8(0x5aa7d)), player,
-                   int(rd16(0x5ac7c)), int(rd16(0x5ac7c))+1);
-      std::fprintf(stderr, "  cam XYZ=%d %d %d  alt=%d\n",
-                   int32_t(rd32(0x5ad5a)), int32_t(rd32(0x5ad5e)), int32_t(rd32(0x5ad62)),
-                   -int32_t(rd32(0x5ad5e)));
-      std::fprintf(stderr, "  player XYZ=%d %d %d\n",
-                   int32_t(rd32(player+0x14)), int32_t(rd32(player+0x18)), int32_t(rd32(player+0x1c)));
-      std::fprintf(stderr, "  player ang@$66=%d %d %d\n",
-                   int16_t(rd16(player+0x66)), int16_t(rd16(player+0x68)), int16_t(rd16(player+0x6a)));
-      std::fprintf(stderr, "  viewang 5ad8c/8e=%d %d  scales=%d %d %d\n",
-                   int16_t(rd16(0x5ad8c)), int16_t(rd16(0x5ad8e)),
-                   int16_t(rd16(0x5ad36)), int16_t(rd16(0x5ad38)), int16_t(rd16(0x5ad3a)));
-      auto dumpM = [&](const char* name, uint32_t base) {
-        std::fprintf(stderr, "  %s=[%d %d %d / %d %d %d / %d %d %d]\n", name,
-                     int16_t(rd16(base)), int16_t(rd16(base+2)), int16_t(rd16(base+4)),
-                     int16_t(rd16(base+6)), int16_t(rd16(base+8)), int16_t(rd16(base+10)),
-                     int16_t(rd16(base+12)), int16_t(rd16(base+14)), int16_t(rd16(base+16)));
-      };
-      dumpM("5aed0", 0x5aed0);
-      dumpM("5aee2", 0x5aee2);
-      dumpM("pl+80", player + 0x80);
-      dumpM("pl+92", player + 0x92);
-      // Observed horizon: first row where center pixel leaves sky idx 6
       const uint8_t* idx = native::g_machine->frame_idx();
       int hrow = -1;
       if (idx) {
@@ -323,18 +296,22 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
           if (idx[size_t(y) * 320 + 160] != 6) { hrow = y; break; }
         }
       }
-      // Predicted horizon row from column1 of $5aed0:
-      // m1*(159-sx)/160 + m4*(90-sy)/90 + m7 = 0 at sx=159.5 → m4*(90-sy)/90 + m7 = 0
-      // sy = 90 + 90*m7/m4  (if m4 != 0); else if m7==0 → sy=90
-      auto pred = [&](uint32_t base) {
-        double m1 = int16_t(rd16(base+2)), m4 = int16_t(rd16(base+8)), m7 = int16_t(rd16(base+14));
-        double sy = 90.0;
-        if (std::fabs(m4) > 1e-6) sy = 90.0 + 90.0 * m7 / m4;
-        // Also try: ground when m1*vx + m4*vy + m7 > 0; find sy at sx=159.5
-        return sy;
-      };
-      std::fprintf(stderr, "  observed_hrow=%d  pred_5aed0=%.1f pred_pl92=%.1f pred_5aee2=%.1f\n",
-                   hrow, pred(0x5aed0), pred(player+0x92), pred(0x5aee2));
+      static int last_h = -999, last_tilt = -99999;
+      int tilt = int16_t(rd16(0x5ad8c));
+      int pan = int16_t(rd16(0x5ad8e));
+      if (hrow != last_h || tilt != last_tilt) {
+        last_h = hrow;
+        last_tilt = tilt;
+        ++dumps;
+        const int16_t* m = frame.camera.view_m;
+        std::fprintf(stderr,
+          "[hz] f=%llu aa7d=%d 5ac7c=%d tilt=%d pan=%d hrow=%d "
+          "c1=(%d,%d,%d) c2=(%d,%d,%d)\n",
+          (unsigned long long)frame.frame_id, int(rd8(0x5aa7d)),
+          int(rd16(0x5ac7c)), tilt, pan, hrow,
+          int(m[1]), int(m[4]), int(m[7]),
+          int(m[2]), int(m[5]), int(m[8]));
+      }
     }
   }
 
