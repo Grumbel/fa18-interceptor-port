@@ -21,6 +21,7 @@
 //   -114 l  -120/-118/-116 w  -122 w  -124 w (result bits)
 //   -127 b (bit 0: "draw as picture")  -128 w  -134/-132/-130 w  -136 b  -150 w
 #include "native/asmregs.hpp"
+#include "native/scene_frame.hpp"
 #include "native/orig.hpp"
 #include "native/vars.hpp"
 
@@ -1837,6 +1838,11 @@ void render_object(bool picture) {
   cpu().a[7] -= 152;
   WW(-128, 0);
   if (picture) WW(-128, RW(-128) | 1);
+  if (scene::enabled()) {
+    // Distance limit local is filled later in the body; eye words are live.
+    // Object base often in a1 on entry to $31d6c paths — use 0 and match last.
+    scene::note_render_object(0, 0);
+  }
   render_body();
 }
 

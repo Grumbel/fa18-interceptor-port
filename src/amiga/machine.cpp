@@ -3,6 +3,7 @@
 #include "amiga/hle.hpp"
 #include "amiga/hunk.hpp"
 #include "native/runtime.hpp"
+#include "native/scene_frame.hpp"
 
 #include <algorithm>
 #include <cstdarg>
@@ -582,7 +583,8 @@ void Machine::end_of_frame() {
 
 void Machine::set_hires_scale(int s) {
   static bool installed = false;
-  if (s > 0 && !installed) {
+  // Hi-res remaster and scene capture share the same PC hooks on draw entries.
+  if ((s > 0 || scene::enabled()) && !installed) {
     remaster::install(*this);
     installed = true;
   }

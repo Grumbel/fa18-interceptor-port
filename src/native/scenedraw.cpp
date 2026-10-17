@@ -24,10 +24,12 @@ int32_t e16(uint16_t v) { return int16_t(v); }
 void negl(int r) { D(r) = uint32_t(-int32_t(D(r))); }
 constexpr uint32_t scenario_base = 0x5b47c;
 
-void capture_object(uint32_t obj_base, scene::ObjectList list, uint16_t list_word = 0) {
+void capture_object(uint32_t obj_base, scene::ObjectList list, uint16_t list_word = 0,
+                    uint32_t list_entry = 0) {
   if (!scene::enabled()) return;
   scene::ObjectDraw o;
   o.obj_base = obj_base;
+  o.list_entry = list_entry;
   o.draw_fn = A(2);
   o.aux0 = rd32(0x5ad2e);
   o.aux1 = rd32(0x5ad32);
@@ -297,6 +299,7 @@ void draw_scene_body() {
     setb(0, lob(7));
     setw(0, lo(0) & 15);
     wr16(0x5adb0, lo(0));
+    uint32_t sorted_entry = A(0) - 2;  // start of 24-byte slot (word + ptr + ...)
     A(1) = rd32(A(0));
     A(0) += 4;
     uint32_t sorted_obj = A(1);
@@ -390,7 +393,7 @@ void draw_scene_body() {
     A(1) += 4;
     wr32(0x5ad32, rd32(A(1)));
     A(1) += 4;
-    capture_object(sorted_obj, scene::ObjectList::Sorted, lo(7));
+    capture_object(sorted_obj, scene::ObjectList::Sorted, lo(7), sorted_entry);
     call_c(A(2));
     A(0) = 0x649ba;
     setw(1, rd16(0x5aca2));

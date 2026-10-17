@@ -154,7 +154,10 @@ Open:
       (native project_screen_body still wrong for positive-d7 and disc paths)
 - [x] Scene capture API (phase 1): `scene::SceneFrame` + camera/object
       capture in `$2fc14` (`FA18_SCENE_CAPTURE` / `FA18_SCENE_DUMP`)
-- [ ] Scene capture: fix sorted-list obj_base; mesh_id; prims[] from hires
+- [x] Scene capture phase 2: sorted `list_entry`; `prims[]` from draw hooks
+      (poly/line/point) without requiring `--hires`; `render_object` marks
+      matching objects; PC hooks install when capture env is set
+- [ ] Scene capture: mesh_id; real distance from render frame; ISceneRenderer
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text

@@ -14,6 +14,7 @@
 #include "amiga/machine.hpp"
 #include "native/remaster.hpp"
 #include "native/runtime.hpp"
+#include "native/scene_frame.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -257,10 +258,24 @@ void on_polygon_via_38c0c() {
 
 void on_polygon() {
   pending_3d = false;
-  if (!first_prim()) return;
   int16_t shift = int16_t(rd16(0x61284));
   int n = int16_t(rd16(0x61286));
   if (n < 3 || n > 40) return;
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Poly3d;
+    pr.shift = int8_t(shift);
+    int m = n > 16 ? 16 : n;
+    pr.n = uint8_t(m);
+    for (int i = 0; i < m; ++i) {
+      uint32_t a = 0x61288 + 6u * uint32_t(i);
+      pr.xyz[i][0] = int16_t(rd16(a));
+      pr.xyz[i][1] = int16_t(rd16(a + 2));
+      pr.xyz[i][2] = int16_t(rd16(a + 4));
+    }
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   std::vector<V3> pts;
   for (int i = 0; i < n; ++i) {
     uint32_t a = 0x61288 + 6u * uint32_t(i);
@@ -313,13 +328,24 @@ void on_fill_horizon() {
 
 // $4397c: line between two points that must lie inside the frustum (no clipping)
 void on_line_noclip() {
-  if (!first_prim()) return;
   V3 p[2];
   for (int i = 0; i < 2; ++i) {
     uint32_t a = 0x61886 + 6u * uint32_t(i);
     p[i] = {double(int16_t(rd16(a))), double(int16_t(rd16(a + 2))), double(int16_t(rd16(a + 4)))};
     if (p[i].z <= 0 || std::fabs(p[i].x) > p[i].z || std::fabs(p[i].y) > p[i].z) return;
   }
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Line;
+    pr.n = 2;
+    for (int i = 0; i < 2; ++i) {
+      pr.xyz[i][0] = int16_t(p[i].x);
+      pr.xyz[i][1] = int16_t(p[i].y);
+      pr.xyz[i][2] = int16_t(p[i].z);
+    }
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   draw_line(*cur, project(p[0]), project(p[1]), line_ops());
 }
 
@@ -339,11 +365,21 @@ void fill_rect(Layer& L, double cx, double cy, double w, double h, const PlaneOp
 
 void on_point(int sel) {
   pending_3d = false;
-  if (!first_prim()) return;
   m68k::Cpu& c = native::g_machine->cpu;
   int16_t x = int16_t(c.d[0]), y = int16_t(c.d[1]), z = int16_t(c.d[2]);
   if (z <= 0 || std::abs(int(x)) >= z || std::abs(int(y)) >= z) return;
   int d7 = sel == INT32_MIN ? int16_t(rd16(0x5adb0)) : sel;
+  if (scene::enabled()) {
+    scene::Prim pr;
+    pr.kind = scene::PrimKind::Point;
+    pr.n = 1;
+    pr.sel = int16_t(d7);
+    pr.xyz[0][0] = x;
+    pr.xyz[0][1] = y;
+    pr.xyz[0][2] = z;
+    scene::note_prim(pr);
+  }
+  if (!first_prim()) return;
   V2 sp = project({double(x), double(y), double(z)});
   // low-res pixel centre of the projected position (the original rounds
   // to integer screen coordinates; +1 row as at $43902)
