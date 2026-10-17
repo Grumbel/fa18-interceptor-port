@@ -61,7 +61,7 @@ struct Prim {
   // back to mesh_id hash.  Resolved from plane-ops + COLOR00..31 when the
   // original draw hook fires — not a mesh attribute.
   uint32_t rgba = 0;
-  int16_t xyz[32][3];        // up to 32 verts; Fill2d uses x,y and z=0
+  int16_t xyz[40][3];        // up to 40 verts (original poly max); Fill2d uses x,y and z=0
 };
 
 struct SceneFrame {

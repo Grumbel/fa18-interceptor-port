@@ -65,8 +65,10 @@ void dump_frame() {
     size_t np = 0;
     for (const Prim& p : frame.prims) {
       if (np++ >= 12) break;
-      std::fprintf(stderr, "  prim %s n=%u obj=%d", kind_name(p.kind), unsigned(p.n),
-                   int(p.object_index));
+      std::fprintf(stderr, "  prim %s n=%u obj=%d sel=%d", kind_name(p.kind), unsigned(p.n),
+                   int(p.object_index), int(p.sel));
+      if (p.rgba)
+        std::fprintf(stderr, " rgba=%06x", unsigned(p.rgba & 0xFFFFFF));
       if (p.n > 0)
         std::fprintf(stderr, " v0=(%d,%d,%d)", int(p.xyz[0][0]), int(p.xyz[0][1]),
                      int(p.xyz[0][2]));

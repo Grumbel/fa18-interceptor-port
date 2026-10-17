@@ -175,6 +175,7 @@ Open:
 - [x] Horizon/water: sky_rgba + ground_rgba on SceneFrame; clear to sky
 - [x] Horizon: distinct water palette pick; sky prim inject; sky under ground
 - [x] Horizon two-pass (fills then meshes); water palette bias toward blue
+- [x] Prim xyz capacity 40; dump sel/rgba; note HUD-in-view gap
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -404,3 +405,12 @@ geometry stays sky — not a low-res underlay.
 Software renderer draws all Fill2d (sky then ground by depth) before any
 mesh/line/point.  Ground/sea palette search covers COLOR1–15 and prefers
 entries that are both distinct from sky and relatively blue (water-like).
+
+### Prim capacity 40 + dump detail (2026-10-17)
+
+Original polys can have up to 40 verts; Prim.xyz expanded 32→40.  Scene
+dump prints sel and rgba on prims for horizon/water debugging.
+
+Known gap: HUD elements drawn into the 3D view rectangle (not below it)
+are not in SceneFrame yet — they will be missing until those draws are
+captured as prims.  Not papered over by low-res composite.

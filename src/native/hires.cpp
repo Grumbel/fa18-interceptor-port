@@ -284,7 +284,7 @@ void on_polygon() {
     pr.kind = scene::PrimKind::Poly3d;
     pr.shift = int8_t(shift);
     pr.rgba = rgba_from_ops(poly_ops());
-    int m = n > 32 ? 32 : n;
+    int m = n > 40 ? 40 : n;
     pr.n = uint8_t(m);
     for (int i = 0; i < m; ++i) {
       uint32_t a = 0x61288 + 6u * uint32_t(i);
@@ -321,7 +321,7 @@ void on_fill2d() {
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
-    int m = n > 32 ? 32 : n;
+    int m = n > 40 ? 40 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
     pr.rgba = rgba_from_ops(poly_ops());
@@ -356,7 +356,7 @@ void on_fill_horizon() {
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Fill2d;
-    int m = n > 32 ? 32 : n;
+    int m = n > 40 ? 40 : n;
     pr.n = uint8_t(m);
     pr.object_index = -1;
     // 1 = ground/sea (second colour active), 2 = sky-class fill
