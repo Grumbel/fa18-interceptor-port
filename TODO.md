@@ -157,7 +157,10 @@ Open:
 - [x] Scene capture phase 2: sorted `list_entry`; `prims[]` from draw hooks
       (poly/line/point) without requiring `--hires`; `render_object` marks
       matching objects; PC hooks install when capture env is set
-- [ ] Scene capture: mesh_id; real distance from render frame; ISceneRenderer
+- [x] Scene capture: mesh_id; real distance from render frame; ISceneRenderer
+      - mesh_id = type_index ($5acac / $36094 key); mesh_ptr = $5ad2a after LOD
+      - distance = $5ae38 (hypot) at object dispatch; confirmed at render select
+      - ISceneRenderer + set_renderer(); called from end_frame()
 - [ ] remaining hunk-0 C helpers
 - [ ] project_screen_body: fix positive-d7 ($438a0) and disc ($438a8) paths still reached via call_c/sub_XXXXX
       (audio channel set-up, view set-up $27f0c/$27d50, menus/text
@@ -240,3 +243,22 @@ calls of each native under --native verify / a special mode, then inject
 the measured average on subsequent calls). That would let us drop the
 trampoline for $438a0/$438a8 and improve timing fidelity for every other
 native as well. Until then the trampoline stays.
+
+### Scene capture (2026-10-17)
+
+Completed the three open scene-capture fields without touching original
+timing or game memory:
+
+1. **distance** — captured from `$5ae38` (hypot `$308cc`) at object
+   dispatch in `capture_object`. Confirmed again at LOD selection inside
+   `render_body` / `distant_body` via `note_render_object`.
+2. **mesh_id** — equals `type_index` (type-table key). `mesh_ptr` holds the
+   LOD-selected record at `$5ad2a` once the `$31c8c` family commits to a
+   drawable; early-exit paths leave `has_render=false` and `mesh_ptr=0`.
+3. **ISceneRenderer** — optional consumer installed with `set_renderer()`.
+   Invoked from `end_frame()` after the frame is marked complete.
+   `FA18_SCENE_DUMP` stderr output is independent of the renderer.
+
+HD/hires continues to use its own PC hooks; it can later switch to
+consuming `SceneFrame` through `ISceneRenderer` if desired. Original
+code path and cycle counts are unchanged.

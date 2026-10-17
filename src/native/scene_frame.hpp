@@ -1,7 +1,10 @@
 // Scene capture API: read-only snapshot of the 3D scene spine for remaster
 // backends (hi-res software, future OpenGL).  Off by default — enable with
 // FA18_SCENE_CAPTURE=1 (or FA18_SCENE_DUMP=1, which implies capture).
-// Does not alter game memory or control flow.
+//
+// Design: pure observation.  PC hooks / note_* calls extract state while the
+// original (recompiled or interpreted) draw path runs unchanged.  Cycle count,
+// interrupts, and game memory are those of the original code only.
 #pragma once
 
 #include <cstdint>
@@ -20,17 +23,24 @@ struct ObjectDraw {
   // type-table / shared header, not always a unique instance record).
   uint32_t obj_base = 0;
   uint32_t list_entry = 0;  // sorted: address of the 24-byte list slot (0 if scen)
-  uint32_t draw_fn = 0;     // jsr target
-  uint32_t aux0 = 0;        // $5ad2e
-  uint32_t aux1 = 0;        // $5ad32
-  uint16_t type_index = 0;  // $5acac
+  uint32_t draw_fn = 0;     // jsr target from type table $36094
+  uint32_t aux0 = 0;        // $5ad2e at dispatch
+  uint32_t aux1 = 0;        // $5ad32 at dispatch
+  uint16_t type_index = 0;  // $5acac — object type / primary mesh identity
+  // mesh_id: stable mesh identity for remaster backends.  Currently equals
+  // type_index (the $36094 table key).  When render_object selects a concrete
+  // drawable/LOD stream, mesh_ptr is also filled from $5ad2a.
+  uint16_t mesh_id = 0;
+  uint32_t mesh_ptr = 0;    // $5ad2a after LOD selection (0 = not yet rendered)
   uint16_t list_word = 0;   // sorted header word (flags in high bits)
   ObjectList list = ObjectList::Scenario;
   int16_t eye_x = 0, eye_y = 0, eye_z = 0;  // $5ae22..26
   int32_t pos_x = 0, pos_y = 0, pos_z = 0;  // $5ae28..30
-  // Filled when render_object ($31c8c family) runs for this draw (0 = unknown).
+  // Approximate camera-space distance from hypot $308cc → $5ae38, filled at
+  // object dispatch (before the draw jsr).  Same units as the game's LOD
+  // limit local (-40(a6) in $31d6c).
   int16_t distance = 0;
-  bool has_render = false;
+  bool has_render = false;  // true once $31c8c-family body selected a mesh
 };
 
 enum class PrimKind : uint8_t { Poly3d = 0, Line = 1, Point = 2, Fill2d = 3 };
@@ -52,14 +62,27 @@ struct SceneFrame {
   bool complete = false;
 };
 
+// Optional consumer for completed frames.  Install with set_renderer();
+// called from end_frame() when capture is enabled.  The default is null
+// (FA18_SCENE_DUMP still prints to stderr independently).
+struct ISceneRenderer {
+  virtual ~ISceneRenderer() = default;
+  virtual void on_scene(const SceneFrame& frame) = 0;
+};
+
 bool enabled();
 const SceneFrame& current();
+
+void set_renderer(ISceneRenderer* r);  // not owned; may be null
+ISceneRenderer* renderer();
 
 void begin_frame(uint64_t frame_id);
 void end_frame();
 void note_camera();
 void note_object(const ObjectDraw& o);
-void note_render_object(uint32_t obj_hint, int16_t distance);
+// Called from the $31c8c-family path after LOD selection: marks the matching
+// ObjectDraw as rendered and records mesh_ptr + confirms distance.
+void note_render_object(uint32_t mesh_ptr, int16_t distance);
 void note_prim(const Prim& p);
 
 }  // namespace scene

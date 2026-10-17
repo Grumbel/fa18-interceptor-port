@@ -1003,6 +1003,10 @@ L31e4a:
   A(1) = A(3) + uint32_t(e16(lo(0)));
   wr32(0x5ad2a, A(1));
   wr32(0x5ad2e, A(2));
+  if (scene::enabled()) {
+    // Distance limit local -40(a6) was set from $5ae38 at body entry.
+    scene::note_render_object(A(1), int16_t(RW(-40)));
+  }
   setw(0, rd16(A(1)));
   A(1) += 2;
   WB(-136, lob(0));
@@ -1843,11 +1847,8 @@ void render_object(bool picture) {
   cpu().a[7] -= 152;
   WW(-128, 0);
   if (picture) WW(-128, RW(-128) | 1);
-  if (scene::enabled()) {
-    // Distance limit local is filled later in the body; eye words are live.
-    // Object base often in a1 on entry to $31d6c paths — use 0 and match last.
-    scene::note_render_object(0, 0);
-  }
+  // note_render_object is invoked from render_body after LOD selection
+  // (wr32 $5ad2a) so early-exit paths leave has_render=false.
   render_body();
 }
 
@@ -1955,6 +1956,9 @@ L32dda:
   A(2) += 4;
   wr32(0x5ad2a, A(1));
   wr32(0x5ad2e, A(2));
+  if (scene::enabled()) {
+    scene::note_render_object(A(1), int16_t(RW(-40)));
+  }
   setw(0, rd16(0x5ad6a));
   D(1) = rd32(0x5ad5e);
   D(1) = uint32_t(asr32(int32_t(D(1)), 8));

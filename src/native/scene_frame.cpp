@@ -12,6 +12,7 @@ SceneFrame frame;
 bool env_checked = false;
 bool capture_on = false;
 bool dump_on = false;
+ISceneRenderer* renderer_ = nullptr;
 
 void check_env() {
   if (env_checked) return;
@@ -42,12 +43,12 @@ void dump_frame() {
     for (size_t i = 0; i < frame.objects.size() && i < 24; ++i) {
       const ObjectDraw& o = frame.objects[i];
       std::fprintf(stderr,
-                   "  obj[%zu] %s base=%06x entry=%06x type=%u fn=%06x "
-                   "eye=(%d,%d,%d) dist=%d%s\n",
+                   "  obj[%zu] %s base=%06x entry=%06x type=%u mesh=%u ptr=%06x "
+                   "fn=%06x eye=(%d,%d,%d) dist=%d%s\n",
                    i, o.list == ObjectList::Scenario ? "scen" : "sort", o.obj_base,
-                   o.list_entry, unsigned(o.type_index), o.draw_fn, int(o.eye_x),
-                   int(o.eye_y), int(o.eye_z), int(o.distance),
-                   o.has_render ? "" : " (no render_object)");
+                   o.list_entry, unsigned(o.type_index), unsigned(o.mesh_id),
+                   o.mesh_ptr, o.draw_fn, int(o.eye_x), int(o.eye_y), int(o.eye_z),
+                   int(o.distance), o.has_render ? "" : " (no render_object)");
     }
     if (frame.objects.size() > 24)
       std::fprintf(stderr, "  ... +%zu objects\n", frame.objects.size() - 24);
@@ -74,18 +75,20 @@ bool enabled() {
 
 const SceneFrame& current() { return frame; }
 
+void set_renderer(ISceneRenderer* r) { renderer_ = r; }
+ISceneRenderer* renderer() { return renderer_; }
+
 void begin_frame(uint64_t frame_id) {
   if (!enabled()) return;
   frame = SceneFrame{};
   frame.frame_id = frame_id;
-  frame.objects.reserve(64);
-  frame.prims.reserve(128);
 }
 
 void end_frame() {
   if (!enabled()) return;
   frame.complete = true;
   dump_frame();
+  if (renderer_) renderer_->on_scene(frame);
 }
 
 void note_camera() {
@@ -100,20 +103,22 @@ void note_object(const ObjectDraw& o) {
   frame.objects.push_back(o);
 }
 
-void note_render_object(uint32_t obj_hint, int16_t distance) {
+void note_render_object(uint32_t mesh_ptr, int16_t distance) {
   if (!enabled() || frame.objects.empty()) return;
   // Prefer matching the last object without has_render; else last overall.
-  for (int i = int(frame.objects.size()) - 1; i >= 0; --i) {
-    ObjectDraw& o = frame.objects[size_t(i)];
+  for (auto it = frame.objects.rbegin(); it != frame.objects.rend(); ++it) {
+    ObjectDraw& o = *it;
     if (o.has_render) continue;
-    if (obj_hint == 0 || o.obj_base == obj_hint || o.list_entry == obj_hint) {
-      o.distance = distance;
-      o.has_render = true;
-      return;
-    }
+    o.distance = distance;
+    o.mesh_ptr = mesh_ptr;
+    if (mesh_ptr) o.mesh_id = o.type_index;  // keep type as mesh_id; ptr is LOD instance
+    o.has_render = true;
+    return;
   }
   ObjectDraw& o = frame.objects.back();
   o.distance = distance;
+  o.mesh_ptr = mesh_ptr;
+  if (mesh_ptr) o.mesh_id = o.type_index;
   o.has_render = true;
 }
 

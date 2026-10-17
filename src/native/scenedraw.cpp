@@ -34,6 +34,7 @@ void capture_object(uint32_t obj_base, scene::ObjectList list, uint16_t list_wor
   o.aux0 = rd32(0x5ad2e);
   o.aux1 = rd32(0x5ad32);
   o.type_index = rd16(0x5acac);
+  o.mesh_id = o.type_index;  // primary mesh identity = type table key
   o.list_word = list_word;
   o.list = list;
   o.eye_x = int16_t(rd16(0x5ae22));
@@ -42,6 +43,8 @@ void capture_object(uint32_t obj_base, scene::ObjectList list, uint16_t list_wor
   o.pos_x = int32_t(rd32(0x5ae28));
   o.pos_y = int32_t(rd32(0x5ae2c));
   o.pos_z = int32_t(rd32(0x5ae30));
+  // Real camera-space distance from hypot $308cc (written just before dispatch).
+  o.distance = int16_t(rd16(0x5ae38));
   scene::note_object(o);
 }
 
