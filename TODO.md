@@ -178,3 +178,21 @@ Open:
       NATIVE_ASM and --native verify routine by routine.
 - [ ] extend tests/scenarios when translating code the scenarios do not
       reach (check with --coverage in --interpret mode)
+
+## Session notes (2026-10-17)
+
+- ADF verified: sha256 3dd48f8985561be22d902393de3baee002d64255fa3826835fcb209875c62540 matches flake requireFile.
+- Build succeeds with -DFA18_ADF=... (recomp + native).
+- project_screen_body ($438b6 family):
+  - Current: $438a0 / $438a8 trampoline to original via call_c(0x438b6).
+  - Body implementation in render.cpp is present and *passes* --native verify (0 mismatches)
+    on free1 (with --det-timing) and the project_* stats on menu1.
+  - Enabling the body (project_438a0/a8 call project_screen_body) keeps free1
+    ram-hash bit-identical through frame 3400, but *diverges* on menu1 from ~frame 2900
+    (ram-hash mismatch at 2900, 2950, … and at 7000). So the body is still not fully
+    equivalent under the menu1 call patterns (comment in source is accurate).
+  - Next: isolate the first diverging call on menu1 (FA18_CALLTRACE / FA18_REGS around
+    0x438a0 / 0x438b6, or FA18_NATIVE_ONLY=project_438a0,project_438a8 with a short
+    --frames around 2900) and compare leftover registers / CCR / a6 frame after the
+    projection. Likely a leftover (d2/d3/d7 high words) or a marker-routine side
+    effect that only the menu path exercises.
