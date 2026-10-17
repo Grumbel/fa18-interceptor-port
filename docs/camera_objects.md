@@ -200,3 +200,61 @@ $5af2a/$2e/$32 = −(d0,d1,d2)          ; X/Z masked with $3FFFFF before neg
 
 External camera (`$2f220`) and `$2f4a6` external branch consume these as
 chase/target offsets relative to the player scenario position.
+
+## Mesh vertex path (object → view)
+
+Typical full-detail path in `render.cpp` (e.g. around `$329e2`):
+
+```
+; local vertex words in d2/d3/d4 (or loaded from mesh)
+d0/d1/d2  += object position   ; $5ae28 (X), $5ae30 (Z) — Y path varies
+d0/d1/d2  >>= LOD shift
+rot_out with matrix at $5aed0  ; 3×3 mulsw, asr #8, write 3 words to (a3)+
+```
+
+Distant / simplified path (`$32f6e`):
+
+```
+word_x += $5ae22
+word_z += $5ae26
+row_xz through $5aed0          ; skips full Y row
+```
+
+So object position is applied **before** the view matrix multiply.  Camera
+orientation is only in `$5aed0` (and related `$5af18` for some HUD paths).
+Camera translation is already baked into `$5ae28` / `$5ae22` by the
+`$30872` / list-setup stage (object − camera, LOD-scaled).
+
+### `rot_out`
+
+Three rows: each `d2*m0 + d3*m1 + d4*m2`, `asr #8`, store word to `(a3)+`.
+Matrix pointer in `a0`/`a1`/`a2` depending on caller; usual view matrix
+`$5aed0`.
+
+## `$310c0` — mesh expand into slot tables
+
+Consumes sorted 24-byte entries (same layout as `$649ba`):
+
+```
+word flags/type, long obj*, 3×word pos, long aux
+```
+
+For each non-skipped entry, resolves mesh data through object-linked
+pointers, applies LOD shifts to the 3 words, and writes mesh bases into
+tables at `$62a84` / `$62ab0` / related.  Also stores a **pointer into
+`$36094`** (type record) into the expansion buffer (`wr32 (a2), a1` with
+`a1 = $36094 + type*20`).
+
+So `$36094` is not rewritten each frame; expand stores *pointers to*
+type slots for later draw.  The table contents themselves are installed
+when meshes/types are loaded (overlay / load path — not in the static
+hunk zeros).
+
+## Object position vs camera (summary)
+
+| Stage | What |
+|-------|------|
+| List setup / `$30872` | Object world pos combined with camera (`$5ad6*` / `$5ad5e`) → `$5ae28` / `$5ae22`, distance `$5ae38` |
+| Mesh verts | local + `$5ae28`/`$5ae22` |
+| `rot_out` | × `$5aed0` → view space |
+| `project_screen_body` | view → screen |
