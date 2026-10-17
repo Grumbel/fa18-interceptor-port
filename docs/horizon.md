@@ -239,3 +239,49 @@ zero captures in free1 — consistent with `$42f6a` always failing.
    or `$38c0c` / `$44b50` with ground colour after `$44994`.
 3. Confirm whether ground is a large projected mesh (capture gap) or a
    dedicated blitter horizon edge fill.
+
+## Deeper free1 findings (plane indices + $2506e)
+
+### Palette identity of the split
+
+| Region | Playfield index | COLOR | RGB |
+|--------|-----------------|-------|-----|
+| Sky (y≈0–45) | **6** | `$036` | `#003366` |
+| Ground (y≈50–140) | **4** | `$151` | `#115511` |
+
+Index 6 = planes 1+2; index 4 = plane 2 only.  So relative to a full-view
+plane-2 backdrop, **plane 1 is set in the sky and clear in the ground**.
+
+### `$2506e` is busy — but not from the horizon gate
+
+`$2506e` runs often with `d0=8` (plane-1 op) and **`d3≠0`** (e.g. 1, 513,
+2054…).  Those calls come from the **`$44b50` general fill path**
+(`$44bae` / `$44b98` / …), which loads `d3` from `$5a9e0`.
+
+The horizon-only call site (`$44b0a`: `moveq #8,d0; moveq #0,d3`) is
+still gated on `$5ab93≠0` and was **not** observed in free1.
+
+### `$3f284` terrain
+
+Always entered after `$42f48` when `$5ab93==0`.  This is a multi-LOD
+terrain/tile drawer (tables at `$1e6e8` etc., driven by altitude at
+`$5ad70`).  It is a primary candidate for the green ground band together
+with mesh fills through `$44b50`.
+
+### Implications for a remaster
+
+In free flight the visible sky/ground split is **not** the `$42f6a` sea
+polygon.  It is the residual of:
+
+1. `$44994` full-view plane blits, then
+2. `$3f284` terrain, then
+3. `$2fc14` object meshes / `$44b50` fills that clear or set plane 1
+
+Reproducing that in the software renderer means either:
+
+- capturing terrain + mesh fills that actually paint indices 4 and 6, or
+- using the already-painted low-res view as the backdrop (observed truth)
+  and only replacing mesh edges at hi-res.
+
+The sea-quad path remains important for modes where `$5ab93≠0` and
+`$42f6a` succeeds (e.g. other missions / altitudes).

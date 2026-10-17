@@ -250,9 +250,6 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   last_frame_id_ = frame.frame_id;
   has_frame_ = true;
-      }
-    }
-  }
 
   if (std::getenv("FA18_SCENE_RENDER_STATS")) {
     size_t fills = 0, polys = 0, lines = 0, points = 0;

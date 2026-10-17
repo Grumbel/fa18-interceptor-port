@@ -565,3 +565,10 @@ Implemented observation matching docs/horizon.md:
 Runtime (free1): only simple path runs, `$5ab93=0`, so no sea Fill2d is
 produced.  Next: RE what `$44994` actually paints when `$5ab93=0` (plane
 minterms / edge masks) — that is the free-flight horizon.
+
+### Horizon RE update (2026-10-17 evening)
+
+free1 sky/ground = playfield idx 6 / 4 (`#003366` / `#115511`).
+Sea poly path still dead in free1.  Ground comes from `$3f284` terrain +
+`$44b50` fills (`$2506e` with d3 from `$5a9e0`), not `$42f6a`.
+See docs/horizon.md "Deeper free1 findings".

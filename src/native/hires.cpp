@@ -467,11 +467,20 @@ void on_horizon_poly_ready() {
   capture_horizon_fill();
 }
 
-// Failure RTS of $42f6a ($232b6): clip produced no usable sea poly.
+// Failure RTS of $42f6a ($432b6): clip produced no usable sea poly.
 void on_horizon_poly_fail() {
   if (!std::getenv("FA18_HORIZON_DEBUG")) return;
-  std::fprintf(stderr, "[horizon] poly_FAIL camY=%d ab93=%d abca=%04x\n",
-               int32_t(rd32(0x5ad5e)), int(rd8(0x5ab93)), rd16(0x5abca));
+  // $63b44: 4 edge flags (words) + coords
+  std::fprintf(stderr, "[horizon] FAIL camY=%d flags=%d,%d,%d,%d\n",
+               int32_t(rd32(0x5ad5e)),
+               int16_t(rd16(0x63b44)), int16_t(rd16(0x63b46)),
+               int16_t(rd16(0x63b48)), int16_t(rd16(0x63b4a)));
+  // View-space corners written by $42f6a (stride 32 bytes, 3 words each)
+  for (int i = 0; i < 4; ++i) {
+    uint32_t a = 0x60684 + uint32_t(i) * 32;
+    std::fprintf(stderr, "  corner%d view=(%d,%d,%d)\n", i,
+                 int16_t(rd16(a)), int16_t(rd16(a+2)), int16_t(rd16(a+4)));
+  }
 }
 
 // Simple horizon path entry ($44994): full-view plane clears + optional sea poly.
@@ -716,6 +725,20 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x432b6, [] { on_horizon_poly_fail(); });
   // Simple path entry: plane clears then jsr $42f6a.
   m.add_pc_hook(0x44994, [] { on_simple_horizon(); });
+  // $2506e: plane fill used by horizon (d0=8 clears plane 1 inside poly).
+  m.add_pc_hook(0x4506e, [] {
+    if (!std::getenv("FA18_HORIZON_DEBUG")) return;
+    m68k::Cpu& c = native::g_machine->cpu;
+    std::fprintf(stderr, "[horizon] 2506e d0=%d d3=%d d4=%d ab93=%d\n",
+                 int16_t(c.d[0]), int16_t(c.d[3]), int16_t(c.d[4]), int(rd8(0x5ab93)));
+  });
+  // $3f284 terrain/ground after horizon when ab93==0
+  m.add_pc_hook(0x3f284, [] {
+    if (!std::getenv("FA18_HORIZON_DEBUG")) return;
+    static int n = 0;
+    if (n < 5) std::fprintf(stderr, "[horizon] 3f284 terrain enter\n");
+    ++n;
+  });
   // $44dfe entry: $60684 already holds count-prefixed screen-space poly
   // (recomp may not hit the exact RTS at $432aa).
   // $44dfe is also used by general 2D fills ($44b50).  Only capture when
@@ -733,8 +756,15 @@ void install(amiga::Machine& m) {
   // Count $42f6a outcomes via $5ab96 (set 1 on success path before RTS).
   m.add_pc_hook(0x42f6a, [] {
     if (!std::getenv("FA18_HORIZON_DEBUG")) return;
-    // log entry; success/fail checked at $44994 after return is hard — use end hooks
-    std::fprintf(stderr, "[horizon] 42f6a enter camY=%d\n", int32_t(rd32(0x5ad5e)));
+    static int n = 0;
+    if (n < 5)
+      std::fprintf(stderr, "[horizon] 42f6a enter camY=%d M0=%d\n",
+                   int32_t(rd32(0x5ad5e)), int16_t(rd16(0x5aed0)));
+    ++n;
+  });
+  m.add_pc_hook(0x42f62, [] {
+    if (!std::getenv("FA18_HORIZON_DEBUG")) return;
+    std::fprintf(stderr, "[horizon] 42f62 enter (alt matrix)\n");
   });
   // dots/discs and other direct fill callers: reset the pairing flag
   m.add_pc_hook(0x438a0, [] { on_point(INT32_MIN); });
