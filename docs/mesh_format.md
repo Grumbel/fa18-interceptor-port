@@ -565,6 +565,26 @@ In-game: debug menu (**Insert** / controller Back) → **Mesh viewer**
 orbitable cyan wireframe.
 
 
+
+### On-disk instance pool (CODE hunk 70)
+
+Live `$00C43xxx` instance templates also exist in the executable as
+**CODE hunk 70** (file offset from `hunks.py`, size `$da4`).  Records
+start with `$04D0` and use dual 32-bit offsets into the same hunk:
+
+```
++0   04D0
++2   .l  ptr → $0C00 FFFF FFFF header / LOD sub-record
++6   .l  ptr → body (N + XYZ; often fixed-point templates, ÷64 in dumps)
++A   …   edge cmds ($8034 / $8078 / $800C with small indices)
+```
+
+Stride is commonly `$6A` (106) but not uniform on disk (some gaps).
+Coords are coarse / template-like; offline viewer still prefers the
+H54 `$0100/$0200` aircraft clusters for recognizable plan silhouettes.
+Detailed buildings and in-flight meshes remain overlay-resident until
+a RAM dump is available.
+
 ### Offline wireframe caveat
 
 Static CODE-hunk clusters (`$0100/$0200`) are **coarse LOD / radar hulls**
