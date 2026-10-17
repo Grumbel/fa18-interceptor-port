@@ -377,33 +377,47 @@ $211d4: jsr $3f284
 
 So free1 (`$5ab93=0`) **always** enters `$3f284`.
 
-Prologue (disassembled from patched image):
+#### Structure
 
 ```
-$3f284  link a6, #-70
-        clr.b  $5ab95
-        clr.w  $61284
-        tst.b  $5aaa8
-        bne    high_detail          ; d0=15, d1=-1
-        move.w #2, d0 / d1          ; low detail
-high:   movem.w d0-d3, $5a9de       ; plane/op flags for later fills
-        move.l $5ad70, d0
-        neg.l  d0                   ; altitude
-        … scale by $5ad3a, store fp@(-40)
-        cmp.l  #1016, d0
-        ble    near
-        move.w #6, $5ac4c           ; LOD colour / mode
-        bsr    draw_far
-        move.w #6, $5ac4c
-        bsr    draw_near
+$3f284  link a6,#-70
+        clr $5ab95 / $61284
+        ; plane-ops: $5aaa8==0 → mask=2,w1=2  else mask=15,w1=-1
+        movem.w d0-d3, $5a9de
+        altitude = -($5ad70); scale by $5ad3a → fp@(-40)
+        if altitude > 1016:
+            $5ac4c = 6; bsr $3f342   ; FAR pass
+        $5ac4c = 6; bsr $3f31c       ; NEAR pass (always)
         unlk / rts
 ```
 
-Multi-LOD tile drawer driven by altitude (`-$5ad70`).  Sets `$5a9de..`
-(the same flags `$44b50` later tests as `$5a9df` bits 0–3 for plane
-select).  Tile tables live just below the routine (data at `$3efb0+`).
-Primary candidate for the green ground band together with mesh fills
-through `$44b50`.
+| Pass | Entry | fp@(-62) | Tile table | Stride | Grid | Notes |
+|------|-------|----------|------------|--------|------|-------|
+| Near | `$3f31c` | 1 | `$58168` | 8 | 31×31 | fine grid |
+| Far  | `$3f342` | 0 | `$57fa4` | 12 | 7×7 | coarse, only if alt>1016 |
+
+Both passes join at `$3f364`:
+
+1. Camera X/Z: external (`$5aa7d≠0`) from `$5af36`; cockpit from
+   player `$5b47c+$5abd6+20`.
+2. Quantize camera to tile indices (shift by stride bits in fp@(-64)).
+3. Select a tile-pattern sub-table by altitude band (PC-relative tables
+   around `$3e71a`…`$3e8aa`; also uses `$5ab4c` / `$5ab48` for variant).
+4. For each live tile: transform verts by `$5aed0` into `$61286`, then
+   `jsr $38c0c` (polygon setup → `$44b50` fill with the plane-ops set
+   above).
+
+`$2f216` is a near-empty stub (`rts`); three call sites in the body are
+no-ops.
+
+#### Effect on free1 colours
+
+Plane-ops SET display plane 1 on every terrain poly → index 4 (ground
+backdrop from `$44994`) becomes index **6** (sky) where tiles land.
+Uncovered cells stay ground.  The painted sky/ground edge is therefore
+the **lower silhouette of the terrain tile mesh**, which moves with
+camera altitude and world XZ — matching the free1 observation that
+hrow tracks terrain, not the infinite-plane horizon of `$5aed0`.
 
 ### Implications for a remaster
 
