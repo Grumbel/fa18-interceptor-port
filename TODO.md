@@ -519,3 +519,22 @@ test or first-frame sign put water on top.
 If still wrong, next step is to abandon pure-matrix horizon and either
 (1) capture the real blitter edge state, or (2) fit pitch from a low-res
 centre-column colour jump while taking bank from the matrix.
+
+### Horizon: exact inverse of project_screen_body (2026-10-17)
+
+Stop guessing signs.  From the native translation of $438b6:
+
+  sx0 = 160 + 160*(d0/d2);  sy0 = 90 + 90*(d1/d2);
+  sx  = 319 - sx0 = 159 - 160*(d0/d2);
+  sy  = 180 - sy0 =  90 -  90*(d1/d2);
+
+⇒ d0/d2 = (159-sx)/160,  d1/d2 = (90-sy)/90.
+
+rot_out applies view = M * world (row-major $5aed0).  Level-flight M maps
+world Z → view Y, so world +Z is up and N_view = column 2.
+
+Horizon vanishing line: N · (d0, d1, d2) = 0.  Water = N·ray < 0 after the
+first-frame side lock (lower half).
+
+Previous vxz = (cx-sx)/fx used the wrong X convention relative to the
+post-flip in $438b6 (bank direction could appear swapped).

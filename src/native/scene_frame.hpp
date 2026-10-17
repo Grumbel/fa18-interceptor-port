@@ -16,7 +16,7 @@ namespace scene {
 struct Camera {
   int32_t x = 0, y = 0, z = 0;  // $5ad5a / $5ad5e / $5ad62 after $2f220
   // 3x3 int16 view matrix from $5aed0 (main rot_out / object projection).
-  // Level flight ≈ [s 0 0 / 0 0 s / 0 -s/2 0]; world +Y maps to column 2.
+  // Level flight ≈ [s 0 0 / 0 0 s / 0 -s/2 0]; world +Z → view Y (column 2).
   // Used to reconstruct the sea/sky horizon as a real plane, not a blit.
   int16_t view_m[9] = {};
   bool has_view_m = false;

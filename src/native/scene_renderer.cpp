@@ -224,21 +224,18 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
 
   if (frame.camera.has_view_m) {
     const int16_t* m = frame.camera.view_m;
-    // $5aed0 level-flight example: [168 0 0 / 0 0 252 / 0 -128 0]
-    // Column 2 ≈ (0,252,0) is the only column that yields a horizontal
-    // horizon through the screen centre.  Column 1 is ~view -Z and
-    // degenerates.  Use column 2; fall back to its row if needed.
-    double c2x = double(m[2]), c2y = double(m[5]), c2z = double(m[8]);
-    double r2x = double(m[6]), r2y = double(m[7]), r2z = double(m[8]);
-    double Lc = std::sqrt(c2x * c2x + c2y * c2y + c2z * c2z);
-    double Lr = std::sqrt(r2x * r2x + r2y * r2y + r2z * r2z);
+    // From rot_out / $3f7e2 (verified against native): view = M * world,
+    // M row-major at $5aed0.  Level-flight dump:
+    //   M = [168 0 0 / 0 0 252 / 0 -128 0]
+    //   world X → view X,  world Y → view −Z,  world Z → view Y
+    // so world +Z is up.  N_view = M*(0,0,1) = column 2 = (m[2],m[5],m[8]).
+    double cx2 = double(m[2]), cy2 = double(m[5]), cz2 = double(m[8]);
+    double L = std::sqrt(cx2 * cx2 + cy2 * cy2 + cz2 * cz2);
     double Nx = 0, Ny = 1, Nz = 0;
-    if (Lc > 1.0) {
-      Nx = c2x / Lc; Ny = c2y / Lc; Nz = c2z / Lc;
-    } else if (Lr > 1.0) {
-      Nx = r2x / Lr; Ny = r2y / Lr; Nz = r2z / Lr;
+    if (L > 1.0) {
+      Nx = cx2 / L; Ny = cy2 / L; Nz = cz2 / L;
     }
-    // Temporal coherence + force water in the lower half on the first frame.
+    // Temporal coherence under continuous roll.
     static double pNx = 0, pNy = 1, pNz = 0;
     static bool have_prev = false;
     if (have_prev) {
@@ -246,28 +243,31 @@ void SoftwareSceneRenderer::on_scene(const SceneFrame& frame) {
         Nx = -Nx; Ny = -Ny; Nz = -Nz;
       }
     } else {
-      // Centre-bottom pixel must be water: N·(0, vyz_bottom, 1) < 0
-      // with vyz_bottom < 0 ⇒ prefer Ny > 0 (or flip so that holds).
-      const double vyz_bot = (89.0 - (rows_ - 0.5)) / 90.0;
-      if (Nx * 0 + Ny * vyz_bot + Nz >= 0.0) {
+      // Inverse project_screen_body: d1/d2 = (90 - sy)/90.
+      // Bottom pixel ⇒ d1/d2 < 0; require N·(0, d1/d2, 1) < 0 (water).
+      const double vy_bot = (90.0 - (double(rows_) - 0.5)) / 90.0;
+      if (Ny * vy_bot + Nz >= 0.0) {
         Nx = -Nx; Ny = -Ny; Nz = -Nz;
       }
       have_prev = true;
     }
     pNx = Nx; pNy = Ny; pNz = Nz;
 
-    // Match project_screen_body ($438b6): screen = view * {160,90} / z + {160,90}
+    // Exact inverse of project_screen_body ($438b6), including the post-flip:
+    //   sx0 = 160 + 160*(d0/d2);  sy0 = 90 + 90*(d1/d2);
+    //   sx  = 319 - sx0 = 159 - 160*(d0/d2);
+    //   sy  = 180 - sy0 =  90 -  90*(d1/d2);
+    // ⇒  d0/d2 = (159 - sx)/160
+    //    d1/d2 = ( 90 - sy)/ 90
+    // Horizon vanishing line: N · (d0, d1, d2) = 0.
     const int S = scale_;
-    const double cx = 160.0, cy = 90.0, fx = 160.0, fy = 90.0;
     for (int y = 0; y < height_; ++y) {
       const double sy = (y + 0.5) / S;
-      const double vyz = (cy - sy) / fy;  // top of screen → +vyz (sky when level)
+      const double vy_over_z = (90.0 - sy) / 90.0;
       for (int x = 0; x < width_; ++x) {
         const double sx = (x + 0.5) / S;
-        // (cx - sx) matches the observed roll direction with the matrix above;
-        // the opposite sign would reverse bank relative to the meshes.
-        const double vxz = (cx - sx) / fx;
-        if (Nx * vxz + Ny * vyz + Nz < 0.0)
+        const double vx_over_z = (159.0 - sx) / 160.0;
+        if (Nx * vx_over_z + Ny * vy_over_z + Nz < 0.0)
           pixels_[size_t(y) * size_t(width_) + size_t(x)] = water;
       }
     }
