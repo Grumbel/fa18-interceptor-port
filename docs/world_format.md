@@ -196,6 +196,9 @@ behaviour); a new kind needs code that checks for it.
 
 ### Mission table `$3dfba`
 
+(How the max count decides the win of the default missions and caps
+the spawns: docs/missions.md.)
+
 10 missions x 3 variants x (word list offset from `$3dfba`, word max count
 -> `$5aba2`).  The variant comes from `$5adf0` (`$3cf0e`); a list starts
 with 4 word offsets, one per level (`$2d03c` config byte 18 + mission, the

@@ -40,9 +40,6 @@ int32_t feet(int32_t units) { return (units >> 10) * 5; }
 int knots(int16_t speed_110) { return std::abs(int(speed_110)) / 12; }
 double nautical_miles(double units) { return units * 5.0 / 1024.0 / 6076.0; }
 
-// X/Z wrap at 22 bits (the camera code masks them with $3fffff)
-int32_t wrap22(int32_t d) { return int32_t(uint32_t(d) << 10) >> 10; }
-
 const char* kind_name(uint8_t kind, bool own) {
   if (own) return "player";
   switch (kind) {
@@ -52,6 +49,7 @@ const char* kind_name(uint8_t kind, bool own) {
     case 0x12:
     case 0x13: return "hostile";
     case 0x14: return "airliner";
+    case 0x15: return "cruise";
     case 0x16: return "AF One";
     case 0x20: return "carrier";
     case 0x32: return "parachute";
@@ -79,9 +77,12 @@ std::vector<Line> build(amiga::Machine& m) {
   const uint32_t own = records + own_off;
   const uint32_t log = uint32_t(r32(0x2d03c));  // flight log record
 
-  out.push_back({fmt("MISSION %d  enemy level %d  enemies %d/%d  frame %d",
-                     int8_t(r8(0x5ab9e)), int8_t(r8(0x5ab9f)),
-                     int8_t(r8(0x5aba1)), int8_t(r8(0x5aba2)), r16(0x5abd2)),
+  // $5aba1 enemies spawned, $5aba2 target count, $5aba3 enemies destroyed,
+  // $5aa90 mission result (docs/missions.md)
+  out.push_back({fmt("MISSION %d  enemy level %d  spawned %d/%d  kills %d  result %d  frame %d",
+                     int8_t(r8(0x5ab9e)), int8_t(r8(0x5ab9f)), int8_t(r8(0x5aba1)),
+                     int8_t(r8(0x5aba2)), int8_t(r8(0x5aba3)), int8_t(r8(0x5aa90)),
+                     r16(0x5abd2)),
                  yellow});
 
   // ---- player ---------------------------------------------------------------
@@ -109,7 +110,7 @@ std::vector<Line> build(amiga::Machine& m) {
                      dstate, uint16_t(flags), uint16_t(state)),
                  fatal || dstate ? red : green});
   if (log) {
-    out.push_back({fmt("  log: gun %d/%d  AIM-120 %d/%d  AIM-9 %d/%d  hits taken %d  crashes %d",
+    out.push_back({fmt("  log: gun %d/%d  AIM-120 %d/%d  AIM-9 %d/%d  crashes %d  missile hits %d",
                        r16(log + 58), r16(log + 60), r16(log + 62), r16(log + 64),
                        r16(log + 66), r16(log + 68), r16(log + 70), r16(log + 72)),
                    grey});
@@ -128,12 +129,13 @@ std::vector<Line> build(amiga::Machine& m) {
     if (!(f & 0x40)) continue;  // byte +1 bit 6: in use
     const bool is_own = r == own;
     const uint8_t kind = r8(r + 98);
-    // class $10 counts as an enemy unless +1 bit 3 is set (spawn flag 15)
+    // class $10 counts as an enemy unless +1 bit 3 is set (spawn flag 15);
+    // the cruise missile ($15) counts as spawned but never as a kill
     const bool enemy = !is_own && (kind & 0xF0) == 0x10 && !(f & 0x08);
     if (enemy) ++enemies;
-    const double dx = wrap22(r32(r + 20) - r32(own + 20));
+    const double dx = double(r32(r + 20) - r32(own + 20));
     const double dy = r32(r + 24) - r32(own + 24);
-    const double dz = wrap22(r32(r + 28) - r32(own + 28));
+    const double dz = double(r32(r + 28) - r32(own + 28));
     const double dist = nautical_miles(std::sqrt(dx * dx + dy * dy + dz * dz));
     const int st = r8(r + 124) & 15;
     const uint8_t tgt = r8(r + 56);
