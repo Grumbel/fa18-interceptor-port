@@ -4,7 +4,9 @@ How the original draws everything in the 3D view that is not an object,
 and what a renderer needs to reproduce it in world space.  Runtime
 addresses (`LOAD_BASE` = `$20000`).  Supersedes the guesses in
 `horizon.md` (which remains as a research log); the decoder is
-`src/native/terrain.{hpp,cpp}`.
+`src/native/terrain.{hpp,cpp}`.  Native translations: `$3f284` in
+`ground.cpp`, `$42f62`/`$42f6a` in `sky.cpp`, `$4217c` and the matrix
+builders in `view.cpp`.
 
 ## Summary
 

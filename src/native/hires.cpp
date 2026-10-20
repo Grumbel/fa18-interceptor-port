@@ -670,6 +670,12 @@ void on_line() {
 
 bool scene_hooks = false;
 
+void sky_quad_done(bool ok) {
+  if (!scene_hooks) return;
+  if (ok) on_horizon_poly_ready();
+  else on_horizon_poly_fail();
+}
+
 void reset() {
   layers.clear();
   gf_begun = false;
