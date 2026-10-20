@@ -163,17 +163,31 @@ void init_from_bitmap(Layer& L) {
   const int S = L.S;
   uint32_t pl[4];
   for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
-  L.px.assign(size_t(W * S) * size_t(L.rows * S), 0);
-  L.s0.assign(size_t(W) * size_t(L.rows), 0);
+  // With the OpenGL renderer the layer pixels are replaced at the end of
+  // the scene: only the low-res base and the coverage are needed.
+  const bool fill_px = !glr::active();
+  L.px.resize(size_t(W * S) * size_t(L.rows * S));
+  L.s0.resize(size_t(W) * size_t(L.rows));
   L.cover.assign(size_t(W) * size_t(L.rows), 0);
   L.unexplained.clear();
-  for (int y = 0; y < L.rows; ++y)
-    for (int x = 0; x < W; ++x) {
-      uint8_t c = low_index(pl, x, y);
-      L.s0[size_t(y) * W + size_t(x)] = c;
-      for (int yy = 0; yy < S; ++yy)
-        std::memset(&L.px[size_t(y * S + yy) * size_t(W * S) + size_t(x * S)], c, size_t(S));
+  std::vector<uint8_t> wide(size_t(W * S));
+  for (int y = 0; y < L.rows; ++y) {
+    uint8_t* row = &L.s0[size_t(y) * W];
+    const uint32_t off = uint32_t(y * 40);
+    for (int bx = 0; bx < W / 8; ++bx) {
+      uint8_t b[4];
+      for (int p = 0; p < 4; ++p) b[p] = rd8(pl[p] + off + uint32_t(bx));
+      for (int i = 0; i < 8; ++i) {
+        const int sh = 7 - i;
+        row[bx * 8 + i] = uint8_t(((b[0] >> sh) & 1) | (((b[1] >> sh) & 1) << 1) |
+                                  (((b[2] >> sh) & 1) << 2) | (((b[3] >> sh) & 1) << 3));
+      }
     }
+    if (!fill_px) continue;
+    for (int x = 0; x < W; ++x) std::memset(&wide[size_t(x * S)], row[x], size_t(S));
+    for (int yy = 0; yy < S; ++yy)
+      std::memcpy(&L.px[size_t(y * S + yy) * size_t(W * S)], wide.data(), wide.size());
+  }
 }
 
 // first primitive of the frame: take the base now

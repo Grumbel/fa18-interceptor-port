@@ -107,6 +107,9 @@ int amiga_rawkey(SDL_Scancode sc) {
   }
 }
 
+bool init_gl();
+bool gl_failed = false;  // no OpenGL context: the menu skips the GL entries
+
 class SdlHost : public amiga::Host {
 public:
   SDL_Window* win = nullptr;
@@ -423,7 +426,8 @@ public:
     // reach us for held axes
     auto hires_label = [&] {
       int s = machine->hires_scale;
-      return s <= 0 ? std::string("original (320x200)") : std::to_string(s) + "x";
+      return s <= 0 ? std::string("original (320x200)")
+                    : std::to_string(s) + "x" + (glr::active() ? " OpenGL" : "");
     };
 
     // Offline model viewer: the object models of the type table, decoded
@@ -552,12 +556,21 @@ public:
       switch (item) {
         case 0: if (dir == 0) open = false; break;
         case 1: {
-          int s = machine->hires_scale;
-          int order[] = {0, 2, 3, 4};
+          // original, 2x-4x software, 2x-4x OpenGL (when a context is available)
+          static const int order[][2] = {{0, 0}, {2, 0}, {3, 0}, {4, 0}, {2, 1}, {3, 1}, {4, 1}};
+          const int n = 7;
+          const int s = machine->hires_scale;
+          const int g = s > 0 && glr::active() ? 1 : 0;
           int idx = 0;
-          for (int i = 0; i < 4; ++i) if (order[i] == s) idx = i;
-          idx = (idx + (dir == 0 ? 1 : dir) + 4) % 4;
-          machine->set_hires_scale(order[idx]);
+          for (int i = 0; i < n; ++i)
+            if (order[i][0] == s && order[i][1] == g) idx = i;
+          for (int tries = 0; tries < n; ++tries) {
+            idx = (idx + (dir == 0 ? 1 : dir) + n) % n;
+            if (!order[idx][1] || glr::ready() || (!gl_failed && init_gl())) break;
+            gl_failed = true;
+          }
+          glr::set_enabled(order[idx][1] != 0);
+          machine->set_hires_scale(order[idx][0]);
           break;
         }
         case 2: machine->analog_enabled = !machine->analog_enabled; break;
@@ -1045,7 +1058,7 @@ int main(int argc, char** argv) {
   host.fast = fast;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
-  if (gl_scale > 0) init_gl();  // else the software hi-res renderer
+  if (gl_scale > 0 && !init_gl()) gl_failed = true;  // software hi-res renderer
   if (grab_mouse) host.set_grab(true);
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);

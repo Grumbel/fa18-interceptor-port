@@ -33,7 +33,9 @@ using GetProc = void* (*)(const char*);
 // `make_current` makes the renderer's GL context current (the host may
 // use GL itself).
 bool init(GetProc proc, std::function<void()> make_current, std::string& err);
-bool active();
+bool ready();               // initialised
+bool active();              // initialised and enabled
+void set_enabled(bool on);  // switch between OpenGL and the software layer
 
 // Plane operation of a primitive (see hires.cpp PlaneOps).
 struct Ops {

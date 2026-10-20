@@ -228,7 +228,7 @@ struct Prim {
 };
 
 struct State {
-  bool ready = false;
+  bool ready = false, enabled = true;
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, vbo = 0;
   int fb_w = 0, fb_h = 0;
@@ -332,7 +332,7 @@ double stage_unit() {
   return std::ldexp(1.0, int16_t(rd16(0x5adb0)) + 8 - int16_t(rd16(fp - 6)));
 }
 
-bool capture_ok() { return st.ready && st.capturing && st.object >= 0; }
+bool capture_ok() { return st.ready && st.enabled && st.capturing && st.object >= 0; }
 
 Prim& add_prim(GLenum mode, const Ops& o) {
   Prim p{};
@@ -458,10 +458,12 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   return true;
 }
 
-bool active() { return st.ready; }
+bool ready() { return st.ready; }
+bool active() { return st.ready && st.enabled; }
+void set_enabled(bool on) { st.enabled = on; }
 
 void scene_begin() {
-  if (!st.ready) return;
+  if (!active()) return;
   st.capturing = true;
   st.object = -1;
   st.verts.clear();
@@ -470,7 +472,7 @@ void scene_begin() {
 
 void begin_object(uint32_t mesh, uint32_t stream, bool distant) {
   (void)stream;
-  if (!st.ready || !st.capturing) return;
+  if (!active() || !st.capturing) return;
   ++st.object;
   st.prims_in_object = 0;
   st.distant = distant;
@@ -522,7 +524,7 @@ void note_point(const double q[3], int kind, int radius, const Ops& o) {
 }
 
 bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
-  if (!st.ready || !st.capturing) return false;
+  if (!active() || !st.capturing) return false;
   st.capturing = false;
   st.make_current();
   if (!ensure_fbo(w, h)) return false;
