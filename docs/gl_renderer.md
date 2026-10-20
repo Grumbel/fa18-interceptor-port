@@ -31,26 +31,43 @@ with and without `--gl`).  Per game frame:
    Primitives before the first object (the terrain of `$3f284`, the sky
    fill) are not captured: the ground is rebuilt in world space instead.
 4. At the end of the scene (`remaster::scene_end`) the frame is drawn
-   into an off-screen framebuffer of palette indices:
-   - clear to index 5 (sky = plane 0 on the land backdrop);
-   - land plane at Y = 0 (index 4) and the water polygons of the terrain
-     tables (plane 1 set; `$5aaa8`: colour 6), triangulated once at
-     start-up (`terrain.cpp`, far grid outside the map, near grid inside),
-     in world space relative to the camera `(cell($5ac44) << 22 - $5ad5a,
-     $5ad5e, cell($5ac46) << 22 - $5ad62)`; see `ground_sea_sky.md`;
-   - flat objects in the original's order without depth test (runways,
-     islands, markings: no z-fighting);
-   - 3D objects with the depth test; inside an object later primitives
-     get a small depth bias so coplanar details (decals) stay on top.
-   Plane operations (set / clear / invert planes) are GL logic ops
-   (`AND ~clr`, `OR set`, `XOR xr`) on the index byte.  The projection
-   is the original's (`sx = 159.5 - 160 vx/vz`, `sy = 89.5 - 90 vy/vz`);
-   depth is logarithmic in vz (the world spans 2^29 units).
+   into an off-screen framebuffer of palette indices, with flat colours
+   only (GL 2.1 or GLES 2; no logic ops, no `gl_FragDepth`):
+   - clear to index 5 (sky);
+   - the stencil bit "water" is set by the water polygons of the terrain
+     tables (triangulated once, far grid outside the map, near grid
+     inside; world space relative to the camera `(cell($5ac44) << 22 -
+     $5ad5a, $5ad5e, cell($5ac46) << 22 - $5ad62)`, see
+     `ground_sea_sky.md`) and inverted by every flat primitive whose
+     operation inverts plane 1 (islands, lakes, runway markings);
+   - a ground plane at Y = 0 is painted land (4) or water (6, or `$5ac4c`
+     with `$5aaa8`) by the stencil bit;
+   - the other flat primitives (runways, ground patches) in the original
+     order, no depth test: their operation applied to land and to water
+     gives two colours, drawn with the matching stencil test (one draw when
+     equal);
+   - 3D objects with the depth test, their operation applied to the land
+     backdrop (3D primitives always write all planes).  Depth is
+     logarithmic in vz, computed per vertex; the primitives are clipped at
+     vz = 64 when captured so that only points in front reach it.  Later
+     primitives of an object get a small depth bias (decals).
+   The projection is the original's (`sx = 159.5 - 160 vx/vz`,
+   `sy = 89.5 - 90 vy/vz`).
 5. The indices are read back into the hi-res layer of `hires.cpp`, whose
    composition is unchanged: pixels the game drew after the scene (HUD,
    cockpit) and 2D drawing during the scene that no 3D primitive explains
    come from the low-res frame, everything else from the layer, through
    the live per-row palette (fades, flashes).
+
+## Plane operations in practice
+
+Counted over free1, free2, mission7_combat, mission6_3, qual_carrier,
+end_m3_ok, end_m6_ok and aero_all: 3D polygons, lines and points always
+write all four planes; flat (ground) polygons use three partial
+operations: invert plane 1 (land <-> water, runway markings 12 -> 14),
+set plane 3 (runways: 12 on land), set planes 0+1 (7).  The plane copy
+`$45014` did not occur.  This is what the flat-colour model above is
+built on; an operation outside it is still drawn, resolved on land.
 
 ## Why primitives and not decoded models
 
@@ -79,12 +96,10 @@ the polygon ops translated to emit primitives directly.
 
 ## Open points
 
-- The plane copy operation (`$45014`, display plane 3 -> 2 inside the
-  polygon) cannot be expressed as a logic op; such primitives are skipped.
-- GLES 2 has neither logic ops nor `gl_FragDepth` (needs
-  `EXT_frag_depth`); a GLES port needs a fallback (colour on the land
-  backdrop, standard depth).
+- The order of toggles and overlays is approximated: all plane-1
+  inversions are applied (stencil) before the overlays are painted.
 - Primitive precision is the original's 16-bit view space; models are not
   smoother than in the original, only rasterised at a higher resolution.
 - Discs (`$438a8`) are drawn as polygons in the view plane, points as
-  square GL points.
+  square GL points; lines wider than 1 pixel are not available on every
+  GLES driver.

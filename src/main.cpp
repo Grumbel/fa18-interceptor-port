@@ -893,12 +893,18 @@ void usage() {
 // OpenGL renderer of the 3D view (--gl): its own context on a hidden
 // window, so the presentation path (SDL_Renderer) stays as it is.
 bool init_gl() {
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-  SDL_Window* w = SDL_CreateWindow("fa18 gl", 0, 0, 16, 16, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
-  SDL_GLContext ctx = w ? SDL_GL_CreateContext(w) : nullptr;
-  std::string err = SDL_GetError();
+  // Desktop GL 2.1, else GLES 2 (FA18_GLES=1 forces GLES).
+  SDL_Window* w = nullptr;
+  SDL_GLContext ctx = nullptr;
+  std::string err;
+  for (int es = std::getenv("FA18_GLES") ? 1 : 0; es < 2 && !ctx; ++es) {
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, es ? SDL_GL_CONTEXT_PROFILE_ES : 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, es ? 0 : 1);
+    if (!w) w = SDL_CreateWindow("fa18 gl", 0, 0, 16, 16, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (w) ctx = SDL_GL_CreateContext(w);
+    if (!ctx) err = SDL_GetError();
+  }
   if (ctx && glr::init([](const char* n) { return SDL_GL_GetProcAddress(n); },
                        [w, ctx] { SDL_GL_MakeCurrent(w, ctx); }, err))
     return true;

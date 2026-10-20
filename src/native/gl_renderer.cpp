@@ -1,4 +1,15 @@
 // OpenGL renderer of the 3D view.  See gl_renderer.hpp.
+//
+// Flat-shaded polygons and palette lookups only (GL 2.1 or GLES 2): the
+// plane operations of the original are resolved to colours.  Measured over
+// the scenarios, 3D objects, lines and points always write all four planes
+// (a plain colour); the ground layer uses three partial operations:
+//   - invert plane 1 (islands / lakes): land 4 <-> water 6,
+//   - set plane 3 (runways): 12 on land, 14 on water,
+//   - set planes 0+1: 7 on both.
+// So the ground is a land/water map in the stencil buffer (water tiles set
+// it, toggling patches invert it), painted once, and each flat overlay gets
+// the colour of its operation on the land or the water class underneath.
 #include "native/gl_renderer.hpp"
 
 #include "native/runtime.hpp"
@@ -30,14 +41,18 @@ using GLchar = char;
 using GLsizeiptr = ptrdiff_t;
 
 constexpr GLenum GL_TRIANGLES = 0x0004, GL_LINES = 0x0001, GL_POINTS = 0x0000;
-constexpr GLenum GL_DEPTH_TEST = 0x0B71, GL_COLOR_LOGIC_OP = 0x0BF2, GL_LEQUAL = 0x0203;
-constexpr GLenum GL_AND = 0x1501, GL_OR = 0x1507, GL_XOR = 0x1506, GL_COPY = 0x1503;
+constexpr GLenum GL_DEPTH_TEST = 0x0B71, GL_STENCIL_TEST = 0x0B90, GL_LEQUAL = 0x0203;
+constexpr GLenum GL_ALWAYS = 0x0207, GL_EQUAL = 0x0202, GL_KEEP = 0x1E00;
+constexpr GLenum GL_REPLACE = 0x1E01, GL_INVERT = 0x150A;
 constexpr GLenum GL_COLOR_BUFFER_BIT = 0x4000, GL_DEPTH_BUFFER_BIT = 0x0100;
+constexpr GLenum GL_STENCIL_BUFFER_BIT = 0x0400;
 constexpr GLenum GL_FRAMEBUFFER = 0x8D40, GL_RENDERBUFFER = 0x8D41;
 constexpr GLenum GL_COLOR_ATTACHMENT0 = 0x8CE0, GL_DEPTH_ATTACHMENT = 0x8D00;
-constexpr GLenum GL_FRAMEBUFFER_COMPLETE = 0x8CD5, GL_RGBA8 = 0x8058, GL_DEPTH_COMPONENT24 = 0x81A6;
+constexpr GLenum GL_STENCIL_ATTACHMENT = 0x8D20, GL_DEPTH24_STENCIL8 = 0x88F0;
+constexpr GLenum GL_DEPTH_COMPONENT16 = 0x81A5, GL_STENCIL_INDEX8 = 0x8D48;
+constexpr GLenum GL_FRAMEBUFFER_COMPLETE = 0x8CD5, GL_RGBA8 = 0x8058, GL_RGBA4 = 0x8056;
 constexpr GLenum GL_RGBA = 0x1908, GL_UNSIGNED_BYTE = 0x1401, GL_FLOAT = 0x1406;
-constexpr GLenum GL_ARRAY_BUFFER = 0x8892, GL_STATIC_DRAW = 0x88E4, GL_STREAM_DRAW = 0x88E0;
+constexpr GLenum GL_ARRAY_BUFFER = 0x8892, GL_STREAM_DRAW = 0x88E0;
 constexpr GLenum GL_VERTEX_SHADER = 0x8B31, GL_FRAGMENT_SHADER = 0x8B30;
 constexpr GLenum GL_COMPILE_STATUS = 0x8B81, GL_LINK_STATUS = 0x8B82;
 constexpr GLenum GL_PACK_ALIGNMENT = 0x0D05, GL_PROGRAM_POINT_SIZE = 0x8642;
@@ -54,14 +69,15 @@ struct GL {
   void (*DeleteRenderbuffers)(GLsizei, const GLuint*);
   void (*Viewport)(GLint, GLint, GLsizei, GLsizei);
   void (*ClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
-  void (*ClearDepth)(double);
+  void (*ClearStencil)(GLint);
   void (*Clear)(GLbitfield);
   void (*Enable)(GLenum);
   void (*Disable)(GLenum);
   void (*DepthFunc)(GLenum);
   void (*DepthMask)(GLboolean);
   void (*ColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
-  void (*LogicOp)(GLenum);
+  void (*StencilFunc)(GLenum, GLint, GLuint);
+  void (*StencilOp)(GLenum, GLenum, GLenum);
   void (*LineWidth)(GLfloat);
   GLuint (*CreateShader)(GLenum);
   void (*ShaderSource)(GLuint, GLsizei, const GLchar* const*, const GLint*);
@@ -76,8 +92,6 @@ struct GL {
   void (*GetProgramInfoLog)(GLuint, GLsizei, GLsizei*, GLchar*);
   void (*UseProgram)(GLuint);
   GLint (*GetUniformLocation)(GLuint, const GLchar*);
-  void (*Uniform1f)(GLint, GLfloat);
-  void (*Uniform3f)(GLint, GLfloat, GLfloat, GLfloat);
   void (*Uniform4f)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
   void (*UniformMatrix3fv)(GLint, GLsizei, GLboolean, const GLfloat*);
   void (*GenBuffers)(GLsizei, GLuint*);
@@ -94,10 +108,9 @@ struct GL {
 GL gl;
 
 template <typename F>
-bool load(GetProc proc, F& f, const char* name, std::string& missing) {
+void load(GetProc proc, F& f, const char* name, std::string& missing) {
   f = reinterpret_cast<F>(proc(name));
   if (!f) missing += std::string(missing.empty() ? "" : ", ") + name;
-  return f != nullptr;
 }
 
 bool load_gl(GetProc p, std::string& err) {
@@ -112,14 +125,15 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.DeleteRenderbuffers, "glDeleteRenderbuffers", m);
   load(p, gl.Viewport, "glViewport", m);
   load(p, gl.ClearColor, "glClearColor", m);
-  load(p, gl.ClearDepth, "glClearDepth", m);
+  load(p, gl.ClearStencil, "glClearStencil", m);
   load(p, gl.Clear, "glClear", m);
   load(p, gl.Enable, "glEnable", m);
   load(p, gl.Disable, "glDisable", m);
   load(p, gl.DepthFunc, "glDepthFunc", m);
   load(p, gl.DepthMask, "glDepthMask", m);
   load(p, gl.ColorMask, "glColorMask", m);
-  load(p, gl.LogicOp, "glLogicOp", m);
+  load(p, gl.StencilFunc, "glStencilFunc", m);
+  load(p, gl.StencilOp, "glStencilOp", m);
   load(p, gl.LineWidth, "glLineWidth", m);
   load(p, gl.CreateShader, "glCreateShader", m);
   load(p, gl.ShaderSource, "glShaderSource", m);
@@ -134,8 +148,6 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.GetProgramInfoLog, "glGetProgramInfoLog", m);
   load(p, gl.UseProgram, "glUseProgram", m);
   load(p, gl.GetUniformLocation, "glGetUniformLocation", m);
-  load(p, gl.Uniform1f, "glUniform1f", m);
-  load(p, gl.Uniform3f, "glUniform3f", m);
   load(p, gl.Uniform4f, "glUniform4f", m);
   load(p, gl.UniformMatrix3fv, "glUniformMatrix3fv", m);
   load(p, gl.GenBuffers, "glGenBuffers", m);
@@ -156,48 +168,38 @@ bool load_gl(GetProc p, std::string& err) {
 
 // ---- shaders ----------------------------------------------------------------------
 //
-// View space is the original's: v = M (R (a_pos * scale) + t), with M the
-// row-scaled view matrix $5aed0 / 256; the screen mapping is the one of the
-// original projector (low-res sx = 159.5 - 160 vx/vz, sy = 89.5 - 90 vy/vz).
-// Depth is logarithmic in vz (the world spans 2^29 units).
+// View space is the original's: v = M p, with M the row-scaled view matrix
+// $5aed0 / 256 for the ground (world-relative p) and the identity for the
+// captured primitives (already in view space); the screen mapping is the
+// original projector's (low-res sx = 159.5 - 160 vx/vz, sy = 89.5 -
+// 90 vy/vz).  u_param: rows, point size, depth mode (0: linear with the
+// near plane at vz = 64, for the ground; 1: logarithmic in vz, computed
+// per vertex, for the objects), depth bias.
 const char* kVertex = R"(
 #ifdef GL_ES
 precision highp float;
 #endif
 attribute vec3 a_pos;
 uniform mat3 u_view;
-uniform mat3 u_obj;
-uniform vec3 u_t;
-uniform float u_scale;
-uniform vec4 u_proj;   // rows, point size, near, unused
-varying float v_z;
+uniform vec4 u_param;
 void main() {
-  vec3 v = u_view * (u_obj * (a_pos * u_scale) + u_t);
-  v_z = v.z;
-  float rows = u_proj.x;
+  vec3 v = u_view * a_pos;
+  float rows = u_param.x;
+  float zlin = v.z - 128.0;
+  float zlog = (log2(max(v.z, 1.0e-6)) * (2.0 / 40.0) - 1.0 - u_param.w) * v.z;
   gl_Position = vec4(-0.003125 * v.z - v.x,
                      (1.0 - 179.0 / rows) * v.z + (180.0 / rows) * v.y,
-                     v.z - 2.0 * u_proj.z, v.z);
-  gl_PointSize = u_proj.y;
+                     mix(zlin, zlog, u_param.z), v.z);
+  gl_PointSize = u_param.y;
 }
 )";
 
 const char* kFragment = R"(
 #ifdef GL_ES
-#extension GL_EXT_frag_depth : enable
-precision highp float;
+precision mediump float;
 #endif
 uniform vec4 u_colour;
-uniform vec2 u_depth;  // 1 / log2(far), bias
-varying float v_z;
-void main() {
-  gl_FragColor = u_colour;
-#ifdef GL_ES
-  gl_FragDepthEXT = clamp(log2(max(v_z, 1.0)) * u_depth.x - u_depth.y, 0.0, 1.0);
-#else
-  gl_FragDepth = clamp(log2(max(v_z, 1.0)) * u_depth.x - u_depth.y, 0.0, 1.0);
-#endif
-}
+void main() { gl_FragColor = u_colour; }
 )";
 
 GLuint compile(GLenum type, const char* src, std::string& err) {
@@ -222,7 +224,7 @@ struct Prim {
   GLint first;
   GLsizei count;
   Ops ops;
-  float size = 1;     // points: size in hi-res pixels
+  float size = 1;     // points: size in low-res pixels
   float bias = 0;     // depth bias (later primitives of an object win)
   bool flat = false;
 };
@@ -230,9 +232,9 @@ struct Prim {
 struct State {
   bool ready = false, enabled = true;
   std::function<void()> make_current;
-  GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, vbo = 0;
+  GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   int fb_w = 0, fb_h = 0;
-  GLint u_view = -1, u_obj = -1, u_t = -1, u_scale = -1, u_proj = -1, u_colour = -1, u_depth = -1;
+  GLint u_view = -1, u_param = -1, u_colour = -1;
   // current frame
   bool capturing = false;
   int object = -1;          // index of the current object, -1 = none yet
@@ -243,6 +245,7 @@ struct State {
   // terrain: triangulated water, absolute world coordinates
   struct WaterTri { double x[3], z[3]; int32_t min_alt; };
   std::vector<WaterTri> water;
+  std::vector<float> ground;  // per frame
   uint64_t frames = 0;
   bool debug = false;
 };
@@ -353,60 +356,59 @@ void push(double x, double y, double z) {
 
 // ---- drawing ------------------------------------------------------------------------
 
+// Colour index of a plane operation on a background index.
+uint8_t resolve(const Ops& o, uint8_t bg) { return uint8_t((((bg & ~o.clr) | o.set) ^ o.xr) & 15); }
+constexpr uint8_t kLand = 4, kWater = 6;  // backdrop and plane 1 set
+
 void set_colour(uint8_t index) { gl.Uniform4f(st.u_colour, float(index) / 255.f, 0.f, 0.f, 1.f); }
-
-// Draw with the original's plane operation: clear `clr`, set `set`,
-// invert `xr` (bit b = display plane b = palette index bit b).
-void draw_ops(GLenum mode, GLint first, GLsizei count, const Ops& o, bool depth) {
-  if (((o.set | o.clr) & 15) == 15 && !o.xr) {
-    set_colour(o.set & 15);
-    gl.DrawArrays(mode, first, count);
-    return;
-  }
-  gl.Enable(GL_COLOR_LOGIC_OP);
-  bool first_pass = true;
-  auto pass = [&](GLenum op, uint8_t value) {
-    gl.LogicOp(op);
-    set_colour(value);
-    if (depth && !first_pass) gl.DepthMask(0);
-    gl.DrawArrays(mode, first, count);
-    first_pass = false;
-  };
-  if (o.clr & 15) pass(GL_AND, uint8_t(~o.clr));
-  if (o.set & 15) pass(GL_OR, uint8_t(o.set & 15));
-  if (o.xr & 15) pass(GL_XOR, uint8_t(o.xr & 15));
-  if (depth) gl.DepthMask(1);
-  gl.Disable(GL_COLOR_LOGIC_OP);
+void set_param(float rows, float point, float log_depth, float bias) {
+  gl.Uniform4f(st.u_param, rows, point, log_depth, bias);
 }
-
-void set_transform(const float view[9]) {
-  // GLSL matrices are column-major: pass the transpose of the row-major view.
-  float vt[9];
+void set_view(const float view[9]) {
+  float vt[9];  // GLSL matrices are column-major
   for (int r = 0; r < 3; ++r)
     for (int c = 0; c < 3; ++c) vt[c * 3 + r] = view[r * 3 + c];
-  const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
   gl.UniformMatrix3fv(st.u_view, 1, 0, vt);
-  gl.UniformMatrix3fv(st.u_obj, 1, 0, ident);
-  gl.Uniform3f(st.u_t, 0, 0, 0);
-  gl.Uniform1f(st.u_scale, 1.f);
+}
+void upload(const std::vector<float>& v) {
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
+  gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(v.size() * sizeof(float)), v.data(), GL_STREAM_DRAW);
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+}
+void stencil_class(int water) {
+  gl.StencilFunc(GL_EQUAL, water, 1);
+  gl.StencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 }
 
 bool ensure_fbo(int w, int h) {
   if (st.fbo && st.fb_w == w && st.fb_h == h) return true;
   if (!st.fbo) gl.GenFramebuffers(1, &st.fbo);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
-  if (st.colour_rb) {
-    gl.DeleteRenderbuffers(1, &st.colour_rb);
-    gl.DeleteRenderbuffers(1, &st.depth_rb);
-  }
-  gl.GenRenderbuffers(1, &st.colour_rb);
-  gl.BindRenderbuffer(GL_RENDERBUFFER, st.colour_rb);
-  gl.RenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, w, h);
+  GLuint old[3] = {st.colour_rb, st.depth_rb, st.stencil_rb};
+  for (GLuint r : old)
+    if (r) gl.DeleteRenderbuffers(1, &r);
+  st.colour_rb = st.depth_rb = st.stencil_rb = 0;
+  auto rb = [&](GLenum format) {
+    GLuint r = 0;
+    gl.GenRenderbuffers(1, &r);
+    gl.BindRenderbuffer(GL_RENDERBUFFER, r);
+    gl.RenderbufferStorage(GL_RENDERBUFFER, format, w, h);
+    return r;
+  };
+  st.colour_rb = rb(GL_RGBA8);
   gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
-  gl.GenRenderbuffers(1, &st.depth_rb);
-  gl.BindRenderbuffer(GL_RENDERBUFFER, st.depth_rb);
-  gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+  // packed depth/stencil (GL 3, EXT/OES_packed_depth_stencil), else separate
+  st.depth_rb = rb(GL_DEPTH24_STENCIL8);
   gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, st.depth_rb);
+  gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, st.depth_rb);
+  if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    gl.DeleteRenderbuffers(1, &st.depth_rb);
+    st.depth_rb = rb(GL_DEPTH_COMPONENT16);
+    st.stencil_rb = rb(GL_STENCIL_INDEX8);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, st.depth_rb);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, st.stencil_rb);
+  }
   if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
     std::fprintf(stderr, "gl: framebuffer incomplete\n");
     return false;
@@ -442,12 +444,8 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
     return false;
   }
   st.u_view = gl.GetUniformLocation(st.prog, "u_view");
-  st.u_obj = gl.GetUniformLocation(st.prog, "u_obj");
-  st.u_t = gl.GetUniformLocation(st.prog, "u_t");
-  st.u_scale = gl.GetUniformLocation(st.prog, "u_scale");
-  st.u_proj = gl.GetUniformLocation(st.prog, "u_proj");
+  st.u_param = gl.GetUniformLocation(st.prog, "u_param");
   st.u_colour = gl.GetUniformLocation(st.prog, "u_colour");
-  st.u_depth = gl.GetUniformLocation(st.prog, "u_depth");
   gl.GenBuffers(1, &st.vbo);
   build_terrain();
   st.debug = std::getenv("FA18_GL_DEBUG") != nullptr;
@@ -482,21 +480,47 @@ void begin_object(uint32_t mesh, uint32_t stream, bool distant) {
   st.flat = distant || ((flags & 2) && !(flags & 1));
 }
 
+// Captured primitives are clipped to vz >= kNear here, so that the
+// logarithmic depth of the vertex shader only sees points in front.
+constexpr double kNear = 64;
+struct P3 { double x, y, z; };
+void clip_near(std::vector<P3>& v, bool closed) {
+  std::vector<P3> out;
+  const size_t n = v.size(), edges = closed ? n : n - 1;
+  for (size_t i = 0; i < edges; ++i) {
+    const P3 &a = v[i], &b = v[(i + 1) % n];
+    if (a.z >= kNear) out.push_back(a);
+    if ((a.z >= kNear) != (b.z >= kNear)) {
+      double t = (kNear - a.z) / (b.z - a.z);
+      out.push_back({a.x + t * (b.x - a.x), a.y + t * (b.y - a.y), kNear});
+    }
+  }
+  if (!closed && v.back().z >= kNear) out.push_back(v.back());
+  v.swap(out);
+}
+
 void note_poly(const int16_t (*v)[3], int n, int shift, const Ops& o) {
   if (!capture_ok() || o.copy || n < 3) return;
   const double k = stage_unit() * std::ldexp(1.0, shift);
+  std::vector<P3> pts;
+  for (int i = 0; i < n; ++i) pts.push_back({v[i][0] * k, v[i][1] * k, v[i][2] * k});
+  clip_near(pts, true);
+  if (pts.size() < 3) return;
   Prim& p = add_prim(GL_TRIANGLES, o);
-  for (int i = 1; i + 1 < n; ++i)
-    for (int j : {0, i, i + 1}) push(v[j][0] * k, v[j][1] * k, v[j][2] * k);
+  for (size_t i = 1; i + 1 < pts.size(); ++i)
+    for (size_t j : {size_t(0), i, i + 1}) push(pts[j].x, pts[j].y, pts[j].z);
   p.count = GLsizei(st.verts.size() / 3) - p.first;
 }
 
 void note_line(const double a[3], const double b[3], const Ops& o) {
   if (!capture_ok() || o.copy) return;
   const double k = stage_unit();
+  std::vector<P3> pts = {{a[0] * k, a[1] * k, a[2] * k}, {b[0] * k, b[1] * k, b[2] * k}};
+  clip_near(pts, false);
+  if (pts.size() != 2) return;
   Prim& p = add_prim(GL_LINES, o);
-  push(a[0] * k, a[1] * k, a[2] * k);
-  push(b[0] * k, b[1] * k, b[2] * k);
+  push(pts[0].x, pts[0].y, pts[0].z);
+  push(pts[1].x, pts[1].y, pts[1].z);
   p.count = 2;
 }
 
@@ -504,6 +528,7 @@ void note_point(const double q[3], int kind, int radius, const Ops& o) {
   if (!capture_ok() || o.copy) return;
   const double k = stage_unit();
   const double x = q[0] * k, z = q[2] * k;
+  if (z < kNear) return;
   const double y = q[1] * k - z / 90.0;  // the original plots one row lower
   if (kind == 3) {  // disc: a polygon around the point in the view plane
     Prim& p = add_prim(GL_TRIANGLES, o);
@@ -528,23 +553,21 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   st.capturing = false;
   st.make_current();
   if (!ensure_fbo(w, h)) return false;
-  const int rows = h / S;
+  const float rows = float(h / S);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
-  gl.Enable(GL_PROGRAM_POINT_SIZE);
-  const float log_far = 1.f / 40.f;  // log2 of the farthest depth
-  auto proj = [&](float point_size) { gl.Uniform4f(st.u_proj, float(rows), point_size, 64.f, 0.f); };
-  proj(float(S));
+  gl.Enable(GL_PROGRAM_POINT_SIZE);  // desktop GL; GLES always uses gl_PointSize
   gl.ColorMask(1, 1, 1, 1);
   gl.DepthMask(1);
-  gl.ClearColor(5.f / 255.f, 0, 0, 1);  // sky (plane 0 on the land backdrop)
-  gl.ClearDepth(1.0);
-  gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  gl.ColorMask(1, 0, 0, 0);
+  gl.ClearColor(5.f / 255.f, 0, 0, 1);  // sky
+  gl.ClearStencil(0);
+  gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   gl.LineWidth(float(std::max(1, S)));
+  gl.Disable(GL_DEPTH_TEST);
+  gl.DepthMask(0);
 
-  // ---- ground layer: land plane and water in world space ----
+  // ---- ground: land plane and water in world space ----
   float view[9];
   for (int i = 0; i < 9; ++i) view[i] = float(int16_t(rd16(0x5aed0 + 2u * uint32_t(i)))) / 256.f;
   // camera = cell origin - $5ad5a (the frame of the object positions)
@@ -553,10 +576,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   const double ground_y = double(int32_t(rd32(0x5ad5e)));
   const int32_t alt = terrain::scaled_altitude(int32_t(rd32(0x5ad70)), rd8(0x5aad5),
                                                int16_t(rd16(0x5ad3a)));
-  gl.Disable(GL_DEPTH_TEST);
-  gl.DepthMask(0);
-  gl.Uniform4f(st.u_depth, log_far, 0, 0, 0);
-  std::vector<float> g;
+  std::vector<float>& g = st.ground;
+  g.clear();
   const double R = std::ldexp(1.0, 31);
   const double quad[6][2] = {{-R, -R}, {R, -R}, {R, R}, {-R, -R}, {R, R}, {-R, R}};
   for (auto& q : quad) {
@@ -564,7 +585,6 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
     g.push_back(float(ground_y));
     g.push_back(float(q[1]));
   }
-  const GLsizei land = GLsizei(g.size() / 3);
   for (const State::WaterTri& t : st.water) {
     if (t.min_alt > alt) continue;
     for (int i = 0; i < 3; ++i) {
@@ -573,40 +593,79 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
       g.push_back(float(t.z[i] - cam_z));
     }
   }
-  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
-  gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(g.size() * sizeof(float)), g.data(), GL_STREAM_DRAW);
-  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
-  gl.EnableVertexAttribArray(0);
-  set_transform(view);
-  set_colour(4);
-  gl.DrawArrays(GL_TRIANGLES, 0, land);
-  Ops water;
-  if (rd8(0x5aaa8)) water.set = 6, water.clr = 9;  // colour $5ac4c in all planes
-  else water.set = 2;                              // plane 1 set
-  draw_ops(GL_TRIANGLES, land, GLsizei(g.size() / 3) - land, water, false);
-
-  // ---- objects: the original's primitives, already in view space ----
+  upload(g);
+  set_view(view);
+  set_param(rows, 1, 0, 0);
+  // stencil bit 0 = water: the water tiles set it, flat patches whose
+  // operation turns land into water and back (plane 1 inverted) toggle it
+  gl.Enable(GL_STENCIL_TEST);
+  gl.ColorMask(0, 0, 0, 0);
+  gl.StencilFunc(GL_ALWAYS, 1, 1);
+  gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+  gl.DrawArrays(GL_TRIANGLES, 6, GLsizei(g.size() / 3) - 6);
   const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-  set_transform(ident);
-  gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(st.verts.size() * sizeof(float)), st.verts.data(),
-                GL_STREAM_DRAW);
-  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
-  auto draw = [&](const Prim& p, bool depth) {
-    gl.Uniform4f(st.u_depth, log_far, p.bias, 0, 0);
-    if (p.mode == GL_POINTS) proj(p.size * float(S));
-    draw_ops(p.mode, p.first, p.count, p.ops, depth);
+  auto toggles = [](const Prim& p) {
+    return p.flat && p.mode == GL_TRIANGLES && resolve(p.ops, kLand) == kWater &&
+           resolve(p.ops, kWater) == kLand;
   };
-  for (const Prim& p : st.prims)
-    if (p.flat) draw(p, false);
+  bool any_toggle = false;
+  for (const Prim& p : st.prims) any_toggle |= toggles(p);
+  if (any_toggle) {
+    upload(st.verts);
+    set_view(ident);
+    gl.StencilOp(GL_KEEP, GL_KEEP, GL_INVERT);
+    for (const Prim& p : st.prims)
+      if (toggles(p)) gl.DrawArrays(p.mode, p.first, p.count);
+    upload(g);
+    set_view(view);
+  }
+  gl.ColorMask(1, 0, 0, 0);
+  stencil_class(0);
+  set_colour(kLand);
+  gl.DrawArrays(GL_TRIANGLES, 0, 6);
+  stencil_class(1);
+  set_colour(rd8(0x5aaa8) ? rd16(0x5ac4c) & 15 : kWater);
+  gl.DrawArrays(GL_TRIANGLES, 0, 6);
+
+  // ---- flat objects: their colour on land / water ----
+  upload(st.verts);
+  set_view(ident);
+  auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
+  for (const Prim& p : st.prims) {
+    if (!p.flat || toggles(p)) continue;
+    set_param(rows, point_size(p), 0, 0);
+    const uint8_t on_land = resolve(p.ops, kLand), on_water = resolve(p.ops, kWater);
+    if (on_land == on_water) {
+      gl.Disable(GL_STENCIL_TEST);
+      set_colour(on_land);
+      gl.DrawArrays(p.mode, p.first, p.count);
+      gl.Enable(GL_STENCIL_TEST);
+      continue;
+    }
+    stencil_class(0);
+    set_colour(on_land);
+    gl.DrawArrays(p.mode, p.first, p.count);
+    stencil_class(1);
+    set_colour(on_water);
+    gl.DrawArrays(p.mode, p.first, p.count);
+  }
+  gl.Disable(GL_STENCIL_TEST);
+
+  // ---- 3D objects: flat colours with the depth test ----
   gl.Enable(GL_DEPTH_TEST);
   gl.DepthFunc(GL_LEQUAL);
   gl.DepthMask(1);
-  for (const Prim& p : st.prims)
-    if (!p.flat) draw(p, true);
+  for (const Prim& p : st.prims) {
+    if (p.flat) continue;
+    set_param(rows, point_size(p), 1, p.bias);
+    set_colour(resolve(p.ops, kLand));
+    gl.DrawArrays(p.mode, p.first, p.count);
+  }
   gl.Disable(GL_DEPTH_TEST);
 
   // ---- read back the palette indices ----
-  std::vector<uint8_t> rgba(size_t(w) * size_t(h) * 4);
+  static std::vector<uint8_t> rgba;
+  rgba.resize(size_t(w) * size_t(h) * 4);
   gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
   gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
   px.resize(size_t(w) * size_t(h));

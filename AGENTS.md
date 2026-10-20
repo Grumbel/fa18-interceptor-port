@@ -64,7 +64,8 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   view-space primitives scaled to world units share a depth buffer, the
   ground (land plane, terrain water polygons, sky) is rebuilt in world
   space, so the horizon is exact; output goes through the same hi-res
-  composition.  Falls back to `--hires` without GL; headless runs need
+  composition; flat colours only (GL 2.1 or GLES 2, `FA18_GLES=1`).
+  Falls back to `--hires` without GL; headless runs need
   `SDL_VIDEODRIVER=offscreen`.
 
 - Debug menu: gamepad Back button (keyboard: Insert) pauses and offers

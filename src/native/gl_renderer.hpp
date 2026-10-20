@@ -15,9 +15,11 @@
 //     placed by ops (runway markings), animation and damage states.
 //   - flat objects (runways, islands, ground patches) are drawn in the
 //     original order on the ground layer; 3D objects use the depth test.
-// The output are palette indices (plane operations via GL logic ops) that
-// replace the hi-res layer of hires.cpp at the end of the scene, so the
-// HUD / cockpit composition, palette fades and the menus work unchanged.
+// Everything is flat-shaded polygons with palette indices as colours; the
+// plane operations are resolved to colours (a land/water bit in the
+// stencil buffer covers the ground tricks).  GL 2.1 or GLES 2.  The
+// indices replace the hi-res layer of hires.cpp at the end of the scene, so
+// the HUD / cockpit composition, palette fades and the menus work unchanged.
 // The original renderer keeps running: game state is not affected.
 #pragma once
 

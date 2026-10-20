@@ -45,8 +45,8 @@ Verified with scripted runs (`--script`):
 - [ ] Still original in that area: the clip `$43364`, `$426c0` (view
       direction x player angles), `$42c5a`, `$42cf4`
 - [x] OpenGL renderer of the 3D view (`--gl N`, docs/gl_renderer.md)
-- [ ] GL renderer: debug-menu toggle; GLES 2 fallback (no logic ops /
-      gl_FragDepth); plane copy op `$45014` is skipped
+- [x] GL renderer: debug-menu entries; flat colours + stencil land/water
+      map, runs on GL 2.1 and GLES 2 (`FA18_GLES=1` forces GLES)
 - [x] World: new mission objects (`newspawn`, native `$3cf0e`)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the
