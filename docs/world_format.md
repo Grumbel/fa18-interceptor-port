@@ -198,7 +198,7 @@ behaviour); a new kind needs code that checks for it.
 
 10 missions x 3 variants x (word list offset from `$3dfba`, word max count
 -> `$5aba2`).  The variant comes from `$5adf0` (`$3cf0e`); a list starts
-with 4 word offsets, one per level (`$2d03c` config byte 12 + mission, the
+with 4 word offsets, one per level (`$2d03c` config byte 18 + mission, the
 pilot's progress).  The first spawn of a level list is always created, the
 following ones while their flags allow (word 4 bits 0-6).  Missions 126
 and 127 use entry 10; 125 copies the player record instead (`$3d0b2`).
@@ -227,11 +227,13 @@ bit in `$5aa95`) and resets their routes when the player leaves.
 - **Mission objects**: hunk 27 has no free space and its offsets are
   16-bit relative to code-embedded bases, so spawn lists, zones and routes
   are patched in place (same counts); existing entries can be retargeted
-  (template, kind, position, route).  A *new* object needs a free scenario
-  slot (16), a spawn entry, and for a new kind the per-kind tables indexed
-  by record +98 in the AI and weapons code (not yet traced); the natural
-  hook is the end of `$3cf0e`, calling `$3d320` with a list in free memory
-  (its position index must still point into the table at `$3ddc8`).
+  (template, kind, position, route).  *New* objects are `newspawn` lines:
+  the native mission setup (`$3cf0e`, `src/native/missions.cpp`) creates
+  them after the mission's own list with the original `$3d2ea`; the start
+  position is put into the record of position 1 for the duration of the
+  call, so cell, subcell, height and the initial aiming (`$3cfec`) are
+  computed by the original.  Choose a free scenario slot (16 records; the
+  carrier uses 14, the missions 4-12) and an existing kind (see above).
 
 ## World file
 
@@ -251,6 +253,7 @@ only `map near`.
     pos INDEX OFFSET            ; position table
     wp OFFSET CX CZ OX OZ H     ; waypoint record
     zone ADDR X1 X2 Z1 Z2       ; then its "spawn" lines
+    newspawn M TMPL KIND SLOT FLAGS CX CZ OX OZ H   ; extra object (M = $5ab9e, 0 = all)
     template I DRAW MODEL LOD LOD2 LOD3   ; information only
 
 `sub=` is only written when an object's position does not identify its

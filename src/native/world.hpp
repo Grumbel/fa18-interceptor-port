@@ -125,6 +125,14 @@ struct MissionEntry {
   uint16_t level_off[kLevels] = {};
 };
 
+// A mission object added by a world file: created after the mission's own
+// list by the native mission setup ($3cf0e), at an explicit position.
+struct ExtraSpawn {
+  int mission = 0;              // $5ab9e value, 0 = every mission
+  Spawn spawn;                  // `pos` is ignored
+  Waypoint at;                  // start position (and target without a route)
+};
+
 // Template (type table layout, read-only information).
 struct Template {
   uint32_t draw = 0, model = 0, lod = 0, lod2 = 0, lod3 = 0;
@@ -141,6 +149,7 @@ struct World {
   std::vector<uint16_t> positions;      // the 60 offsets of $3ddc8 (0 = unused)
   std::vector<WaypointRec> waypoints;   // sorted by offset
   std::vector<Zone> zones;
+  std::vector<ExtraSpawn> extras;
   std::vector<Template> templates;   // 16 entries of $35f54
 };
 
@@ -163,5 +172,9 @@ bool validate(const World& w, const Reader& rd, std::string& err);
 // hunk 65, mission data in place (same entry counts as the original).
 // Call after Machine::boot() and before the game runs.
 bool apply(amiga::Machine& m, const World& w, std::string& err);
+
+// Called at the end of the mission setup: creates the extra spawns of the
+// applied world for the current mission (no-op without a world file).
+void spawn_extras();
 
 }  // namespace world

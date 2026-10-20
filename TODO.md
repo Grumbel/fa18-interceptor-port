@@ -39,13 +39,15 @@ Verified with scripted runs (`--script`):
 - [x] Ground / sea / sky understood (docs/ground_sea_sky.md): land
       backdrop, terrain tiles = water polygons (`$3f284`), sky = quad
       mirrored at the camera height (`$42f6a`), zone tables `$331f0`/`$33420`
-- [ ] Native translation of `$3f284`, `$42f6a`/`$42f70` (and the clip
-      `$43364`), `$4217c` (view setup); documented, still original code
+- [x] Native translations: terrain `$3f284` (ground.cpp), sky quad
+      `$42f62`/`$42f6a` (sky.cpp), view setup `$4217c` with the matrix
+      builders `$42dd6`/`$42b26`/`$42b50`/`$42b6e`/`$42bbe` (view.cpp)
+- [ ] Still original in that area: the clip `$43364`, `$426c0` (view
+      direction x player angles), `$42c5a`, `$42cf4`
 - [x] OpenGL renderer of the 3D view (`--gl N`, docs/gl_renderer.md)
 - [ ] GL renderer: debug-menu toggle; GLES 2 fallback (no logic ops /
       gl_FragDepth); plane copy op `$45014` is skipped
-- [ ] World: adding *new* mission objects (needs a spawn hook after
-      `$3cf0e` and the per-kind tables indexed by record +98)
+- [x] World: new mission objects (`newspawn`, native `$3cf0e`)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the
       dispatch table maps addresses to functions, so hand-written

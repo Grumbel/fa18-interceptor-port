@@ -4,6 +4,7 @@
 
 #include "amiga/hunk.hpp"
 #include "amiga/machine.hpp"
+#include "native/runtime.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -396,6 +397,15 @@ std::string to_text(const World& w) {
       << "\n";
     for (const Spawn& s : z.spawns) o << "  spawn " << spawn_text(s) << "\n";
   }
+  o << "\n# newspawn MISSION TMPL KIND SLOT FLAGS CX CZ OX OZ H: an extra object created after\n"
+       "# the mission's list (MISSION 0 = all); hex words as in spawn lines, position decimal\n";
+  for (const ExtraSpawn& e : w.extras) {
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "newspawn %d %04x %04x %04x %04x %d %d %d %d %d\n", e.mission,
+                  e.spawn.tmpl, e.spawn.kind, e.spawn.slot, e.spawn.flags, e.at.cx, e.at.cz, e.at.ox,
+                  e.at.oz, e.at.h);
+    o << buf;
+  }
   o << "\n# scenario object templates ($35f54, read-only): draw model lod lod2 lod3\n";
   for (size_t i = 0; i < w.templates.size(); ++i) {
     const Template& t = w.templates[i];
@@ -584,6 +594,20 @@ bool from_text(const std::string& text, World& w, std::string& err) {
       w.zones.push_back(z);
       spawns = &w.zones.back().spawns;
       state = InZone;
+    } else if (kw == "newspawn") {
+      ExtraSpawn e;
+      unsigned v[4];
+      if (!(ls >> std::dec >> e.mission)) return fail("newspawn MISSION TMPL KIND SLOT FLAGS CX CZ OX OZ H");
+      for (unsigned& x : v)
+        if (!(ls >> std::hex >> x) || x > 0xFFFF) return fail("newspawn: TMPL KIND SLOT FLAGS are hex words");
+      if (!(ls >> std::dec >> e.at.cx >> e.at.cz >> e.at.ox >> e.at.oz >> e.at.h))
+        return fail("newspawn: position CX CZ OX OZ H");
+      if (e.mission < 0 || e.mission > 127 || v[0] % 20 || v[0] / 20 > 15 || (v[2] & 127) > 15 ||
+          e.at.cx < 0)
+        return fail("newspawn: bad mission, template (0..15 x 20), slot (0..15) or position");
+      e.spawn = Spawn{uint16_t(v[0]), uint16_t(v[1]), uint16_t(v[2]), 0, uint16_t(v[3])};
+      w.extras.push_back(e);
+      state = None;
     } else if (kw == "template") {
       Template t;
       size_t idx;
@@ -967,10 +991,50 @@ bool apply_missions(amiga::Machine& mach, const World& w, std::string& err) {
 
 }  // namespace
 
+namespace {
+std::vector<ExtraSpawn> g_extras;
+uint32_t g_entry = 0;  // 10-byte spawn entry in reserved memory
+}  // namespace
+
 bool apply(amiga::Machine& m, const World& w, std::string& err) {
   Reader rd = [&](uint32_t a) { return m.r8(a); };
   if (!validate(w, rd, err)) return false;
-  return apply_maps(m, w, err) && apply_scripts(m, w, err) && apply_missions(m, w, err);
+  if (!apply_maps(m, w, err) || !apply_scripts(m, w, err) || !apply_missions(m, w, err)) return false;
+  g_extras = w.extras;
+  if (!g_extras.empty()) {
+    g_entry = m.reserve_top(16);
+    if (!g_entry || m.r16(kRouteTable + 2) == 0) {
+      err = "newspawn: no memory / position table";
+      return false;
+    }
+  }
+  return true;
+}
+
+// $3d320 takes the start position from the position table: for each extra
+// object the record of position 1 is replaced by the wanted position while
+// $3d2ea runs, then restored, so everything derived from the position
+// (cell, subcell, height, aiming in $3cfec) is computed by the original.
+void spawn_extras() {
+  if (g_extras.empty()) return;
+  using native::rd8;
+  using native::rd16;
+  using native::wr16;
+  const int mission = rd8(0x5ab9e);
+  const uint32_t rec = kRouteTable + rd16(kRouteTable + 2);
+  for (const ExtraSpawn& e : g_extras) {
+    if (e.mission != 0 && e.mission != mission) continue;
+    uint16_t saved[5];
+    for (int i = 0; i < 5; ++i) saved[i] = rd16(rec + 2u * uint32_t(i));
+    const int16_t pos[5] = {e.at.cx, e.at.cz, e.at.ox, e.at.oz, e.at.h};
+    for (int i = 0; i < 5; ++i) wr16(rec + 2u * uint32_t(i), uint16_t(pos[i]));
+    const uint16_t entry[5] = {e.spawn.tmpl, e.spawn.kind, e.spawn.slot, 2, e.spawn.flags};
+    for (int i = 0; i < 5; ++i) wr16(g_entry + 2u * uint32_t(i), entry[i]);
+    wr16(g_entry + 10, 0xFFFF);
+    native::cpu().a[2] = g_entry;
+    native::call_c(0x3d2ea);
+    for (int i = 0; i < 5; ++i) wr16(rec + 2u * uint32_t(i), saved[i]);
+  }
 }
 
 }  // namespace world
