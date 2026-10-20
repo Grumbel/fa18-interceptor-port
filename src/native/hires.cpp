@@ -12,6 +12,7 @@
 //   $5a9e0 < 0   colour bits come from $5ac4c, else bits of $5a9e0 select
 //                set (1) / clear (0); $5a9e2 bit b set = XOR instead
 #include "amiga/machine.hpp"
+#include "native/gl_renderer.hpp"
 #include "native/remaster.hpp"
 #include "native/runtime.hpp"
 #include "native/scene_frame.hpp"
@@ -130,6 +131,15 @@ inline void put(Layer& L, int x, int y, const PlaneOps& o) {
 // Resolve a flat colour from plane-ops + live COLOR registers for Prim::rgba.
 // Copy-plane ops ($45014) depend on the destination pixel; approximate with
 // the current $5ac4c colour word so the software renderer still gets a tint.
+inline glr::Ops gl_ops(const PlaneOps& o) {
+  glr::Ops g;
+  g.set = o.set;
+  g.clr = o.clr;
+  g.xr = o.xr;
+  g.copy = o.cp_src >= 0;
+  return g;
+}
+
 inline uint32_t rgba_from_ops(const PlaneOps& o) {
   uint8_t idx;
   if (o.cp_src >= 0) {
@@ -279,6 +289,12 @@ void on_polygon() {
   int16_t shift = int16_t(rd16(0x61284));
   int n = int16_t(rd16(0x61286));
   if (n < 3 || n > 40) return;
+  if (glr::active()) {
+    int16_t v[40][3];
+    for (int i = 0; i < n; ++i)
+      for (int k = 0; k < 3; ++k) v[i][k] = int16_t(rd16(0x61288 + 6u * uint32_t(i) + 2u * uint32_t(k)));
+    glr::note_poly(v, n, shift, gl_ops(poly_ops()));
+  }
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Poly3d;
@@ -518,6 +534,10 @@ void on_line_noclip() {
     p[i] = {double(int16_t(rd16(a))), double(int16_t(rd16(a + 2))), double(int16_t(rd16(a + 4)))};
     if (p[i].z <= 0 || std::fabs(p[i].x) > p[i].z || std::fabs(p[i].y) > p[i].z) return;
   }
+  if (glr::active()) {
+    double a[3] = {p[0].x, p[0].y, p[0].z}, b[3] = {p[1].x, p[1].y, p[1].z};
+    glr::note_line(a, b, gl_ops(line_ops()));
+  }
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Line;
@@ -570,6 +590,10 @@ void on_point(int sel) {
     disc_r = std::min(127, int(int16_t(c.d[6])));
     if (disc_r < 1) disc_r = 1;
   } else return;
+  if (glr::active()) {
+    double q[3] = {double(x), double(y), double(z)};
+    glr::note_point(q, kind, disc_r, gl_ops(kind == 3 ? poly_ops() : line_ops()));
+  }
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Point;
@@ -608,6 +632,10 @@ void on_line() {
   V3 b{double(int16_t(rd16(0x6188c))), double(int16_t(rd16(0x6188e))), double(int16_t(rd16(0x61890)))};
   auto c = clip_near({a, b}, 1.0);
   if (c.size() != 2) return;
+  if (glr::active()) {
+    double ga[3] = {c[0].x, c[0].y, c[0].z}, gb[3] = {c[1].x, c[1].y, c[1].z};
+    glr::note_line(ga, gb, gl_ops(line_ops()));
+  }
   if (scene::enabled()) {
     scene::Prim pr;
     pr.kind = scene::PrimKind::Line;
@@ -641,6 +669,7 @@ static void do_begin();
 // the layer starts at the top of game_frame ($2112c) so that the sky and
 // ground drawn before $2fc14 are part of it; $2fc14 must not restart it
 static void on_game_frame() {
+  glr::scene_begin();
   do_begin();
   gf_begun = in_scene;
 }
@@ -694,6 +723,10 @@ void scene_end() {
   cur->unexplained.assign(cur->snap.size(), 0);
   for (size_t i = 0; i < cur->snap.size(); ++i)
     cur->unexplained[i] = (cur->snap[i] != cur->s0[i]) && !cur->cover[i];
+  // OpenGL renderer: replaces the re-rasterised layer; the coverage of the
+  // original's 3D primitives above still decides where 2D drawing done
+  // during the scene (target markers) shows through.
+  if (glr::active()) glr::render_layer(cur->px, W * cur->S, cur->rows * cur->S, cur->S);
   cur->done = true;
   if (getenv("FA18_HIRES_STATS")) {
     int u = 0, ch = 0, ex = 0;

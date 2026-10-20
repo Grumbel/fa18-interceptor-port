@@ -59,6 +59,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   layer where the game did not draw after the scene ended (HUD/cockpit
   stay low-res) and falls back to low-res for changes it could not
   explain. `FA18_HIRES_DEBUG=1` paints the fall-back pixels magenta.
+- `--gl N`: like `--hires N`, but the 3D view is drawn with OpenGL
+  (`src/native/gl_renderer.cpp`, docs/gl_renderer.md): the original's
+  view-space primitives scaled to world units share a depth buffer, the
+  ground (land plane, terrain water polygons, sky) is rebuilt in world
+  space, so the horizon is exact; output goes through the same hi-res
+  composition.  Falls back to `--hires` without GL; headless runs need
+  `SDL_VIDEODRIVER=offscreen`.
 
 - Debug menu: gamepad Back button (keyboard: Insert) pauses and offers
   3D resolution (original/2x/3x/4x), analog stick, save/load state slots

@@ -41,6 +41,9 @@ Verified with scripted runs (`--script`):
       mirrored at the camera height (`$42f6a`), zone tables `$331f0`/`$33420`
 - [ ] Native translation of `$3f284`, `$42f6a`/`$42f70` (and the clip
       `$43364`), `$4217c` (view setup); documented, still original code
+- [x] OpenGL renderer of the 3D view (`--gl N`, docs/gl_renderer.md)
+- [ ] GL renderer: debug-menu toggle; GLES 2 fallback (no logic ops /
+      gl_FragDepth); plane copy op `$45014` is skipped
 - [ ] World: adding *new* mission objects (needs a spawn hook after
       `$3cf0e` and the per-kind tables indexed by record +98)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can

@@ -1,6 +1,7 @@
 // F/A-18 Interceptor — SDL2 front end.
 #include "amiga/machine.hpp"
 #include "font6x10.hpp"
+#include "native/gl_renderer.hpp"
 #include "native/mesh_viewer.hpp"
 #include "native/terrain.hpp"
 #include "native/world.hpp"
@@ -854,6 +855,7 @@ void usage() {
           "  --frames N       quit after N frames\n"
           "  --fast           run unthrottled\n"
           "  --hires N        remaster: render the 3D view at N times resolution\n"
+          "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
@@ -875,6 +877,22 @@ void usage() {
           "      RETURN weapon, numpad views (full list in the manual).\n");
 }
 
+// OpenGL renderer of the 3D view (--gl): its own context on a hidden
+// window, so the presentation path (SDL_Renderer) stays as it is.
+bool init_gl() {
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+  SDL_Window* w = SDL_CreateWindow("fa18 gl", 0, 0, 16, 16, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+  SDL_GLContext ctx = w ? SDL_GL_CreateContext(w) : nullptr;
+  std::string err = SDL_GetError();
+  if (ctx && glr::init([](const char* n) { return SDL_GL_GetProcAddress(n); },
+                       [w, ctx] { SDL_GL_MakeCurrent(w, ctx); }, err))
+    return true;
+  fprintf(stderr, "gl: not available (%s); using the software hi-res renderer\n", err.c_str());
+  return false;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -882,7 +900,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
-  int hires = 0;
+  int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
@@ -902,6 +920,7 @@ int main(int argc, char** argv) {
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
+    else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
@@ -1026,6 +1045,7 @@ int main(int argc, char** argv) {
   host.fast = fast;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
+  if (gl_scale > 0) init_gl();  // else the software hi-res renderer
   if (grab_mouse) host.set_grab(true);
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);

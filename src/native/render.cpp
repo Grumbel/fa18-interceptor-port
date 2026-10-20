@@ -21,6 +21,7 @@
 //   -114 l  -120/-118/-116 w  -122 w  -124 w (result bits)
 //   -127 b (bit 0: "draw as picture")  -128 w  -134/-132/-130 w  -136 b  -150 w
 #include "native/asmregs.hpp"
+#include "native/gl_renderer.hpp"
 #include "native/scene_frame.hpp"
 #include "native/orig.hpp"
 #include "native/vars.hpp"
@@ -848,6 +849,7 @@ L31e4a:
     // Distance limit local -40(a6) was set from $5ae38 at body entry.
     scene::note_render_object(A(1), int16_t(RW(-40)));
   }
+  glr::begin_object(A(1), A(2), false);
   setw(0, rd16(A(1)));
   A(1) += 2;
   WB(-136, lob(0));
@@ -1800,6 +1802,7 @@ L32dda:
   if (scene::enabled()) {
     scene::note_render_object(A(1), int16_t(RW(-40)));
   }
+  glr::begin_object(A(1), A(2), true);
   setw(0, rd16(0x5ad6a));
   D(1) = rd32(0x5ad5e);
   D(1) = uint32_t(asr32(int32_t(D(1)), 8));

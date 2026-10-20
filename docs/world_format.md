@@ -164,6 +164,26 @@ Known record fields (the rest are flight / AI state):
 | +102..+106 | word | attitude angles |
 | +146 | 9 words | orientation matrix (rotates the articulated mesh) |
 
+### Kinds (record +98)
+
+There are no tables indexed by the kind: about 115 places in the AI,
+weapons, view and draw code compare it, either the class (`andi #$f0`:
+`$10`, `$20`, `$30`) or exact values (0, 1, `$10`, `$11`, `$14`, `$15`,
+`$20`, `$30`).  Kinds in the original spawn tables:
+
+| Kind | Template | Where |
+|------|----------|-------|
+| `$10` | 3 (fighter) | mission 2 (one aircraft), mission 5 (two) |
+| `$12`, `$13` | 6, 7 (fighters) | hostile fighters, missions 3-7 |
+| `$14` | 5 (airliner) | mission 4 |
+| `$15` | 10 | mission 7 |
+| `$16` | 14 (airliner) | mission 3 variant 1 (Air Force One) |
+| `$20` | 8 (carrier) | every mission, slot 14 |
+| `$32` | 13 (parachute) | mission 6 (downed pilot) |
+
+So a new aircraft can reuse an existing kind with any template (and its
+behaviour); a new kind needs code that checks for it.
+
 ### Spawn entries (10 bytes, `$3d320`)
 
 | Word | Meaning |
