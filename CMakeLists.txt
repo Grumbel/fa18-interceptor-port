@@ -107,7 +107,7 @@ if(FA18_COVERAGE)
   target_compile_options(native PRIVATE --coverage -O0)
 endif()
 
-add_executable(fa18 src/main.cpp $<TARGET_OBJECTS:native>)
+add_executable(fa18 src/main.cpp src/stats_overlay.cpp $<TARGET_OBJECTS:native>)
 if(FA18_COVERAGE)
   target_link_options(fa18 PRIVATE --coverage)
 endif()

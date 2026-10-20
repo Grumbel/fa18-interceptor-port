@@ -73,6 +73,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   Falls back to `--hires` without GL; headless runs need
   `SDL_VIDEODRIVER=offscreen`.
 
+- `--stats` (debug menu "Stats overlay", script `stats on|off`): overlay
+  with mission, player (position, altitude/speed/fuel in cockpit units,
+  attitude, weapons, damage), flight-log counters and the scenario
+  records (`src/stats_overlay.cpp`); read-only. With it on, script `shot
+  F` also writes `F.stats.ppm` with the overlay.
 - Debug menu: gamepad Back button (keyboard: Insert) pauses and offers
   3D resolution (original/2x/3x/4x), analog stick, save/load state slots
   (`<save dir>/stateN.sav`) and "send ESC". Save states are applied at the

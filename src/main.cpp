@@ -5,6 +5,7 @@
 #include "native/mesh_viewer.hpp"
 #include "native/terrain.hpp"
 #include "native/world.hpp"
+#include "stats_overlay.hpp"
 
 #include <SDL.h>
 
@@ -25,6 +26,7 @@ namespace {
 //   key <SDL key name> [down|up|tap]   joy <subset of "udlrf">
 //   mouse <dx> <dy>   lmb|rmb <0|1>   shot <file.ppm>   quit
 //   poke <hexaddr> <hexvalue> [b|w|l]   (force a game variable)
+//   stats on|off   (statistics overlay; "shot" then also writes FILE.stats.ppm)
 struct ScriptEvent {
   int frame;
   std::string cmd;
@@ -136,6 +138,12 @@ public:
   int pad_throttle_cd = 0;    // frames until next throttle step
   bool pad_held_key[128] = {};
   bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
+  // Debug overlay with game world statistics (stats_overlay.cpp), drawn at
+  // 3x the logical size so the text stays readable.
+  bool stats_on = false;
+  static constexpr int STATS_W = amiga::FB_W * 3, STATS_H = amiga::FB_H * 6 / 5 * 3;
+  SDL_Texture* stats_tex = nullptr;
+  std::vector<uint32_t> stats_buf;
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -551,7 +559,7 @@ public:
       menu_status = "mesh viewer closed";
     };
 
-    const int NITEMS = 10;
+    const int NITEMS = 11;
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
       switch (item) {
         case 0: if (dir == 0) open = false; break;
@@ -575,22 +583,23 @@ public:
         }
         case 2: machine->analog_enabled = !machine->analog_enabled; break;
         case 3: machine->full_detail = !machine->full_detail; break;
-        case 4:
+        case 4: stats_on = !stats_on; break;
+        case 5:
           menu_slot = (menu_slot - 1 + (dir == 0 ? 1 : dir) + 4) % 4 + 1;
           break;
-        case 5:
+        case 6:
           if (dir == 0) { machine->request_save_state(state_path(menu_slot)); menu_status = "saving..."; open = false; }
           break;
-        case 6:
+        case 7:
           if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
           break;
-        case 7:
+        case 8:
           if (dir == 0) run_mesh_viewer();
           break;
-        case 8:
+        case 9:
           if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
           break;
-        case 9:
+        case 10:
           if (dir == 0) { quit = true; open = false; }
           break;
       }
@@ -647,6 +656,7 @@ public:
           "3D resolution:  " + hires_label(),
           std::string("Analog stick:   ") + (machine->analog_enabled ? "on" : "off"),
           std::string("Full detail:    ") + (machine->full_detail ? "on" : "off"),
+          std::string("Stats overlay:  ") + (stats_on ? "on" : "off"),
           "State slot:     " + std::to_string(menu_slot),
           "Save state",
           "Load state",
@@ -723,11 +733,13 @@ public:
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
+    if (stats_on) draw_stats();
     SDL_RenderPresent(ren);
     if (frame_no == screenshot_frame) save_screenshot(fb);
     if (!pending_shot.empty()) {
       std::swap(pending_shot, screenshot_path);
       save_screenshot(fb);
+      if (stats_on) save_stats_screenshot(fb, screenshot_path + ".stats.ppm");
       std::swap(pending_shot, screenshot_path);
       pending_shot.clear();
     }
@@ -765,6 +777,8 @@ public:
         std::string path = machine->save_dir + "/state" + e.args[0] + ".sav";
         if (e.cmd == "savestate") machine->request_save_state(path);
         else machine->request_load_state(path);
+      } else if (e.cmd == "stats") {  // stats on | stats off
+        stats_on = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "detail") {  // detail full | detail normal
         machine->full_detail = !e.args.empty() && e.args[0] == "full";
       } else if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
@@ -814,6 +828,58 @@ public:
   }
 
   std::string pending_shot;
+
+  // Render the statistics into stats_buf (transparent except for a dimmed
+  // panel behind the text) and blend it over the game picture.
+  void draw_stats() {
+    stats_buf.assign(size_t(STATS_W) * STATS_H, 0);
+    const auto lines = stats_overlay::build(*machine);
+    if (lines.empty()) return;
+    const int lh = font6x10::H, pad = 4;
+    size_t cols = 0;
+    for (const auto& l : lines) cols = std::max(cols, l.text.size());
+    const int pw = std::min(STATS_W, int(cols) * font6x10::W + 2 * pad);
+    const int ph = std::min(STATS_H, int(lines.size()) * lh + 2 * pad);
+    for (int y = 0; y < ph; ++y)
+      for (int x = 0; x < pw; ++x) stats_buf[size_t(y) * STATS_W + size_t(x)] = 0xA0000000u;
+    int y = pad;
+    for (const auto& l : lines) {
+      draw_text(stats_buf, STATS_W, STATS_H, pad, y, l.text, 1, l.color);
+      y += lh;
+    }
+    if (!stats_tex) {
+      stats_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                                    STATS_W, STATS_H);
+      if (!stats_tex) return;
+      SDL_SetTextureBlendMode(stats_tex, SDL_BLENDMODE_BLEND);
+    }
+    SDL_UpdateTexture(stats_tex, nullptr, stats_buf.data(), STATS_W * 4);
+    SDL_RenderCopy(ren, stats_tex, nullptr, nullptr);
+  }
+
+  // Script "shot" with the overlay on: also write the picture as shown
+  // (game picture scaled to the overlay size, overlay blended on top).
+  void save_stats_screenshot(const uint32_t* fb, const std::string& path) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f || stats_buf.empty()) {
+      if (f) fclose(f);
+      return;
+    }
+    fprintf(f, "P6\n%d %d\n255\n", STATS_W, STATS_H);
+    for (int y = 0; y < STATS_H; ++y)
+      for (int x = 0; x < STATS_W; ++x) {
+        uint32_t g = fb[size_t(y * tex_h / STATS_H) * size_t(tex_w) + size_t(x * tex_w / STATS_W)];
+        uint32_t o = stats_buf[size_t(y) * STATS_W + size_t(x)];
+        uint32_t a = o >> 24;
+        uint8_t px[3];
+        for (int c = 0; c < 3; ++c) {
+          uint32_t gc = (g >> (16 - 8 * c)) & 0xFF, oc = (o >> (16 - 8 * c)) & 0xFF;
+          px[c] = uint8_t((oc * a + gc * (255 - a)) / 255);
+        }
+        fwrite(px, 1, 3, f);
+      }
+    fclose(f);
+  }
 
   void save_screenshot(const uint32_t* fb) {
     FILE* f = fopen(screenshot_path.c_str(), "wb");
@@ -875,6 +941,7 @@ void usage() {
           "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
           "  --full-detail    debug: nearest level of detail for every object\n"
+          "  --stats          debug: overlay with game world statistics\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
@@ -924,7 +991,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
-  bool full_detail = false;
+  bool full_detail = false, stats = false;
   int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
@@ -945,6 +1012,7 @@ int main(int argc, char** argv) {
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
     else if (a == "--full-detail") full_detail = true;
+    else if (a == "--stats") stats = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -1070,6 +1138,7 @@ int main(int argc, char** argv) {
   host.screenshot_path = shot_path;
   host.quit_after = quit_after;
   host.fast = fast;
+  host.stats_on = stats;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
   if (gl_scale > 0 && !init_gl()) gl_failed = true;  // software hi-res renderer
