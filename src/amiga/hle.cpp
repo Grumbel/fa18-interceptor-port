@@ -1193,7 +1193,7 @@ void Hle::gfx(int lvo) {
     }
     case 360: {  // InitView(a1)
       for (uint32_t i = 0; i < 18; ++i) m.w8(A(1) + i, 0);
-      m.w16(A(1) + 12, FB_VSTART);
+      m.w16(A(1) + 12, VIEW_DYOFFSET);
       m.w16(A(1) + 14, FB_HSTART);
       return;
     }
@@ -1209,7 +1209,7 @@ void Hle::gfx(int lvo) {
     }
     case 402: {  // WaitBOVP(a0 vp)
       uint32_t vp = A(0);
-      int bottom = FB_VSTART + int16_t(m.r16(vp + 30)) + int16_t(m.r16(vp + 26));
+      int bottom = VIEW_DYOFFSET + int16_t(m.r16(vp + 30)) + int16_t(m.r16(vp + 26));
       if (active_view_) bottom = int16_t(m.r16(active_view_ + 12)) + int16_t(m.r16(vp + 30)) + int16_t(m.r16(vp + 26));
       if (bottom >= LINES_PER_FRAME) bottom = LINES_PER_FRAME - 1;
       m.idle_until([&] { return m.vpos_ >= bottom; });

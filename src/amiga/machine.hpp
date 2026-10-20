@@ -39,11 +39,14 @@ constexpr int CYCLES_PER_LINE = 455;  // CPU clocks (227.5 colour clocks × 2)
 constexpr double CPU_HZ = 7159090.0;
 constexpr double PAULA_CLOCK = 3579545.0;
 
-// Output framebuffer (lores pixels, display window origin at DIW $2C81)
+// Output framebuffer (lores pixels, display window origin at DIW $2A81)
 constexpr int FB_W = 320;
 constexpr int FB_H = 200;
 constexpr int FB_HSTART = 0x81;  // lores pixel position of fb x=0
-constexpr int FB_VSTART = 0x2C;  // beam line of fb y=0
+// All of the game's screens use the display window $2A81-$F2C1, two
+// lines above the OS default.
+constexpr int FB_VSTART = 0x2A;  // beam line of fb y=0
+constexpr int VIEW_DYOFFSET = 0x2C;  // InitView default (NTSC)
 
 struct QuitRequested {};
 // Thrown to unwind the native C++ stack when a state is to be loaded while
