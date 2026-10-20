@@ -81,6 +81,9 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   routes, zones): `./build/fa18 --world-dump FILE <adf>` writes it as text,
   `--world FILE` plays with an edited copy (sections left out keep the
   original); format and limits in docs/world_format.md (src/native/world.cpp)
+- Ground, sea and sky (terrain water tiles, zone tables, sky quad, view
+  transform): docs/ground_sea_sky.md, decoder src/native/terrain.cpp;
+  `./build/fa18 --map-dump FILE.ppm <adf>` draws a top-down map
 
 ## Emulator (reference)
 - FS-UAE is available for comparing behaviour (`console_debugger = 1`,

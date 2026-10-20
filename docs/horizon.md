@@ -1,5 +1,9 @@
 # Horizon / sea–sky drawing
 
+> Research log.  The resolved model (land backdrop, water polygons of the
+> terrain tiles, sky quad mirrored at the camera height) is in
+> `ground_sea_sky.md`.
+
 Research notes from the relocated executable (LOAD_BASE `$20000`).
 Addresses below are runtime addresses.
 

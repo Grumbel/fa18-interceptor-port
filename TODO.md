@@ -36,6 +36,11 @@ Verified with scripted runs (`--script`):
 - [x] World database decoded and editable (`--world-dump` / `--world`,
       docs/world_format.md): object maps (hunk 66), section scripts
       (hunk 65), mission spawns / routes / zones (hunk 27, in place)
+- [x] Ground / sea / sky understood (docs/ground_sea_sky.md): land
+      backdrop, terrain tiles = water polygons (`$3f284`), sky = quad
+      mirrored at the camera height (`$42f6a`), zone tables `$331f0`/`$33420`
+- [ ] Native translation of `$3f284`, `$42f6a`/`$42f70` (and the clip
+      `$43364`), `$4217c` (view setup); documented, still original code
 - [ ] World: adding *new* mission objects (needs a spawn hook after
       `$3cf0e` and the per-kind tables indexed by record +98)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can

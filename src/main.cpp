@@ -2,6 +2,7 @@
 #include "amiga/machine.hpp"
 #include "font6x10.hpp"
 #include "native/mesh_viewer.hpp"
+#include "native/terrain.hpp"
 #include "native/world.hpp"
 
 #include <SDL.h>
@@ -864,6 +865,7 @@ void usage() {
           "  --mesh-dump DIR  decode the object models, write one PPM per LOD to DIR\n"
           "  --world-dump FILE  write the world database (object maps, missions) as text\n"
           "  --world FILE     remaster: use an edited world file (docs/world_format.md)\n"
+          "  --map-dump FILE  top-down map (water, objects) of the world as PPM\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
           "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
@@ -885,7 +887,7 @@ int main(int argc, char** argv) {
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
   int ram_hash = 0, ram_dump_frame = 0;
-  std::string ram_dump_path, mesh_dump_dir, world_dump_path, world_path;
+  std::string ram_dump_path, mesh_dump_dir, world_dump_path, world_path, map_dump_path;
   std::string native_mode = "on";
   bool grab_mouse = false;
   for (int i = 1; i < argc; ++i) {
@@ -914,6 +916,7 @@ int main(int argc, char** argv) {
     else if (a == "--mesh-dump" && i + 1 < argc) mesh_dump_dir = argv[++i];
     else if (a == "--world-dump" && i + 1 < argc) world_dump_path = argv[++i];
     else if (a == "--world" && i + 1 < argc) world_path = argv[++i];
+    else if (a == "--map-dump" && i + 1 < argc) map_dump_path = argv[++i];
     else if (a == "--grab") grab_mouse = true;
     else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -996,6 +999,18 @@ int main(int argc, char** argv) {
       return 1;
     }
     std::ofstream(world_dump_path) << world::to_text(w);
+    return 0;
+  }
+  if (!map_dump_path.empty()) {
+    auto rd = [&](uint32_t at) { return machine.r8(at); };
+    world::World w;
+    std::string err;
+    terrain::Terrain t;
+    if (!world::decode(rd, w, err) || !terrain::decode(rd, t) ||
+        !terrain::write_map(t, &w, map_dump_path)) {
+      fprintf(stderr, "map: %s\n", err.empty() ? "cannot write" : err.c_str());
+      return 1;
+    }
     return 0;
   }
 
