@@ -551,7 +551,7 @@ public:
       menu_status = "mesh viewer closed";
     };
 
-    const int NITEMS = 9;
+    const int NITEMS = 10;
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
       switch (item) {
         case 0: if (dir == 0) open = false; break;
@@ -574,22 +574,23 @@ public:
           break;
         }
         case 2: machine->analog_enabled = !machine->analog_enabled; break;
-        case 3:
+        case 3: machine->full_detail = !machine->full_detail; break;
+        case 4:
           menu_slot = (menu_slot - 1 + (dir == 0 ? 1 : dir) + 4) % 4 + 1;
           break;
-        case 4:
+        case 5:
           if (dir == 0) { machine->request_save_state(state_path(menu_slot)); menu_status = "saving..."; open = false; }
           break;
-        case 5:
+        case 6:
           if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
           break;
-        case 6:
+        case 7:
           if (dir == 0) run_mesh_viewer();
           break;
-        case 7:
+        case 8:
           if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
           break;
-        case 8:
+        case 9:
           if (dir == 0) { quit = true; open = false; }
           break;
       }
@@ -645,6 +646,7 @@ public:
           "Resume",
           "3D resolution:  " + hires_label(),
           std::string("Analog stick:   ") + (machine->analog_enabled ? "on" : "off"),
+          std::string("Full detail:    ") + (machine->full_detail ? "on" : "off"),
           "State slot:     " + std::to_string(menu_slot),
           "Save state",
           "Load state",
@@ -763,6 +765,8 @@ public:
         std::string path = machine->save_dir + "/state" + e.args[0] + ".sav";
         if (e.cmd == "savestate") machine->request_save_state(path);
         else machine->request_load_state(path);
+      } else if (e.cmd == "detail") {  // detail full | detail normal
+        machine->full_detail = !e.args.empty() && e.args[0] == "full";
       } else if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
         if (e.args.size() >= 2) {
           machine->analog_x = float(std::atof(e.args[0].c_str()));
@@ -870,6 +874,7 @@ void usage() {
           "  --hires N        remaster: render the 3D view at N times resolution\n"
           "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
+          "  --full-detail    debug: nearest level of detail for every object\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
@@ -919,6 +924,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
+  bool full_detail = false;
   int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
@@ -938,6 +944,7 @@ int main(int argc, char** argv) {
     else if (a == "--frames" && i + 1 < argc) quit_after = std::atoi(argv[++i]);
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
+    else if (a == "--full-detail") full_detail = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -1002,6 +1009,7 @@ int main(int argc, char** argv) {
   machine.save_dir = save_dir;
   machine.bypass_protection = !protection;
   machine.analog_enabled = analog;
+  machine.full_detail = full_detail;
   machine.set_hires_scale(std::max(0, std::min(8, hires)));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;

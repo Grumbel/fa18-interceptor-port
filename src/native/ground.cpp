@@ -250,7 +250,9 @@ void terrain_pass() {
     }
     D(0) += D(3);
     D(1) += D(4);
-    if (RB(-36) != 0) {                               // coarse mesh: $3f652
+    if (mach().full_detail) {                         // remaster: never the coarse mesh
+      setw(7, 0);
+    } else if (RB(-36) != 0) {                        // coarse mesh: $3f652
       setw(7, 1);
     } else if (RW(-34) == 0) {
       setw(7, 0);
@@ -324,7 +326,7 @@ void terrain_pass() {
           setw(1, lo(1) + lo(1));
           setw(1, lo(1) + lo(1));
           extl(1);
-          if (int32_t(D(1)) > int32_t(RL(-40))) break;
+          if (int32_t(D(1)) > int32_t(RL(-40)) && !mach().full_detail) break;
           setw(1, rd16(A(3)));
           A(3) += 2;
         }

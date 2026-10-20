@@ -774,6 +774,7 @@ void render_body() {
     D(1) = uint32_t(lo(3)) * lo(1);
     D(1) = uint32_t(asr32(int32_t(D(1)), 8));
   }
+  if (mach().full_detail) setw(1, 0);  // remaster: nearest LOD everywhere
   WW(-40, lo(1));
   A(2) = rd32(0x5ad2e);
   WL(-44, A(0));
@@ -1769,6 +1770,7 @@ void distant_body() {
     D(2) = uint32_t(lo(3)) * lo(2);
     D(2) = uint32_t(asr32(int32_t(D(2)), 8));
   }
+  if (mach().full_detail) setw(2, 0);  // remaster: nearest LOD everywhere
   WW(-40, lo(2));
 L32db4:
   A(2) = rd32(0x5ad2e);

@@ -174,6 +174,9 @@ public:
   // Switch the hi-res 3D view on/off at run time (installs the observers).
   void set_hires_scale(int s);
   bool analog_enabled = false;
+  // Remaster option (debug): draw every object at its nearest level of
+  // detail and the terrain with its full meshes (render.cpp, ground.cpp).
+  bool full_detail = false;
   bool analog_active = false;
   float analog_x = 0.0f, analog_y = 0.0f;
 

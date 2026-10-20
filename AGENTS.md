@@ -59,6 +59,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   layer where the game did not draw after the scene ended (HUD/cockpit
   stay low-res) and falls back to low-res for changes it could not
   explain. `FA18_HIRES_DEBUG=1` paints the fall-back pixels magenta.
+- `--full-detail` (debug menu "Full detail", script `detail full|normal`):
+  every object uses its nearest level of detail (the distance local
+  -40(a6) of render_body/distant_body forced to 0, which also picks the near
+  bands inside the polygon lists and the largest points), the terrain its
+  full tile meshes without altitude thresholds; needs `--native on`.
 - `--gl N`: like `--hires N`, but the 3D view is drawn with OpenGL
   (`src/native/gl_renderer.cpp`, docs/gl_renderer.md): the original's
   view-space primitives scaled to world units share a depth buffer, the

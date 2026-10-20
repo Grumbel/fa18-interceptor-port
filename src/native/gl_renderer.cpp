@@ -586,7 +586,7 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
     g.push_back(float(q[1]));
   }
   for (const State::WaterTri& t : st.water) {
-    if (t.min_alt > alt) continue;
+    if (t.min_alt > alt && !native::mach().full_detail) continue;
     for (int i = 0; i < 3; ++i) {
       g.push_back(float(t.x[i] - cam_x));
       g.push_back(float(ground_y));
