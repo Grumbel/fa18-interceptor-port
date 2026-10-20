@@ -120,8 +120,11 @@ All off by default; the original behaviour is untouched.
   only.  Implies scene capture.  `--hires` takes priority if both are set.
 - `--analog`: left stick flies analog (dead zone, proportional pitch and
   rudder) instead of the thresholded digital directions.
+- `--text-pace`: menu texts, briefings and cockpit messages at the pace of
+  a stock A500 (they otherwise run several times faster; the game itself
+  is not slowed down, see docs/frame_timing.md).
 - **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog
-  stick, save/load state slots and a way to send ESC to the game.  Save
+  stick, text pacing, save/load state slots and a way to send ESC to the game.  Save
   states are stored next to the flight log; they can also be loaded from
   the intro.
 

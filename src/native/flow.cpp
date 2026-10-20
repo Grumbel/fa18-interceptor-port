@@ -1505,6 +1505,33 @@ static void run_game_state() {
 }
 NATIVE_C(0x21750, run_game_state, false);
 
+// Remaster (--text-pace): the text stream $478f2 advances once per call
+// of game_frame.  On the menu screens game_frame runs without the frame
+// limiter, as fast as the CPU allows (a stock A500 manages ~180 passes/s;
+// with native code much more), and in flight once per frame (15 fps
+// here, 6-8 fps on a stock A500).  With text_pace the menu passes are
+// limited to 3 per vertical blank and in flight the stream is stepped at
+// most every 100 ms.
+static void pace_menu_pass() {
+  // Counted per vertical blank: emulated time does not advance while
+  // native code runs, so a menu pass takes no measurable time.
+  static uint64_t frame = ~0ull;
+  static int passes = 0;
+  amiga::Machine& m = mach();
+  if (m.frame_count() != frame) {
+    frame = m.frame_count();
+    passes = 0;
+  }
+  if (++passes >= 3) m.idle_until([&] { return m.frame_count() != frame; });
+}
+static bool text_step_due() {
+  static uint64_t last = 0;
+  const uint64_t now = mach().micros();
+  if (now >= last && now < last + 100000) return false;
+  last = now;
+  return true;
+}
+
 // $2112c: one game frame: input, state machine, simulation and drawing.
 static void game_frame() {
   int16_t frame = frame_counter;
@@ -1611,6 +1638,7 @@ static void game_frame() {
   } else {
     sub_24aa8();
     os::FreeSprite(0);
+    if (mach().text_pace) pace_menu_pass();
   }
   sub_3fba6();
   if (b_5aaaa != 0 && in_flight) {
@@ -1620,7 +1648,7 @@ static void game_frame() {
     sub_4677a();
   }
   debug_stage = 544;
-  sub_478f2();
+  if (!mach().text_pace || !in_flight || text_step_due()) sub_478f2();
 }
 // Note: $2f7b8 (called from here) stores a flag at -44(a6), i.e. in this
 // function's stack area, and $3127c later reads it back after its movem has

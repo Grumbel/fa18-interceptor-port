@@ -29,8 +29,13 @@ Verified with scripted runs (`--script`):
       sprite use seen so far)
 - [ ] CIA timers/serial not emulated (not used by the game)
 - [ ] Optional: crossfeed for the hard-panned Amiga stereo, CRT-ish scaling
-- [ ] Optional: >15 fps would need patching the game's timer.device based
-      frame limiter (and checking the simulation's time-step clamp)
+- [ ] Optional: >15 fps: the simulation steps per frame (no dt), so only
+      render-side interpolation (camera reprojection in the GL renderer)
+      can help; analysis in docs/frame_timing.md
+- [x] Text pacing (`--text-pace`): menu texts and flight messages at stock
+      A500 pace (docs/frame_timing.md)
+- [x] Framebuffer origin at the game's display window ($2A81, was $2C81:
+      the main menu title was cut off)
 - [x] Load directly from the ADF instead of extracted files (runtime Adf reader in src/amiga/adf.hpp; directory mode kept as fallback)
 - [ ] Optional: on-screen pie-menu overlay for the gamepad layers
 - [x] World database decoded and editable (`--world-dump` / `--world`,

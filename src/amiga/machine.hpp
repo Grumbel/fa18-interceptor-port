@@ -180,6 +180,10 @@ public:
   // Remaster option (debug): draw every object at its nearest level of
   // detail and the terrain with its full meshes (render.cpp, ground.cpp).
   bool full_detail = false;
+  // Remaster option: pace the text streams like a stock A500 (menu screens
+  // at most ~180 passes/s, in-flight messages at most ~10 steps/s);
+  // game_frame in flow.cpp.
+  bool text_pace = false;
   bool analog_active = false;
   float analog_x = 0.0f, analog_y = 0.0f;
 

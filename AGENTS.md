@@ -73,6 +73,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   Falls back to `--hires` without GL; headless runs need
   `SDL_VIDEODRIVER=offscreen`.
 
+- `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
+  the text stream $478f2 at stock A500 pace: menu passes of game_frame
+  (no frame limiter there) limited to 3 per vblank, in flight stepped at
+  most every 100 ms (flow.cpp); frame limiter, what is per-frame vs
+  wall-clock, and the >15 fps analysis in docs/frame_timing.md.
+
 - `--stats` (debug menu "Stats overlay", script `stats on|off`): overlay
   with mission, player (position, altitude/speed/fuel in cockpit units,
   attitude, weapons, damage), flight-log counters and the scenario

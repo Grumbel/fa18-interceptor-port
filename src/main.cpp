@@ -559,7 +559,7 @@ public:
       menu_status = "mesh viewer closed";
     };
 
-    const int NITEMS = 11;
+    const int NITEMS = 12;
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
       switch (item) {
         case 0: if (dir == 0) open = false; break;
@@ -583,23 +583,24 @@ public:
         }
         case 2: machine->analog_enabled = !machine->analog_enabled; break;
         case 3: machine->full_detail = !machine->full_detail; break;
-        case 4: stats_on = !stats_on; break;
-        case 5:
+        case 4: machine->text_pace = !machine->text_pace; break;
+        case 5: stats_on = !stats_on; break;
+        case 6:
           menu_slot = (menu_slot - 1 + (dir == 0 ? 1 : dir) + 4) % 4 + 1;
           break;
-        case 6:
+        case 7:
           if (dir == 0) { machine->request_save_state(state_path(menu_slot)); menu_status = "saving..."; open = false; }
           break;
-        case 7:
+        case 8:
           if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
           break;
-        case 8:
+        case 9:
           if (dir == 0) run_mesh_viewer();
           break;
-        case 9:
+        case 10:
           if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
           break;
-        case 10:
+        case 11:
           if (dir == 0) { quit = true; open = false; }
           break;
       }
@@ -656,6 +657,7 @@ public:
           "3D resolution:  " + hires_label(),
           std::string("Analog stick:   ") + (machine->analog_enabled ? "on" : "off"),
           std::string("Full detail:    ") + (machine->full_detail ? "on" : "off"),
+          std::string("Text pacing:    ") + (machine->text_pace ? "on" : "off"),
           std::string("Stats overlay:  ") + (stats_on ? "on" : "off"),
           "State slot:     " + std::to_string(menu_slot),
           "Save state",
@@ -779,6 +781,8 @@ public:
         else machine->request_load_state(path);
       } else if (e.cmd == "stats") {  // stats on | stats off
         stats_on = !e.args.empty() && e.args[0] == "on";
+      } else if (e.cmd == "textpace") {  // textpace on | textpace off
+        machine->text_pace = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "detail") {  // detail full | detail normal
         machine->full_detail = !e.args.empty() && e.args[0] == "full";
       } else if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
@@ -941,6 +945,7 @@ void usage() {
           "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
           "  --full-detail    debug: nearest level of detail for every object\n"
+          "  --text-pace      remaster: menu texts and flight messages at stock A500 pace\n"
           "  --stats          debug: overlay with game world statistics\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
@@ -991,7 +996,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
-  bool full_detail = false, stats = false;
+  bool full_detail = false, stats = false, text_pace = false;
   int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
@@ -1012,6 +1017,7 @@ int main(int argc, char** argv) {
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
     else if (a == "--full-detail") full_detail = true;
+    else if (a == "--text-pace") text_pace = true;
     else if (a == "--stats") stats = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
@@ -1078,6 +1084,7 @@ int main(int argc, char** argv) {
   machine.bypass_protection = !protection;
   machine.analog_enabled = analog;
   machine.full_detail = full_detail;
+  machine.text_pace = text_pace;
   machine.set_hires_scale(std::max(0, std::min(8, hires)));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
