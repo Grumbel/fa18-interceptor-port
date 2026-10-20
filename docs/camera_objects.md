@@ -127,7 +127,9 @@ tilt/pan or player angles, not inside `$2fc14`.
 
 ## Type table `$36094`
 
-Runtime-filled (static image is zeros).  **20 bytes per type index**:
+Static for types 17-117; slots 0-15 are filled from the templates at
+`$35f54` when scenario objects are created (see mesh_format.md).
+**20 bytes per type index**:
 
 | Off | Size | Loaded as |
 |-----|------|-----------|
@@ -246,9 +248,8 @@ tables at `$62a84` / `$62ab0` / related.  Also stores a **pointer into
 `a1 = $36094 + type*20`).
 
 So `$36094` is not rewritten each frame; expand stores *pointers to*
-type slots for later draw.  The table contents themselves are installed
-when meshes/types are loaded (overlay / load path — not in the static
-hunk zeros).
+type slots for later draw.  Types 17-117 are in the executable; slots 0-15
+get a template from `$35f54` per scenario object (mesh_format.md).
 
 ## Object position vs camera (summary)
 

@@ -423,27 +423,26 @@ public:
       return s <= 0 ? std::string("original (320x200)") : std::to_string(s) + "x";
     };
 
-    // Offline aircraft wireframe browser (hunk clusters from the executable).
+    // Offline model viewer: the object models of the type table, decoded
+    // from the executable on the ADF.
     auto run_mesh_viewer = [&] {
-      // Geometry from the ADF only ("F-18 Interceptor" executable on the disk).
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
       if (exe.empty()) {
         menu_status = "mesh viewer: need ADF with F-18 Interceptor";
         return;
       }
-      auto meshes = mesh_viewer::load_from_exe(exe);
-      if (meshes.empty()) {
-        menu_status = "mesh viewer: no meshes";
+      auto models = mesh_viewer::load_models(exe);
+      if (models.empty()) {
+        menu_status = "mesh viewer: no models";
         return;
       }
-      int mesh_index = 0;
-      float yaw = 0.0f, pitch = 1.2f, zoom = 1.0f;  // top-down
+      uint16_t live_pal[16];
+      for (int i = 0; i < 16; ++i) live_pal[i] = machine->color_reg(i);
+      static mesh_viewer::ViewState vs;  // keep the position between visits
       int axis_cd_v = 0;
       bool view_open = true;
       auto text_fn = +[](std::vector<uint32_t>& buf, int bw, int bh, int x, int y,
                          const std::string& t, int scale, uint32_t col) {
-        // Free function adapter: reimplement tiny draw so we do not need
-        // a member pointer into the App lambda.
         for (size_t i = 0; i < t.size(); ++i) {
           int c = uint8_t(t[i]);
           if (c < 32 || c > 126) c = '?';
@@ -460,6 +459,10 @@ public:
                   }
         }
       };
+      auto next_model = [&](int d) {
+        vs.model += d;
+        vs.lod = 0;
+      };
       while (view_open && !quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -467,16 +470,22 @@ public:
             case SDL_QUIT: quit = true; break;
             case SDL_KEYDOWN:
               switch (e.key.keysym.scancode) {
-                case SDL_SCANCODE_LEFT: --mesh_index; break;
-                case SDL_SCANCODE_RIGHT: ++mesh_index; break;
-                case SDL_SCANCODE_A: yaw -= 0.12f; break;
-                case SDL_SCANCODE_D: yaw += 0.12f; break;
-                case SDL_SCANCODE_W: pitch += 0.08f; break;
-                case SDL_SCANCODE_S: pitch -= 0.08f; break;
+                case SDL_SCANCODE_LEFT: next_model(-1); break;
+                case SDL_SCANCODE_RIGHT: next_model(+1); break;
+                case SDL_SCANCODE_PAGEUP: next_model(-10); break;
+                case SDL_SCANCODE_PAGEDOWN: next_model(+10); break;
+                case SDL_SCANCODE_UP: --vs.lod; break;
+                case SDL_SCANCODE_DOWN: ++vs.lod; break;
+                case SDL_SCANCODE_A: vs.yaw -= 0.12f; break;
+                case SDL_SCANCODE_D: vs.yaw += 0.12f; break;
+                case SDL_SCANCODE_W: vs.pitch += 0.08f; break;
+                case SDL_SCANCODE_S: vs.pitch -= 0.08f; break;
+                case SDL_SCANCODE_TAB: vs.wire = !vs.wire; break;
+                case SDL_SCANCODE_P: vs.live_palette = !vs.live_palette; break;
                 case SDL_SCANCODE_EQUALS:
-                case SDL_SCANCODE_KP_PLUS: zoom *= 1.1f; break;
+                case SDL_SCANCODE_KP_PLUS: vs.zoom *= 1.1f; break;
                 case SDL_SCANCODE_MINUS:
-                case SDL_SCANCODE_KP_MINUS: zoom /= 1.1f; break;
+                case SDL_SCANCODE_KP_MINUS: vs.zoom /= 1.1f; break;
                 case SDL_SCANCODE_ESCAPE:
                 case SDL_SCANCODE_INSERT:
                 case SDL_SCANCODE_BACKSPACE: view_open = false; break;
@@ -485,8 +494,14 @@ public:
               break;
             case SDL_CONTROLLERBUTTONDOWN:
               switch (e.cbutton.button) {
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: --mesh_index; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: ++mesh_index; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: next_model(-1); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: next_model(+1); break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: next_model(-10); break;
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: next_model(+10); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP: --vs.lod; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN: ++vs.lod; break;
+                case SDL_CONTROLLER_BUTTON_X: vs.wire = !vs.wire; break;
+                case SDL_CONTROLLER_BUTTON_Y: vs.live_palette = !vs.live_palette; break;
                 case SDL_CONTROLLER_BUTTON_B:
                 case SDL_CONTROLLER_BUTTON_BACK: view_open = false; break;
                 default: break;
@@ -497,28 +512,22 @@ public:
         }
         if (pad && axis_cd_v-- <= 0) {
           int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
-          int ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
           int rx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTX);
           int ry = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTY);
-          if (lx < -16000) { --mesh_index; axis_cd_v = 10; }
-          else if (lx > 16000) { ++mesh_index; axis_cd_v = 10; }
+          if (lx < -16000) { next_model(-1); axis_cd_v = 10; }
+          else if (lx > 16000) { next_model(+1); axis_cd_v = 10; }
           else axis_cd_v = 0;
-          if (std::abs(rx) > 8000) yaw += float(rx) / 32768.f * 0.15f;
-          if (std::abs(ry) > 8000) pitch -= float(ry) / 32768.f * 0.10f;
+          if (std::abs(rx) > 8000) vs.yaw += float(rx) / 32768.f * 0.15f;
+          if (std::abs(ry) > 8000) vs.pitch -= float(ry) / 32768.f * 0.10f;
           int lt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
           int rt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
-          if (rt > 8000) zoom *= 1.02f;
-          if (lt > 8000) zoom /= 1.02f;
-          (void)ly;
+          if (rt > 8000) vs.zoom *= 1.02f;
+          if (lt > 8000) vs.zoom /= 1.02f;
         }
-        if (mesh_index < 0) mesh_index = int(meshes.size()) - 1;
-        if (mesh_index >= int(meshes.size())) mesh_index = 0;
-        if (pitch > 1.4f) pitch = 1.4f;
-        if (pitch < -1.4f) pitch = -1.4f;
-        if (zoom < 0.2f) zoom = 0.2f;
-        if (zoom > 8.f) zoom = 8.f;
+        vs.pitch = std::clamp(vs.pitch, -1.55f, 1.55f);
+        vs.zoom = std::clamp(vs.zoom, 0.2f, 8.f);
 
-        mesh_viewer::render_frame(cv, w, h, meshes, mesh_index, yaw, pitch, zoom, text_fn);
+        mesh_viewer::render_frame(cv, w, h, models, vs, live_pal, text_fn);
         if (tex_w != w || tex_h != h) {
           if (tex) SDL_DestroyTexture(tex);
           tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
@@ -851,6 +860,7 @@ void usage() {
           "                   off: original code only; verify: run both and compare\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
+          "  --mesh-dump DIR  decode the object models, write one PPM per LOD to DIR\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
           "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
@@ -872,7 +882,7 @@ int main(int argc, char** argv) {
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
   int ram_hash = 0, ram_dump_frame = 0;
-  std::string ram_dump_path;
+  std::string ram_dump_path, mesh_dump_dir;
   std::string native_mode = "on";
   bool grab_mouse = false;
   for (int i = 1; i < argc; ++i) {
@@ -898,6 +908,7 @@ int main(int argc, char** argv) {
     else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
+    else if (a == "--mesh-dump" && i + 1 < argc) mesh_dump_dir = argv[++i];
     else if (a == "--grab") grab_mouse = true;
     else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -957,6 +968,11 @@ int main(int argc, char** argv) {
                         : native_mode == "verify" ? amiga::Machine::NativeMode::Verify
                                                   : amiga::Machine::NativeMode::On;
   if (!machine.boot(data_dir)) return 1;
+  if (!mesh_dump_dir.empty()) {
+    std::filesystem::create_directories(mesh_dump_dir);
+    std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");
+    return exe.empty() || !mesh_viewer::dump_models(exe, mesh_dump_dir) ? 1 : 0;
+  }
   fprintf(stderr, "%s\n", machine.recomp_active() ? "running recompiled code"
                                                    : "running in interpreter mode");
   if (!misses_path.empty()) machine.track_recomp_misses(true);

@@ -626,18 +626,12 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       `$61286` → `$38c0c`.  Docs: horizon.md “Tile emit pipeline”.
 - [x] **`$38c0c` + free1 frame sequence**: verts at `$61286` → clip/setup
       → `$44b50` fill; end-to-end free1 path documented in horizon.md.
-- [x] **Offline aircraft mesh (H54)**: CODE hunk 54 file `$35A40` holds
-      `4070 4022/4020 C016` clusters; verts + DL + shared edge sublists at
-      DL-relative offsets.  PP safe to ignore for wireframe.  Docs:
-      mesh_format.md “On-disk location”.
-- [x] **`tools/mesh_parse.py`**: offline H54 → verts/edges → OBJ.  Five
-      aircraft records; edge indices = word/6; first mesh 10 verts / 8 edges.
-- [x] **Debug-menu mesh viewer**: `Mesh viewer` item → orbit wireframe of
-      H54 aircraft clusters (`src/native/mesh_viewer.*`).  Left/Right mesh,
-      stick/WASD orbit, triggers zoom, B closes.
-- [x] **Mesh wireframe fix**: convex hull + aircraft-cross topology;
-      `$0100/$0300` tags; mid-pair hull.  Coarse LOD only on disk.
-- [x] **H70 instance pool on disk**: `$04D0` dual-ptr templates; needs
-      runtime dump for useful coords (fixed-point / ÷64).
-- [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds;
-      attr-word → pen confirmation; expand parser beyond aircraft tags.
+- [x] **Mesh viewer decodes the real models**: type table `$36094`
+      (types 17-117) + scenario templates `$35f54` (slots 0-15) → LOD list
+      → mesh header → vertex runs → BSP/group stream → polygon lists, run
+      with the original op handlers (`ops_body.inc`, shared with ops.cpp)
+      on a private image.  111 models; `--mesh-dump DIR`.  Format:
+      docs/mesh_format.md (the earlier "H54 clusters" reading was wrong).
+      Open: per-object animation state ($335f8, types 17-19) and the
+      damage-state LOD lists of `$36a26`/`$36ac6` are not offered.
+- [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds.

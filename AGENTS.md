@@ -75,6 +75,8 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   --fast --script s.txt --frames N`; script lines are
   `<frame> key <name|hex rawkey> [down|up|tap]`, `joy udlrf`, `mouse dx dy`,
   `shot file.ppm`, `quit` (frame may be `+N` relative)
+- Object models: debug menu → Mesh viewer, or `./build/fa18 --mesh-dump DIR
+  <adf>` (summary + one PPM per model LOD); format in docs/mesh_format.md
 
 ## Emulator (reference)
 - FS-UAE is available for comparing behaviour (`console_debugger = 1`,
@@ -126,6 +128,10 @@ commit with a routine disabled "for now" without saying so in TODO.md.
   registers as the original code had them (find out with
   `FA18_REGS=addr,count ... --native off`, which logs all registers when
   execution reaches addr, and by comparing FA18_CALLTRACE/FA18_WATCH runs).
+- The polygon-op handlers ($32ffa-$35f48) live in `ops_body.inc`, compiled
+  by ops.cpp (live machine) and by mesh_ops.cpp (the mesh viewer's offline
+  decoder, `mesh_emu.hpp`).  Use only unqualified helpers there (cpu(),
+  rd*/wr*, call_c, asmr), no `native::` names or globals.hpp variables.
 - Name game variables in globals.hpp (`Var<T>`); `vars.hpp` has raw
   size-typed accessors. A `Var` converts to its *value*; use `.ptr()` for
   its address and `.get()` when assigning one Var to another (`a = b` is a
