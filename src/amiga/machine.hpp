@@ -121,6 +121,10 @@ public:
 
   // Simple chip-RAM allocator (first-fit, never compacts).
   uint32_t alloc(uint32_t size, bool clear = true);
+  // Take `size` bytes from the top of RAM, away from the game's own
+  // allocations (they keep their addresses); not part of save states or
+  // RAM hashes.  For data installed once at boot (world overrides).
+  uint32_t reserve_top(uint32_t size);
   void free(uint32_t addr, uint32_t size);
   uint32_t avail() const;
 

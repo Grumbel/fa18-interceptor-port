@@ -2,6 +2,7 @@
 #include "amiga/machine.hpp"
 #include "font6x10.hpp"
 #include "native/mesh_viewer.hpp"
+#include "native/world.hpp"
 
 #include <SDL.h>
 
@@ -861,6 +862,8 @@ void usage() {
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
           "  --mesh-dump DIR  decode the object models, write one PPM per LOD to DIR\n"
+          "  --world-dump FILE  write the world database (object maps, missions) as text\n"
+          "  --world FILE     remaster: use an edited world file (docs/world_format.md)\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
           "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
@@ -882,7 +885,7 @@ int main(int argc, char** argv) {
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
   int ram_hash = 0, ram_dump_frame = 0;
-  std::string ram_dump_path, mesh_dump_dir;
+  std::string ram_dump_path, mesh_dump_dir, world_dump_path, world_path;
   std::string native_mode = "on";
   bool grab_mouse = false;
   for (int i = 1; i < argc; ++i) {
@@ -909,6 +912,8 @@ int main(int argc, char** argv) {
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
     else if (a == "--mesh-dump" && i + 1 < argc) mesh_dump_dir = argv[++i];
+    else if (a == "--world-dump" && i + 1 < argc) world_dump_path = argv[++i];
+    else if (a == "--world" && i + 1 < argc) world_path = argv[++i];
     else if (a == "--grab") grab_mouse = true;
     else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -973,6 +978,27 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");
     return exe.empty() || !mesh_viewer::dump_models(exe, mesh_dump_dir) ? 1 : 0;
   }
+  if (!world_path.empty()) {
+    world::World w;
+    std::string err;
+    if (!world::load_file(world_path, w, err) || !world::apply(machine, w, err)) {
+      fprintf(stderr, "world: %s\n", err.c_str());
+      return 1;
+    }
+    fprintf(stderr, "world: using %s\n", world_path.c_str());
+  }
+  if (!world_dump_path.empty()) {
+    world::World w;
+    std::string err;
+    // From memory, so a dump after --world shows the applied world.
+    if (!world::decode([&](uint32_t at) { return machine.r8(at); }, w, err)) {
+      fprintf(stderr, "world: %s\n", err.c_str());
+      return 1;
+    }
+    std::ofstream(world_dump_path) << world::to_text(w);
+    return 0;
+  }
+
   fprintf(stderr, "%s\n", machine.recomp_active() ? "running recompiled code"
                                                    : "running in interpreter mode");
   if (!misses_path.empty()) machine.track_recomp_misses(true);

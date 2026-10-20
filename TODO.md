@@ -33,6 +33,11 @@ Verified with scripted runs (`--script`):
       frame limiter (and checking the simulation's time-step clamp)
 - [x] Load directly from the ADF instead of extracted files (runtime Adf reader in src/amiga/adf.hpp; directory mode kept as fallback)
 - [ ] Optional: on-screen pie-menu overlay for the gamepad layers
+- [x] World database decoded and editable (`--world-dump` / `--world`,
+      docs/world_format.md): object maps (hunk 66), section scripts
+      (hunk 65), mission spawns / routes / zones (hunk 27, in place)
+- [ ] World: adding *new* mission objects (needs a spawn hook after
+      `$3cf0e` and the per-kind tables indexed by record +98)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the
       dispatch table maps addresses to functions, so hand-written

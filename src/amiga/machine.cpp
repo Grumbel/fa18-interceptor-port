@@ -72,6 +72,17 @@ uint32_t Machine::alloc(uint32_t size, bool clear) {
   return 0;
 }
 
+uint32_t Machine::reserve_top(uint32_t size) {
+  size = (size + 7) & ~7u;
+  if (free_list_.empty()) return 0;
+  auto it = std::prev(free_list_.end());
+  if (it->first + it->second != RAM_SIZE || it->second < size + 0x10000) return 0;
+  it->second -= size;
+  uint32_t a = it->first + it->second;
+  std::memset(&ram_[a], 0, size);
+  return a;
+}
+
 void Machine::free(uint32_t addr, uint32_t size) {
   if (!addr) return;
   size = (size + 7) & ~7u;
