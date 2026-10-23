@@ -214,6 +214,7 @@
         } // lib.optionalAttrs (r36s != null) {
           fa18-r36s = r36s.r36s;
           fa18-r36s-portmaster = r36s.portmaster;
+          fa18-r36s-portmaster-zip = r36s.portmasterZip;
         } // lib.optionalAttrs (android != null) {
           fa18-android = android.apk;
         };
