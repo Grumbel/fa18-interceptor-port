@@ -655,3 +655,45 @@ comes from later plane-1 SETs.  Docs: horizon.md “Blitter fill”.
       Open: per-object animation state ($335f8, types 17-19) and the
       damage-state LOD lists of `$36a26`/`$36ac6` are not offered.
 - [ ] Still open: runtime Fill2d capture where `$42f6a` clip succeeds.
+
+## Multi-platform support (2026-10-23)
+
+Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
+
+### Done in this stack
+- [x] `Adf::load_from_memory` for non-path sources (WASM upload, future Android streams)
+- [x] CMake: EMSCRIPTEN / ANDROID / WIN32 / `ENABLE_OPENGLES2`; recomp off by default when cross-compiling
+- [x] `mk/wasm/shell.html` — Upload ADF → IDBFS (`/home/web_user/.local/share/fa18/disk.adf`), pass path as argv
+- [x] `mk/wasm/scripts/{build-sdl2,serve}.sh`
+- [x] `nix/{wasm,windows,r36s,android}.nix` (from kurvenrausch, renamed/adapted)
+- [x] `flake.nix` inputs: `SDL2-win32`, `sdl2-src`; packages `fa18-wasm`, `fa18-win{32,64}`, `fa18-r36s`, `fa18-android`
+- [x] R36S PortMaster launcher + README (ADF must be placed next to the binary)
+- [x] Android ndk-build staging for multi-dir tree (interpreter + native; GLES2)
+
+### Still open / verify on a real machine
+- [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot
+- [ ] `nix build .#fa18-win64` (needs grumnix/SDL2-win32 flake)
+- [ ] `nix build .#fa18-r36s` against ArkOS sysroot
+- [ ] Android: file-picker / SAF for ADF (currently: place ADF in app files dir or pass path if accessible). Document in README.
+- [ ] GLES path for `--gl` on Emscripten/Android/R36S (native GL renderer may need FA18_OPENGLES2 ifdef polish)
+- [ ] Desktop Linux package still the primary path; ports are interpreter-only until a host-side recomp + ship of generated sources is wired
+
+### ADF policy (all ports)
+The original ADF is **not** redistributable and must never be embedded in
+packages or the WASM site. Runtime always loads a user-supplied image.
+
+| Port    | How the user supplies the ADF                                      |
+|---------|--------------------------------------------------------------------|
+| Linux   | path argument / cwd / common names                                 |
+| Windows | path argument / next to `fa18.exe`                                 |
+| R36S    | place in PortMaster port folder (`ports/fa18/`)                    |
+| WASM    | Upload button → browser IDBFS; persists across reloads on same origin |
+| Android | TBD: app files dir or Storage Access Framework (see open item)     |
+
+### Commands (Linux host)
+```
+nix build .#fa18-wasm && nix run .#fa18-wasm
+nix build .#fa18-win64
+nix build .#fa18-r36s
+nix build .#fa18-android   # unfree Android SDK
+```

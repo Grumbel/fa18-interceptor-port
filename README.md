@@ -30,6 +30,21 @@ does not require it: without an original executable CMake builds the
 interpreter-only binary. Optional static recompilation needs the executable
 once at build time (`-DFA18_EXE=...`, or `-DFA18_ADF=...` to extract it).
 
+
+## Platforms
+
+Desktop Linux remains the primary target. Additional ports (scaffolded after
+[kurvenrausch](https://github.com/Grumbel/kurvenrausch)):
+
+| Package | Command | Notes |
+|---------|---------|-------|
+| WebAssembly | `nix build .#fa18-wasm` / `nix run .#fa18-wasm` | Upload ADF in the browser (IDBFS); not embedded |
+| Windows 64/32 | `nix build .#fa18-win64` | MinGW + official SDL2 MinGW DLLs |
+| R36S / ArkOS | `nix build .#fa18-r36s` | PortMaster launcher; place ADF in the port folder |
+| Android | `nix build .#fa18-android` | APK; ADF supply still TBD (files dir / SAF) |
+
+The original ADF is never redistributed. See `TODO.md` for open port work.
+
 ## Build
 
 ```bash
