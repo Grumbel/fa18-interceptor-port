@@ -37,7 +37,8 @@ cp "$GAME_SRC_DIR"/src/font6x10.hpp src/jni/src/
 mkdir -p src/jni/src/amiga src/jni/src/m68k src/jni/src/native src/jni/src/recomp
 cp "$GAME_SRC_DIR"/src/amiga/*.{cpp,hpp} src/jni/src/amiga/
 cp "$GAME_SRC_DIR"/src/m68k/*.{cpp,hpp} src/jni/src/m68k/
-cp "$GAME_SRC_DIR"/src/native/*.{cpp,hpp} src/jni/src/native/ 2>/dev/null || true
+# .inc headers (ops_body.inc) are included by native sources.
+cp "$GAME_SRC_DIR"/src/native/*.{cpp,hpp,inc} src/jni/src/native/ 2>/dev/null || true
 cp "$GAME_SRC_DIR"/src/recomp/*.{cpp,hpp} src/jni/src/recomp/
 
 # SDL2, prebuilt; headers land under jni/SDL/include/SDL2/ (see Android.mk).
