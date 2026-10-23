@@ -218,7 +218,12 @@ public:
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
-          if (sc == SDL_SCANCODE_INSERT && down) { menu_request = true; break; }
+          // INSERT is the historical binding; F9 is easier on laptop / web keyboards.
+          if ((sc == SDL_SCANCODE_INSERT || sc == SDL_SCANCODE_F9) && down) {
+            menu_request = true;
+            break;
+          }
+          if (sc == SDL_SCANCODE_F10 && down) { mesh_viewer_request = true; break; }
           if (sc == SDL_SCANCODE_F11 && down) {
             Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
             SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -426,6 +431,7 @@ public:
 
   // ---- debug menu (Back button / Insert) -------------------------------------
   bool menu_request = false;
+  bool mesh_viewer_request = false;
   int menu_slot = 1;
   std::string menu_status;
 
@@ -450,25 +456,8 @@ public:
     return machine->save_dir + "/state" + std::to_string(slot) + ".sav";
   }
 
-  void run_menu(const uint32_t* bg, int w, int h) {
-    menu_request = false;
-    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
-    int sel = 0;
-    std::vector<uint32_t> cv(size_t(w) * size_t(h));
-    const int sc = std::max(1, w / 320);
-    bool open = true;
-    int axis_cd = 0;
-    // pressed/held controller state needs explicit handling: no SDL events
-    // reach us for held axes
-    auto hires_label = [&] {
-      int s = machine->hires_scale;
-      return s <= 0 ? std::string("original (320x200)")
-                    : std::to_string(s) + "x" + (glr::active() ? " OpenGL" : "");
-    };
+  void run_mesh_viewer_standalone(const uint32_t* /*bg*/, int w, int h) {
 
-    // Offline model viewer: the object models of the type table, decoded
-    // from the executable on the ADF.
-    auto run_mesh_viewer = [&] {
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
       if (exe.empty()) {
         menu_status = "mesh viewer: need ADF with F-18 Interceptor";
@@ -585,7 +574,27 @@ public:
         SDL_Delay(16);
       }
       menu_status = "mesh viewer closed";
+      }
+
+  void run_menu(const uint32_t* bg, int w, int h) {
+    menu_request = false;
+    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
+    int sel = 0;
+    std::vector<uint32_t> cv(size_t(w) * size_t(h));
+    const int sc = std::max(1, w / 320);
+    bool open = true;
+    int axis_cd = 0;
+    // pressed/held controller state needs explicit handling: no SDL events
+    // reach us for held axes
+    auto hires_label = [&] {
+      int s = machine->hires_scale;
+      return s <= 0 ? std::string("original (320x200)")
+                    : std::to_string(s) + "x" + (glr::active() ? " OpenGL" : "");
     };
+
+    // Offline model viewer: the object models of the type table, decoded
+    // from the executable on the ADF.
+    auto run_mesh_viewer = [&] { run_mesh_viewer_standalone(bg, w, h); };
 
     const int NITEMS = 12;
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
@@ -705,7 +714,7 @@ public:
       py += 6 * sc;
       draw_text(cv, w, h, px, py, "Up/Down select  Left/Right change", sc, 0xFF80A0FFu);
       py += 11 * sc;
-      draw_text(cv, w, h, px, py, "A/Enter do  B/Back close", sc, 0xFF80A0FFu);
+      draw_text(cv, w, h, px, py, "A/Enter do  B/Back/F9 close", sc, 0xFF80A0FFu);
       if (!menu_status.empty()) {
         py += 16 * sc;
         draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
@@ -751,6 +760,10 @@ public:
     {
       std::string m = machine->take_state_message();
       if (!m.empty()) menu_status = m;
+    }
+    if (mesh_viewer_request && script.empty()) {
+      mesh_viewer_request = false;
+      run_mesh_viewer_standalone(fb, w, h);
     }
     if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
     if (w != tex_w || h != tex_h) {
@@ -1004,7 +1017,8 @@ void usage() {
           "  --world FILE     remaster: use an edited world file (docs/world_format.md)\n"
           "  --map-dump FILE  top-down map (water, objects) of the world as PPM\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
-          "keys: F12 grab/release mouse (port 1), F11 fullscreen,\n"
+          "keys: F9/Insert debug menu, F10 mesh viewer,\n"
+          "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
           "      stick/d-pad fly, A fire, B weapon, X target, Y map,\n"
           "      LT/RT throttle, LB systems pie, RB views pie, Start pause.\n"
