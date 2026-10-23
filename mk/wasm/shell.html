@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>F/A-18 Interceptor</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a0a12; color: #e8e8f0;
+                 font-family: system-ui, sans-serif; height: 100%; overflow: hidden; }
+    #wrap { display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-height: 100%; gap: 0.5rem; padding: 0.5rem; box-sizing: border-box; }
+    #slot { position: relative; max-width: 100vw; max-height: 70vh; }
+    canvas.emscripten { display: block; background: #000; image-rendering: pixelated;
+                        max-width: 100%; max-height: 70vh; outline: none; }
+    #status { font-size: 0.9rem; min-height: 1.2em; text-align: center; }
+    #progress { width: min(320px, 80vw); height: 6px; background: #222236; border-radius: 3px; overflow: hidden; }
+    #progress-bar { height: 100%; width: 0; background: #4a8af0; transition: width 0.15s; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; align-items: center; }
+    .toolbar button {
+      background: #1c1c32; color: #e8e8f0; border: 1px solid #3a3a5a;
+      border-radius: 4px; padding: 0.4rem 0.75rem; cursor: pointer; font: inherit;
+    }
+    .toolbar button:hover { background: #30304e; }
+    .toolbar button:disabled { opacity: 0.4; cursor: default; }
+    .toolbar input[type=file] { display: none; }
+    #help, #meta { font-size: 0.75rem; opacity: 0.7; text-align: center; line-height: 1.5; max-width: 96vw; }
+    #meta a { color: #f0b860; }
+    kbd {
+      font-family: inherit; font-size: 0.7rem;
+      border: 1px solid #44446a; border-radius: 3px; padding: 0 0.25rem;
+    }
+    #adf-hint { color: #f0b860; font-size: 0.85rem; text-align: center; max-width: 28rem; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="slot">
+      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+    <div id="status">Loading…</div>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div id="adf-hint" style="display:none">
+      The original disk image is not included. Upload
+      <code>FA-18 Interceptor (1988)(Electronic Arts).adf</code>
+      (or any TOSEC-named copy) to play. It stays in this browser only.
+    </div>
+    <div class="toolbar">
+      <button type="button" id="btn-upload-adf" title="Load the original ADF disk image">Upload ADF…</button>
+      <input type="file" id="file-adf" accept=".adf,application/octet-stream">
+      <button type="button" id="btn-fullscreen" disabled>Fullscreen</button>
+      <button type="button" id="btn-clear-adf" disabled title="Remove the stored ADF from this browser">Clear ADF</button>
+    </div>
+    <div id="help">
+      <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> / numpad · joystick ·
+      <kbd>Space</kbd> fire · views and weapons as in the Amiga original ·
+      gamepads work too
+    </div>
+    <div id="meta">
+      F/A-18 Interceptor (modern port) ·
+      ADF is not redistributed — you must supply your own legal copy
+    </div>
+  </div>
+  <script type="text/javascript">
+    var statusElement = document.getElementById('status');
+    var progressBar = document.getElementById('progress-bar');
+    var adfHint = document.getElementById('adf-hint');
+
+    /* Persist the ADF under /home/web_user/.local/share/fa18/ so a reload
+       does not need another upload. IDBFS is synced before main() runs. */
+    var STATE_MOUNT = '/home/web_user/.local/share';
+    var ADF_DIR = STATE_MOUNT + '/fa18';
+    var ADF_PATH = ADF_DIR + '/disk.adf';
+    var adfReady = false;
+
+    function setStatus(text) {
+      statusElement.textContent = text || '';
+    }
+
+    function mountState(resolve) {
+      FS.mkdirTree(ADF_DIR);
+      FS.mount(IDBFS, {}, STATE_MOUNT);
+      FS.syncfs(true, function(err) {
+        if (err) console.warn('IDBFS load:', err);
+        try {
+          var st = FS.stat(ADF_PATH);
+          if (st && st.size > 512) {
+            adfReady = true;
+            setStatus('ADF found in browser storage (' + st.size + ' bytes)');
+          }
+        } catch (e) {
+          adfReady = false;
+        }
+        if (!adfReady) {
+          adfHint.style.display = 'block';
+          setStatus('Waiting for ADF upload…');
+        }
+        resolve();
+      });
+    }
+
+    function persistAdf(arrayBuffer, then) {
+      var u8 = new Uint8Array(arrayBuffer);
+      if (u8.length < 512 || u8[0] !== 0x44 || u8[1] !== 0x4f || u8[2] !== 0x53) {
+        setStatus('Not a valid Amiga ADF (missing DOS header)');
+        return;
+      }
+      FS.mkdirTree(ADF_DIR);
+      FS.writeFile(ADF_PATH, u8);
+      FS.syncfs(false, function(err) {
+        if (err) {
+          console.error('IDBFS save:', err);
+          setStatus('Could not store ADF in the browser');
+          return;
+        }
+        adfReady = true;
+        adfHint.style.display = 'none';
+        setStatus('ADF stored (' + u8.length + ' bytes). Starting…');
+        document.getElementById('btn-clear-adf').disabled = false;
+        if (then) then();
+      });
+    }
+
+    function clearAdf() {
+      try { FS.unlink(ADF_PATH); } catch (e) {}
+      FS.syncfs(false, function(err) {
+        adfReady = false;
+        adfHint.style.display = 'block';
+        setStatus('ADF cleared. Upload again to play.');
+        document.getElementById('btn-clear-adf').disabled = true;
+      });
+    }
+
+    function enableControls() {
+      document.getElementById('btn-fullscreen').disabled = false;
+      document.getElementById('btn-fullscreen').onclick = function() {
+        var wrap = document.getElementById('wrap');
+        (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap);
+      };
+      document.getElementById('btn-clear-adf').disabled = !adfReady;
+      document.getElementById('btn-clear-adf').onclick = clearAdf;
+      var btn = document.getElementById('btn-upload-adf');
+      var input = document.getElementById('file-adf');
+      btn.onclick = function() { input.click(); };
+      input.onchange = function() {
+        if (!input.files || !input.files[0]) return;
+        var f = input.files[0];
+        setStatus('Reading ' + f.name + '…');
+        var reader = new FileReader();
+        reader.onload = function() {
+          persistAdf(reader.result, function() {
+            /* If main already blocked waiting, a reload is the simplest
+               way to re-enter with the path available. */
+            if (window.__fa18_need_reload) {
+              location.reload();
+            }
+          });
+        };
+        reader.readAsArrayBuffer(f);
+        input.value = '';
+      };
+      document.getElementById('canvas').focus();
+    }
+
+    var Module = {
+      /* Pass the stored ADF path as argv[1] when present so main() boots
+         without a command-line data argument. */
+      arguments: [],
+      preRun: [function() {
+        return new Promise(function(resolve) {
+          mountState(function() {
+            if (adfReady) {
+              Module.arguments = [ADF_PATH];
+            } else {
+              window.__fa18_need_reload = true;
+            }
+            resolve();
+          });
+        });
+      }],
+      postRun: [enableControls],
+      print: function(text) { console.log(text); },
+      printErr: function(text) { console.error(text); },
+      canvas: (function() {
+        var canvas = document.getElementById('canvas');
+        canvas.addEventListener('webglcontextlost', function(e) {
+          alert('The WebGL context was lost. Reload the page.');
+          e.preventDefault();
+        }, false);
+        return canvas;
+      })(),
+      setStatus: function(text) {
+        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        if (m) {
+          progressBar.style.width = (parseInt(m[2]) / parseInt(m[4]) * 100) + '%';
+          statusElement.textContent = m[1];
+        } else {
+          statusElement.textContent = text;
+          if (!text) document.getElementById('progress').style.display = 'none';
+        }
+      },
+      totalDependencies: 0,
+      monitorRunDependencies: function(left) {
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        Module.setStatus(left ? 'Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')' : '');
+      }
+    };
+    Module.setStatus('Downloading…');
+    window.onerror = function() {
+      Module.setStatus('Something went wrong, see the JavaScript console');
+      Module.setStatus = function(text) { if (text) console.error('[status] ' + text); };
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "name": "fa18.zip",
+  "items": [
+    "FA-18 Interceptor.sh",
+    "fa18/"
+  ],
+  "items_opt": [],
+  "attr": {
+    "title": "F/A-18 Interceptor",
+    "porter": ["grumbel"],
+    "description": "Modern C++/SDL2 port of the 1988 Amiga flight simulator. Requires the original ADF (not included).",
+    "image": {},
+    "inst": {},
+    "genres": ["simulation"],
+    "version": "@version@"
+  }
+}
