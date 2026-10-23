@@ -183,8 +183,8 @@ let
       cp ${../LICENSES/GPL-3.0-or-later.txt} $out/fa18/LICENSE.txt
       cp ${../data/icons/hicolor/256x256/apps/io.github.grumbel.fa18.png} $out/fa18/cover.png
       cp ${../mk/r36s/screenshot.png} $out/screenshot.png
-      cp ${../mk/r36s/FA-18 Interceptor.sh} $out/FA-18 Interceptor.sh
-      chmod +x $out/FA-18 Interceptor.sh
+      cp ${../mk/r36s/FA-18-Interceptor.sh} $out/FA-18-Interceptor.sh
+      chmod +x $out/FA-18-Interceptor.sh
       substitute ${../mk/r36s/port.json} $out/port.json --subst-var-by version ${version}
       cp ${../mk/r36s/README.md} $out/README.md
     '';
