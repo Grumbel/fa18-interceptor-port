@@ -152,10 +152,9 @@ let
       "-DCMAKE_BUILD_TYPE=Release"
       "-DCMAKE_SKIP_RPATH=ON"
       "-DBUILD_TESTING=OFF"
-      "-DPROJECT_VERSION_FULL=${version}"
-      "-DPROJECT_DATE=${date}"
-      # eoan's SDL2 CMake files name /usr: give the sysroot's directly.
-      "-DSDL2_INCLUDE_DIRS=${sysroot}/usr/include"
+      # eoan's SDL2 CMake files name /usr: give the sysroot's paths.
+      # Headers live in include/SDL2/; the code uses #include <SDL.h>.
+      "-DSDL2_INCLUDE_DIRS=${sysroot}/usr/include/SDL2"
       "-DSDL2_LIBRARIES=${sdlStub}/lib/libSDL2.so"
       # Mali-G31 / ArkOS: ES 2.0 context (see SuperTux Origins SUPERTUX_R36S).
       "-DENABLE_OPENGLES2=ON"

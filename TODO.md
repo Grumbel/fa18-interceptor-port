@@ -681,6 +681,7 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot
 - [ ] `nix build .#fa18-win64` (needs grumnix/SDL2-win32 flake)
 - [ ] `nix build .#fa18-r36s` against ArkOS sysroot
+- [x] R36S: SDL2_INCLUDE_DIRS → sysroot `include/SDL2` (code uses `#include <SDL.h>`)
 - [ ] Android: in-app file picker / SAF (current: `adb push` into app files dir as `disk.adf`)
 - [ ] Desktop Linux package still the primary path; ports are interpreter-only until a host-side recomp + ship of generated sources is wired
 
