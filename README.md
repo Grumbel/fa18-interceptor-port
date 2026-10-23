@@ -41,7 +41,7 @@ Desktop Linux remains the primary target. Additional ports (scaffolded after
 | WebAssembly | `nix build .#fa18-wasm` / `nix run .#fa18-wasm` | Upload ADF in the browser (IDBFS); not embedded |
 | Windows 64/32 | `nix build .#fa18-win64` | MinGW + official SDL2 MinGW DLLs |
 | R36S / ArkOS | `nix build .#fa18-r36s` | PortMaster launcher; place ADF in the port folder |
-| Android | `nix build .#fa18-android` | APK; ADF supply still TBD (files dir / SAF) |
+| Android | `nix build .#fa18-android` | APK; `adb push disk.adf` into app files dir |
 
 The original ADF is never redistributed. See `TODO.md` for open port work.
 

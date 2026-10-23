@@ -670,12 +670,18 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [x] R36S PortMaster launcher + README (ADF must be placed next to the binary)
 - [x] Android ndk-build staging for multi-dir tree (interpreter + native; GLES2)
 
+### Follow-up (2026-10-23 evening)
+- [x] Fix `nix flake show` crash: space in `FA-18 Interceptor.sh` → `FA-18-Interceptor.sh`
+- [x] WASM shell: IDBFS via `addRunDependency` (kurvenrausch pattern), not Promise preRun
+- [x] GLES: prefer ES context on FA18_OPENGLES2/Android/Emscripten; skip `GL_PROGRAM_POINT_SIZE`; RGBA8→RGBA4 FBO fallback
+- [x] Android ADF: look in `SDL_AndroidGetInternalStoragePath()` (and external); document `adb push …/files/disk.adf`
+- [x] Emscripten ADF: also probe `/home/web_user/.local/share/fa18/` if argv empty
+
 ### Still open / verify on a real machine
 - [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot
 - [ ] `nix build .#fa18-win64` (needs grumnix/SDL2-win32 flake)
 - [ ] `nix build .#fa18-r36s` against ArkOS sysroot
-- [ ] Android: file-picker / SAF for ADF (currently: place ADF in app files dir or pass path if accessible). Document in README.
-- [ ] GLES path for `--gl` on Emscripten/Android/R36S (native GL renderer may need FA18_OPENGLES2 ifdef polish)
+- [ ] Android: in-app file picker / SAF (current: `adb push` into app files dir as `disk.adf`)
 - [ ] Desktop Linux package still the primary path; ports are interpreter-only until a host-side recomp + ship of generated sources is wired
 
 ### ADF policy (all ports)
