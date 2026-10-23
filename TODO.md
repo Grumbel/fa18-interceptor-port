@@ -680,6 +680,7 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 ### Still open / verify on a real machine
 - [x] WASM: SDL2_INCLUDE_DIRS → include/SDL2 (same #include <SDL.h> layout as R36S)
 - [x] WASM: `-fexceptions` + DISABLE_EXCEPTION_CATCHING=0 (QuitRequested); live runtime if no ADF
+- [x] WASM: ASYNCIFY + `emscripten_sleep` in present() so the tab stays responsive
 - [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot
 - [ ] `nix build .#fa18-win64` (needs grumnix/SDL2-win32 flake)
 - [ ] `nix build .#fa18-r36s` against ArkOS sysroot

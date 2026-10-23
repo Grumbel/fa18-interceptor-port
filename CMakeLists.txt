@@ -214,6 +214,10 @@ if(EMSCRIPTEN)
     "SHELL:-sASSERTIONS=1"
     "SHELL:-sNO_EXIT_RUNTIME=1"
     "SHELL:-sEXIT_RUNTIME=0"
+    # ASYNCIFY so the blocking Machine::run() / present() path can yield
+    # to the browser event loop via emscripten_sleep (see main.cpp).
+    "SHELL:-sASYNCIFY=1"
+    "SHELL:-sASYNCIFY_STACK_SIZE=1048576"
     "SHELL:--shell-file=${FA18_SHELL}"
     "SHELL:-lidbfs.js"
   )

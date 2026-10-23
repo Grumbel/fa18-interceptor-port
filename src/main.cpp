@@ -764,8 +764,25 @@ public:
       int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
       if (left <= 0) break;
       int64_t left_us = left * 1000000 / int64_t(freq);
-      if (left_us > 2000) SDL_Delay(uint32_t(left_us / 1000 - 1));
+      if (left_us > 2000) {
+#if defined(__EMSCRIPTEN__)
+        // ASYNCIFY: yield to the browser so input/paint stay responsive.
+        emscripten_sleep(uint32_t(left_us / 1000 - 1));
+#else
+        SDL_Delay(uint32_t(left_us / 1000 - 1));
+#endif
+      }
+#if defined(__EMSCRIPTEN__)
+      else {
+        // Even when the frame is late, yield once so the tab does not freeze.
+        emscripten_sleep(0);
+        break;
+      }
+#endif
     }
+#if defined(__EMSCRIPTEN__)
+    if (fast) emscripten_sleep(0);
+#endif
   }
 
   void run_script() {
