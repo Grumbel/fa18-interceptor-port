@@ -95,8 +95,9 @@ private:
     std::string path;
     std::string name;       // Amiga name, for copy-on-write
     bool writable = false;  // false: opened read-only from data/save dir / ADF
-    // When the open was satisfied from the ADF, this owns the memory behind
-    // the fmemopen stream and is deleted on Close / make_writable.
+    // When the open was satisfied from the ADF, this owns the extracted bytes
+    // (fmemopen backing store, or a copy for the temp-file fallback) and is
+    // deleted on Close / make_writable.
     std::vector<uint8_t>* adf_buf = nullptr;
   };
   bool make_writable(File& file);

@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <string>
 
 namespace fs = std::filesystem;
 
@@ -771,6 +773,45 @@ std::string Hle::host_path(const std::string& amiga_name, bool for_write) {
   return resolve(m.data_dir);
 }
 
+
+// Open a read-only FILE over a memory buffer. Prefer fmemopen; fall back to a
+// temp file on platforms that lack it (Android API < 23, Windows).
+FILE* open_memory_read(const uint8_t* data, size_t size, const std::string& tag,
+                       std::string* out_temp_path) {
+#if defined(__ANDROID__)
+  // bionic only exposes fmemopen from API 23; APP_PLATFORM may be lower.
+#  if defined(__ANDROID_API__) && __ANDROID_API__ >= 23
+#    define FA18_HAVE_FMEMOPEN 1
+#  endif
+#elif !defined(_WIN32)
+#  define FA18_HAVE_FMEMOPEN 1
+#endif
+
+#if defined(FA18_HAVE_FMEMOPEN)
+  (void)tag;
+  (void)out_temp_path;
+  return fmemopen(const_cast<uint8_t*>(data), size, "rb");
+#else
+  // Named temp under the process temp dir so fclose is enough; caller may
+  // still hold adf_buf for make_writable materialisation.
+  fs::path dir = fs::temp_directory_path();
+  std::string base = "fa18-adf-";
+  for (char c : tag) base += (std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
+  fs::path tmp = dir / (base + ".tmp");
+  FILE* out = fopen(tmp.string().c_str(), "w+b");
+  if (!out) return nullptr;
+  if (size && fwrite(data, 1, size, out) != size) {
+    fclose(out);
+    fs::remove(tmp);
+    return nullptr;
+  }
+  fflush(out);
+  rewind(out);
+  if (out_temp_path) *out_temp_path = tmp.string();
+  return out;
+#endif
+}
+
 uint32_t Hle::dos_open(const std::string& name, int mode) {
   bool write = mode == 1006;
   std::string path = host_path(name, write);
@@ -787,12 +828,13 @@ uint32_t Hle::dos_open(const std::string& name, int mode) {
       if (!bytes.empty() || m.disk_has(name)) {
         adf_buf = new std::vector<uint8_t>(std::move(bytes));
         size_t sz = adf_buf->size();
-        // fmemopen requires a non-null buffer; use a one-byte dummy for empty files.
+        // open_memory_read needs a non-null buffer; use a one-byte dummy for empty files.
         if (sz == 0) adf_buf->push_back(0);
-        f = fmemopen(adf_buf->data(), sz, "rb");
+        std::string temp_path;
+        f = open_memory_read(adf_buf->data(), sz, name, &temp_path);
         if (f) {
           from_adf = true;
-          path = std::string("adf:") + name;
+          path = temp_path.empty() ? (std::string("adf:") + name) : temp_path;
         } else {
           delete adf_buf;
           adf_buf = nullptr;
@@ -873,6 +915,11 @@ void Hle::dos(int lvo) {
       auto it = files_.find(D(1));
       if (it != files_.end()) {
         fclose(it->second.f);
+        // Temp-file fallback for platforms without fmemopen.
+        if (it->second.path.find("fa18-adf-") != std::string::npos) {
+          std::error_code ec;
+          fs::remove(it->second.path, ec);
+        }
         delete it->second.adf_buf;
         files_.erase(it);
       }
