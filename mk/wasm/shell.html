@@ -58,6 +58,8 @@
       <button type="button" id="btn-upload-adf" title="Load the original ADF disk image">Upload ADF…</button>
       <input type="file" id="file-adf" accept=".adf,application/octet-stream">
       <button type="button" id="btn-fullscreen" disabled>Fullscreen</button>
+      <button type="button" id="btn-menu" disabled title="Debug menu (F9)">Menu</button>
+      <button type="button" id="btn-viewer" disabled title="Mesh viewer (F10)">Models</button>
       <button type="button" id="btn-clear-adf" disabled title="Remove the stored ADF from this browser">Clear ADF</button>
     </div>
     <div id="help">
@@ -68,6 +70,7 @@
       <kbd>F11</kbd> fullscreen ·
       <kbd>F12</kbd> grab mouse<br>
       <span style="opacity:0.85">In the mesh viewer:
+        drag orbit · right-drag / wheel zoom ·
         <kbd>←</kbd><kbd>→</kbd> model ·
         <kbd>↑</kbd><kbd>↓</kbd> LOD ·
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> orbit ·
@@ -160,6 +163,20 @@
         var wrap = document.getElementById('wrap');
         (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap);
       };
+      function callHost(name) {
+        try {
+          if (typeof Module.ccall === 'function') Module.ccall(name, null, [], []);
+          else if (typeof Module['_' + name] === 'function') Module['_' + name]();
+        } catch (err) {
+          console.error(name, err);
+        }
+      }
+      var btnMenu = document.getElementById('btn-menu');
+      var btnViewer = document.getElementById('btn-viewer');
+      btnMenu.disabled = false;
+      btnViewer.disabled = false;
+      btnMenu.onclick = function() { callHost('fa18_request_menu'); document.getElementById('canvas').focus(); };
+      btnViewer.onclick = function() { callHost('fa18_request_mesh_viewer'); document.getElementById('canvas').focus(); };
       document.getElementById('btn-clear-adf').disabled = !adfReady;
       document.getElementById('btn-clear-adf').onclick = clearAdf;
       var btn = document.getElementById('btn-upload-adf');

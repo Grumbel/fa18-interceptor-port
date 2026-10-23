@@ -473,6 +473,8 @@ public:
       static mesh_viewer::ViewState vs;  // keep the position between visits
       int axis_cd_v = 0;
       bool view_open = true;
+      bool orbiting = false;   // left-drag orbits; right-drag / wheel zooms
+      int last_mx = 0, last_my = 0;
       auto text_fn = +[](std::vector<uint32_t>& buf, int bw, int bh, int x, int y,
                          const std::string& t, int scale, uint32_t col) {
         for (size_t i = 0; i < t.size(); ++i) {
@@ -523,6 +525,37 @@ public:
                 case SDL_SCANCODE_BACKSPACE: view_open = false; break;
                 default: break;
               }
+              break;
+            case SDL_MOUSEBUTTONDOWN:
+              if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) {
+                orbiting = true;
+                last_mx = e.button.x;
+                last_my = e.button.y;
+              }
+              break;
+            case SDL_MOUSEBUTTONUP:
+              if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)
+                orbiting = false;
+              break;
+            case SDL_MOUSEMOTION:
+              if (orbiting || (e.motion.state & (SDL_BUTTON_LMASK | SDL_BUTTON_RMASK))) {
+                int dx = e.motion.x - last_mx;
+                int dy = e.motion.y - last_my;
+                last_mx = e.motion.x;
+                last_my = e.motion.y;
+                // Left button (or unspecified drag): orbit. Right button: zoom.
+                if (e.motion.state & SDL_BUTTON_RMASK) {
+                  vs.zoom *= (dy < 0 ? 1.02f : 0.98f);
+                  if (dx) vs.zoom *= (dx > 0 ? 1.01f : 0.99f);
+                } else {
+                  vs.yaw += float(dx) * 0.01f;
+                  vs.pitch += float(dy) * 0.01f;
+                }
+              }
+              break;
+            case SDL_MOUSEWHEEL:
+              if (e.wheel.y > 0) vs.zoom *= 1.1f;
+              else if (e.wheel.y < 0) vs.zoom /= 1.1f;
               break;
             case SDL_CONTROLLERBUTTONDOWN:
               switch (e.cbutton.button) {
@@ -1057,6 +1090,19 @@ bool init_gl() {
 
 }  // namespace
 
+#if defined(__EMSCRIPTEN__)
+// HTML toolbar → these keep-alive entry points (see mk/wasm/shell.html).
+static SdlHost* g_host_for_js = nullptr;
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void fa18_request_menu() {
+  if (g_host_for_js) g_host_for_js->menu_request = true;
+}
+EMSCRIPTEN_KEEPALIVE void fa18_request_mesh_viewer() {
+  if (g_host_for_js) g_host_for_js->mesh_viewer_request = true;
+}
+}
+#endif
+
 int main(int argc, char** argv) {
   std::string data_dir, save_dir;
   int scale = 3;
@@ -1255,6 +1301,9 @@ int main(int argc, char** argv) {
   if (!misses_path.empty()) machine.track_recomp_misses(true);
 
   SdlHost host;
+#if defined(__EMSCRIPTEN__)
+  g_host_for_js = &host;
+#endif
   host.machine = &machine;
   host.screenshot_frame = shot_frame;
   host.screenshot_path = shot_path;

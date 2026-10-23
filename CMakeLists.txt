@@ -210,7 +210,7 @@ if(EMSCRIPTEN)
     "SHELL:-sMAXIMUM_MEMORY=512MB"
     "SHELL:-sFORCE_FILESYSTEM=1"
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','cwrap','UTF8ToString']"
-    "SHELL:-sEXPORTED_FUNCTIONS=['_main','_malloc','_free']"
+    "SHELL:-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_fa18_request_menu','_fa18_request_mesh_viewer']"
     "SHELL:-sASSERTIONS=1"
     "SHELL:-sNO_EXIT_RUNTIME=1"
     "SHELL:-sEXIT_RUNTIME=0"
