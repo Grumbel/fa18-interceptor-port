@@ -37,6 +37,10 @@ if(EMSCRIPTEN)
     set(SDL2_LIBRARIES "")
   endif()
   set(BUILD_TESTING OFF CACHE BOOL "No tests in the WebAssembly build" FORCE)
+  # The runtime uses C++ exceptions (QuitRequested, hunk parse, filesystem).
+  # Without this, any throw becomes an opaque abort() in the browser.
+  add_compile_options(-fexceptions)
+  add_link_options(-fexceptions -sDISABLE_EXCEPTION_CATCHING=0)
 elseif(NOT SDL2_LIBRARIES)
   # (Unless given: a cross build whose SDL2 CMake files name the target's
   # own paths passes SDL2_INCLUDE_DIRS and SDL2_LIBRARIES, see nix/r36s.nix.)
@@ -207,8 +211,9 @@ if(EMSCRIPTEN)
     "SHELL:-sFORCE_FILESYSTEM=1"
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','cwrap','UTF8ToString']"
     "SHELL:-sEXPORTED_FUNCTIONS=['_main','_malloc','_free']"
-    "SHELL:-sASSERTIONS=0"
+    "SHELL:-sASSERTIONS=1"
     "SHELL:-sNO_EXIT_RUNTIME=1"
+    "SHELL:-sEXIT_RUNTIME=0"
     "SHELL:--shell-file=${FA18_SHELL}"
     "SHELL:-lidbfs.js"
   )

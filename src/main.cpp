@@ -11,6 +11,9 @@
 #if defined(__ANDROID__)
 #include <SDL_system.h>
 #endif
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -1064,10 +1067,11 @@ int main(int argc, char** argv) {
       "disk.adf",
     };
     auto try_names_in = [&](const fs::path& dir) {
-      if (dir.empty() || !fs::is_directory(dir)) return false;
+      std::error_code ec;
+      if (dir.empty() || !fs::is_directory(dir, ec)) return false;
       for (const char* n : adf_names) {
         fs::path p = dir / n;
-        if (fs::is_regular_file(p)) { data_dir = p.string(); return true; }
+        if (fs::is_regular_file(p, ec)) { data_dir = p.string(); return true; }
       }
       return false;
     };
@@ -1111,7 +1115,10 @@ int main(int argc, char** argv) {
     else save_dir = ".";
 #endif
   }
-  std::filesystem::create_directories(save_dir);
+  {
+    std::error_code ec;
+    std::filesystem::create_directories(save_dir, ec);
+  }
   if (data_dir.empty()) {
     fprintf(stderr,
             "Cannot find the game data.\n"
@@ -1122,6 +1129,11 @@ int main(int argc, char** argv) {
             "On the web build: use the Upload ADF button on the page.\n"
 #endif
             );
+#if defined(__EMSCRIPTEN__)
+    // Keep the runtime alive so the user can upload an ADF and reload.
+    fprintf(stderr, "fa18: waiting for ADF upload (page stays open)\n");
+    emscripten_exit_with_live_runtime();
+#endif
     usage();
     return 1;
   }
