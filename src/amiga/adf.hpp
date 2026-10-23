@@ -17,12 +17,19 @@ class Adf {
  public:
   static constexpr size_t BS = 512;
 
+  // Load from a file path (desktop / Android content URI when openable as path).
   bool load(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
-    img_.assign(std::istreambuf_iterator<char>(in), {});
-    if (img_.size() < BS * 2) return false;
-    if (img_[0] != 'D' || img_[1] != 'O' || img_[2] != 'S') return false;
+    std::vector<uint8_t> bytes(std::istreambuf_iterator<char>(in), {});
+    return load_from_memory(std::move(bytes));
+  }
+
+  // Load from an in-memory image (WASM upload, Android content stream, tests).
+  bool load_from_memory(std::vector<uint8_t> bytes) {
+    if (bytes.size() < BS * 2) return false;
+    if (bytes[0] != 'D' || bytes[1] != 'O' || bytes[2] != 'S') return false;
+    img_ = std::move(bytes);
     ffs_ = (img_[3] & 1) != 0;
     root_ = int(img_.size() / BS / 2);
     // Build a case-folded path → header-block index for O(1) lookup.
