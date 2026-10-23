@@ -457,7 +457,7 @@ public:
   }
 
   void run_mesh_viewer_standalone(const uint32_t* /*bg*/, int w, int h) {
-
+      std::vector<uint32_t> cv(size_t(w) * size_t(h));
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
       if (exe.empty()) {
         menu_status = "mesh viewer: need ADF with F-18 Interceptor";
@@ -574,7 +574,7 @@ public:
         SDL_Delay(16);
       }
       menu_status = "mesh viewer closed";
-      }
+  }
 
   void run_menu(const uint32_t* bg, int w, int h) {
     menu_request = false;
