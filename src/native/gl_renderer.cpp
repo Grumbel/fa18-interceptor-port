@@ -396,8 +396,14 @@ bool ensure_fbo(int w, int h) {
     gl.RenderbufferStorage(GL_RENDERBUFFER, format, w, h);
     return r;
   };
+  // Prefer RGBA8; fall back to RGBA4 on strict GLES2 without the sized formats.
   st.colour_rb = rb(GL_RGBA8);
   gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
+  if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    gl.DeleteRenderbuffers(1, &st.colour_rb);
+    st.colour_rb = rb(GL_RGBA4);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
+  }
   // packed depth/stencil (GL 3, EXT/OES_packed_depth_stencil), else separate
   st.depth_rb = rb(GL_DEPTH24_STENCIL8);
   gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, st.depth_rb);
@@ -557,7 +563,9 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
+#ifndef FA18_OPENGLES2
   gl.Enable(GL_PROGRAM_POINT_SIZE);  // desktop GL; GLES always uses gl_PointSize
+#endif
   gl.ColorMask(1, 1, 1, 1);
   gl.DepthMask(1);
   gl.ClearColor(5.f / 255.f, 0, 0, 1);  // sky

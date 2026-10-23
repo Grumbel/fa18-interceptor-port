@@ -147,6 +147,8 @@ target_include_directories(native PUBLIC src ${SDL2_INCLUDE_DIRS})
 target_link_libraries(native PUBLIC amiga)
 if(ENABLE_OPENGLES2)
   target_compile_definitions(native PUBLIC FA18_OPENGLES2=1)
+  # So main() prefers an ES context when the port was built for GLES.
+  add_compile_definitions(FA18_OPENGLES2=1)
 endif()
 
 # Line coverage of the native translation (tests/coverage_native.sh):

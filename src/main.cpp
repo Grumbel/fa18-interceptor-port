@@ -8,6 +8,9 @@
 #include "stats_overlay.hpp"
 
 #include <SDL.h>
+#if defined(__ANDROID__)
+#include <SDL_system.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -970,11 +973,18 @@ void usage() {
 // OpenGL renderer of the 3D view (--gl): its own context on a hidden
 // window, so the presentation path (SDL_Renderer) stays as it is.
 bool init_gl() {
-  // Desktop GL 2.1, else GLES 2 (FA18_GLES=1 forces GLES).
+  // Prefer GLES 2 on ports built with FA18_OPENGLES2 (Android, Emscripten,
+  // R36S) or when FA18_GLES=1; otherwise try desktop GL 2.1 first.
   SDL_Window* w = nullptr;
   SDL_GLContext ctx = nullptr;
   std::string err;
-  for (int es = std::getenv("FA18_GLES") ? 1 : 0; es < 2 && !ctx; ++es) {
+#if defined(FA18_OPENGLES2) || defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+  const bool prefer_es = true;
+#else
+  const bool prefer_es = std::getenv("FA18_GLES") != nullptr;
+#endif
+  for (int pass = 0; pass < 2 && !ctx; ++pass) {
+    const bool es = prefer_es ? (pass == 0) : (pass == 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, es ? SDL_GL_CONTEXT_PROFILE_ES : 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, es ? 0 : 1);
@@ -1044,16 +1054,41 @@ int main(int argc, char** argv) {
   if (data_dir.empty()) {
     namespace fs = std::filesystem;
     // Prefer an ADF in the current directory / common names, then a legacy
-    // unpacked assets/ directory.
+    // unpacked assets/ directory.  On Android and Emscripten also look in the
+    // platform's persistent storage (user-supplied ADF; never redistributed).
     const char* adf_names[] = {
       "FA-18 Interceptor (1988)(Electronic Arts).adf",
       "FA-18 Interceptor.adf",
       "fa18.adf",
       "F-18 Interceptor.adf",
+      "disk.adf",
+    };
+    auto try_names_in = [&](const fs::path& dir) {
+      if (dir.empty() || !fs::is_directory(dir)) return false;
+      for (const char* n : adf_names) {
+        fs::path p = dir / n;
+        if (fs::is_regular_file(p)) { data_dir = p.string(); return true; }
+      }
+      return false;
     };
     for (const char* n : adf_names) {
       if (fs::is_regular_file(n)) { data_dir = n; break; }
     }
+#if defined(__ANDROID__)
+    if (data_dir.empty()) {
+      // adb push … /data/data/io.github.grumbel.fa18/files/disk.adf
+      if (const char* internal = SDL_AndroidGetInternalStoragePath())
+        try_names_in(internal);
+      if (data_dir.empty())
+        if (const char* external = SDL_AndroidGetExternalStoragePath())
+          try_names_in(external);
+    }
+#elif defined(__EMSCRIPTEN__)
+    if (data_dir.empty()) {
+      // shell.html stores the upload here after the IDBFS mount.
+      try_names_in("/home/web_user/.local/share/fa18");
+    }
+#endif
     if (data_dir.empty()) {
       for (const char* cand : {"assets", "data", FA18_DATADIR}) {
         if (fs::exists(std::string(cand) + "/F-18 Interceptor")) { data_dir = cand; break; }
@@ -1061,17 +1096,32 @@ int main(int argc, char** argv) {
     }
   }
   if (save_dir.empty()) {
+#if defined(__ANDROID__)
+    if (const char* internal = SDL_AndroidGetInternalStoragePath())
+      save_dir = std::string(internal) + "/save";
+    else
+      save_dir = ".";
+#elif defined(__EMSCRIPTEN__)
+    save_dir = "/home/web_user/.local/share/fa18/save";
+#else
     const char* xdg = getenv("XDG_DATA_HOME");
     const char* home = getenv("HOME");
     if (xdg && *xdg) save_dir = std::string(xdg) + "/fa18-interceptor";
     else if (home) save_dir = std::string(home) + "/.local/share/fa18-interceptor";
     else save_dir = ".";
+#endif
   }
   std::filesystem::create_directories(save_dir);
   if (data_dir.empty()) {
     fprintf(stderr,
             "Cannot find the game data.\n"
-            "Pass the path to the original ADF (or an unpacked assets directory).\n");
+            "Pass the path to the original ADF (or an unpacked assets directory).\n"
+#if defined(__ANDROID__)
+            "On Android: adb push the ADF into the app files dir as disk.adf.\n"
+#elif defined(__EMSCRIPTEN__)
+            "On the web build: use the Upload ADF button on the page.\n"
+#endif
+            );
     usage();
     return 1;
   }
