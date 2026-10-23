@@ -634,9 +634,15 @@ public:
       switch (item) {
         case 0: if (dir == 0) open = false; break;
         case 1: {
-          // original, 2x-4x software, 2x-4x OpenGL (when a context is available)
+          // original, 2x-4x software, 2x-4x OpenGL (when a context is available).
+          // WebAssembly: OpenGL modes are omitted — a second WebGL context aborts.
+#if defined(__EMSCRIPTEN__)
+          static const int order[][2] = {{0, 0}, {2, 0}, {3, 0}, {4, 0}};
+          const int n = 4;
+#else
           static const int order[][2] = {{0, 0}, {2, 0}, {3, 0}, {4, 0}, {2, 1}, {3, 1}, {4, 1}};
           const int n = 7;
+#endif
           const int s = machine->hires_scale;
           const int g = s > 0 && glr::active() ? 1 : 0;
           int idx = 0;
@@ -1064,10 +1070,17 @@ void usage() {
 bool init_gl() {
   // Prefer GLES 2 on ports built with FA18_OPENGLES2 (Android, Emscripten,
   // R36S) or when FA18_GLES=1; otherwise try desktop GL 2.1 first.
+#if defined(__EMSCRIPTEN__)
+  // The WASM build already owns the single canvas via SDL_Renderer (WebGL).
+  // A second SDL_WINDOW_OPENGL context aborts the module; the software
+  // hi-res path is the supported 3D upscale on the web.
+  fprintf(stderr, "gl: not available on the web build (single canvas); using software hi-res\n");
+  return false;
+#endif
   SDL_Window* w = nullptr;
   SDL_GLContext ctx = nullptr;
   std::string err;
-#if defined(FA18_OPENGLES2) || defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+#if defined(FA18_OPENGLES2) || defined(__ANDROID__)
   const bool prefer_es = true;
 #else
   const bool prefer_es = std::getenv("FA18_GLES") != nullptr;
