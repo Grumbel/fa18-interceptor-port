@@ -76,9 +76,10 @@
       statusElement.textContent = text || '';
     }
 
-    function mountState(resolve) {
+    function mountState() {
       FS.mkdirTree(ADF_DIR);
-      FS.mount(IDBFS, {}, STATE_MOUNT);
+      FS.mount(FS.filesystems.IDBFS, {}, STATE_MOUNT);
+      Module.addRunDependency('fa18-adf');
       FS.syncfs(true, function(err) {
         if (err) console.warn('IDBFS load:', err);
         try {
@@ -86,6 +87,8 @@
           if (st && st.size > 512) {
             adfReady = true;
             setStatus('ADF found in browser storage (' + st.size + ' bytes)');
+            /* Pass the stored path so main() boots without a command-line arg. */
+            Module.arguments = [ADF_PATH];
           }
         } catch (e) {
           adfReady = false;
@@ -94,7 +97,7 @@
           adfHint.style.display = 'block';
           setStatus('Waiting for ADF upload…');
         }
-        resolve();
+        Module.removeRunDependency('fa18-adf');
       });
     }
 
@@ -148,11 +151,8 @@
         var reader = new FileReader();
         reader.onload = function() {
           persistAdf(reader.result, function() {
-            /* If main already blocked waiting, a reload is the simplest
-               way to re-enter with the path available. */
-            if (window.__fa18_need_reload) {
-              location.reload();
-            }
+            /* Reload so main() re-enters with the ADF path available. */
+            location.reload();
           });
         };
         reader.readAsArrayBuffer(f);
@@ -162,21 +162,8 @@
     }
 
     var Module = {
-      /* Pass the stored ADF path as argv[1] when present so main() boots
-         without a command-line data argument. */
       arguments: [],
-      preRun: [function() {
-        return new Promise(function(resolve) {
-          mountState(function() {
-            if (adfReady) {
-              Module.arguments = [ADF_PATH];
-            } else {
-              window.__fa18_need_reload = true;
-            }
-            resolve();
-          });
-        });
-      }],
+      preRun: [mountState],
       postRun: [enableControls],
       print: function(text) { console.log(text); },
       printErr: function(text) { console.error(text); },
