@@ -156,15 +156,37 @@ public:
       fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
       return false;
     }
+#if defined(__EMSCRIPTEN__)
+    // Let ASYNCIFY sleep from SDL_Delay / emscripten_sleep; focus keyboard on canvas.
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_ASYNCIFY, "1");
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#canvas");
+#endif
+    const int win_w = amiga::FB_W * scale;
+    const int win_h = amiga::FB_H * scale * 6 / 5;
     win = SDL_CreateWindow("F/A-18 Interceptor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                           amiga::FB_W * scale, amiga::FB_H * scale * 6 / 5,
-                           SDL_WINDOW_RESIZABLE);
+                           win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!win) return false;
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     if (!ren) ren = SDL_CreateRenderer(win, -1, 0);
+    if (!ren) {
+      fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
+      return false;
+    }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     // NTSC lores pixels are slightly taller than wide; 320x240 approximates.
     SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
+#if defined(__EMSCRIPTEN__)
+    // Force the canvas drawing buffer to the window size (CSS handles display).
+    SDL_SetWindowSize(win, win_w, win_h);
+    {
+      SDL_RendererInfo ri{};
+      if (SDL_GetRendererInfo(ren, &ri) == 0)
+        fprintf(stderr, "emscripten window %dx%d renderer=%s\n", win_w, win_h,
+                ri.name ? ri.name : "?");
+      else
+        fprintf(stderr, "emscripten window %dx%d\n", win_w, win_h);
+    }
+#endif
     tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                             amiga::FB_W, amiga::FB_H);
     SDL_AudioSpec want{}, have{};

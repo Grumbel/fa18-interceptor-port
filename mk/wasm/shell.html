@@ -9,9 +9,18 @@
                  font-family: system-ui, sans-serif; height: 100%; overflow: hidden; }
     #wrap { display: flex; flex-direction: column; align-items: center;
             justify-content: center; min-height: 100%; gap: 0.5rem; padding: 0.5rem; box-sizing: border-box; }
-    #slot { position: relative; max-width: 100vw; max-height: 70vh; }
-    canvas.emscripten { display: block; background: #000; image-rendering: pixelated;
-                        max-width: 100%; max-height: 70vh; outline: none; }
+    #slot { position: relative; width: min(960px, 100vw); }
+    canvas.emscripten {
+      display: block; background: #000; image-rendering: pixelated;
+      /* Default drawing size matches scale=3 (320x240 letterbox). SDL may
+         overwrite width/height attributes; CSS keeps the on-screen size. */
+      width: min(960px, 100vw);
+      height: auto;
+      aspect-ratio: 4 / 3;
+      max-width: 100%;
+      max-height: 70vh;
+      outline: none;
+    }
     #status { font-size: 0.9rem; min-height: 1.2em; text-align: center; }
     #progress { width: min(320px, 80vw); height: 6px; background: #222236; border-radius: 3px; overflow: hidden; }
     #progress-bar { height: 100%; width: 0; background: #4a8af0; transition: width 0.15s; }
@@ -35,7 +44,8 @@
 <body>
   <div id="wrap">
     <div id="slot">
-      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+      <canvas class="emscripten" id="canvas" width="960" height="720"
+              oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     </div>
     <div id="status">Loading…</div>
     <div id="progress"><div id="progress-bar"></div></div>
