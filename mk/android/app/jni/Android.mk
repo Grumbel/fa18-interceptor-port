@@ -17,9 +17,16 @@ LOCAL_SRC_FILES := \
   $(patsubst $(LOCAL_PATH)/%,%,$(wildcard $(LOCAL_PATH)/m68k/*.cpp)) \
   $(patsubst $(LOCAL_PATH)/%,%,$(wildcard $(LOCAL_PATH)/native/*.cpp))
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH) $(LOCAL_PATH)/../SDL/include
+# SDL headers are staged at jni/SDL/include/SDL2/SDL.h; the game uses
+# #include <SDL.h>, so both the parent and the SDL2 dir are on the path.
+LOCAL_C_INCLUDES := \
+  $(LOCAL_PATH) \
+  $(LOCAL_PATH)/../SDL/include \
+  $(LOCAL_PATH)/../SDL/include/SDL2
+
 LOCAL_CPPFLAGS += -std=c++20 -Wno-psabi -Wall -Wextra -O2 \
 	-DFA18_OPENGLES2=1 \
+	-DFA18_DATADIR=\"\" \
 	-DFA18_VERSION=\"$(FA18_VERSION)\"
 LOCAL_CPP_FEATURES := exceptions rtti
 LOCAL_SHARED_LIBRARIES := SDL2

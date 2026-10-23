@@ -40,7 +40,7 @@ cp "$GAME_SRC_DIR"/src/m68k/*.{cpp,hpp} src/jni/src/m68k/
 cp "$GAME_SRC_DIR"/src/native/*.{cpp,hpp} src/jni/src/native/ 2>/dev/null || true
 cp "$GAME_SRC_DIR"/src/recomp/*.{cpp,hpp} src/jni/src/recomp/
 
-# SDL2, prebuilt; the game includes <SDL2/SDL.h>.
+# SDL2, prebuilt; headers land under jni/SDL/include/SDL2/ (see Android.mk).
 cp "$SDL_PREBUILT_MK" src/jni/SDL/Android.mk
 cp -r "$SDL_ANDROID_LIBS/include" src/jni/SDL/include/SDL2
 chmod -R u+rwX src

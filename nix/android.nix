@@ -71,9 +71,10 @@ let
   '';
 
   # The sources the APK is built from: no build directories, no .git.
+  # Headers live under src/ (no top-level include/).
   gameSrc = pkgs.lib.fileset.toSource {
     root = ../.;
-    fileset = pkgs.lib.fileset.unions [ ../src ../include ];
+    fileset = ../src;
   };
 
   apkName = "fa18-${version}.apk";
