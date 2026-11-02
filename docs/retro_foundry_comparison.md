@@ -91,6 +91,8 @@ verified map gives Hunk 5 + `$10EC`). Prefer the machine-readable mapping.
    `$2E16C`, and F1–F10 throttle-level update `$2EA60`. Its notes also
    document release/reset routes, context gates, and the fire/weapon key
    queue. This may improve future gamepad-analogue and overlay help work.
+   `docs/hunk5_input.md` cross-checks the physical raw-key routes, including
+   misleading key names in the other project's assembly.
 
 2. **Line blitter and plane submits, Hunk 36 (`$44686-$451B2`).** The
    reference reconstructs line parameter preparation, hardware waits,
