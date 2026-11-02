@@ -82,7 +82,15 @@ branch is taken in ordinary gameplay.
 Useful probes once the original ADF is available:
 
 1. Record `$5A9E0`, `$5AC4C`, `$5AC4E`, and `$5A9DF` on entries to `$44686`
-   while `--hires` and `--gl` are active, and count negative-mode calls.
+   while `--hires` and `--gl` are active, and count negative-mode calls:
+
+   ```sh
+   FA18_REGS=44686,80,5a9df:b,5a9e0:w,5ac4c:w,5ac4e:w \
+     ./build/fa18 --native off --interpret --hires 3 /path/to/original.adf
+   ```
+
+   The entry logger reads these fields directly from emulated RAM (byte/word/
+   long, big endian), so diagnostic reads cannot alter custom-chip state.
 2. Check whether `$5AC4F` differs from `$5AC4C` on those calls, and compare
    low-resolution plane pixels and hi-res coverage in the same frame.
 3. Verify the original opcode uses `$5AC4F` before changing `line_ops()`;

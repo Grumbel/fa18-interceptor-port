@@ -6,6 +6,7 @@
 #include "m68k/cpu.hpp"
 #include "recomp/recomp.hpp"
 #include "amiga/adf.hpp"
+#include "amiga/regs_probe.hpp"
 
 #include <array>
 #include <cstdint>
@@ -14,6 +15,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -361,8 +363,7 @@ private:
  private:
   bool calltrace_ = false;
   uint32_t watch_addr_ = 0, watch_val_ = 0;
-  uint32_t regs_addr_ = 0;
-  int regs_log_budget_ = 0;   // running original code for --native verify
+  std::optional<RegsProbe> regs_probe_; // entry registers + selected RAM fields
   bool suppress_irq_ = false;
   uint32_t heap_hw_ = 0;        // highest heap address handed out
   struct NativeStats { uint64_t calls = 0, verified = 0, mismatches = 0, skipped = 0; };

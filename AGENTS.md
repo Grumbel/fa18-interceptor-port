@@ -161,6 +161,9 @@ commit with a routine disabled "for now" without saying so in TODO.md.
   registers as the original code had them (find out with
   `FA18_REGS=addr,count ... --native off`, which logs all registers when
   execution reaches addr, and by comparing FA18_CALLTRACE/FA18_WATCH runs).
+  To inspect RAM fields on the same entry without touching the emulated bus,
+  add `,address:width` fields (`b`, `w`, `l`) after the count, e.g.
+  `FA18_REGS=44686,20,5a9e0:w,5ac4c:w,5ac4e:w`.
 - The polygon-op handlers ($32ffa-$35f48) live in `ops_body.inc`, compiled
   by ops.cpp (live machine) and by mesh_ops.cpp (the mesh viewer's offline
   decoder, `mesh_emu.hpp`).  Use only unqualified helpers there (cpu(),

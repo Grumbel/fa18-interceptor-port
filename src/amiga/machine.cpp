@@ -240,12 +240,13 @@ void Machine::setup_native() {
   calltrace_ = getenv("FA18_CALLTRACE") != nullptr;
   // FA18_WATCH=hexaddr: log every change of the long at addr (needs
   // --interpret so every instruction is visible).
-  // FA18_REGS=hexaddr[,count]: log all registers when execution reaches
-  // addr (use --native off or the routine's callers will not be seen).
+  // FA18_REGS=hexaddr[,count[,ramaddr[:b|w|l]...]]: registers and optional
+  // RAM fields on entry. Use --native off for original-code call sequences.
   if (const char* r = getenv("FA18_REGS")) {
-    regs_addr_ = uint32_t(strtoul(r, nullptr, 16));
-    const char* c = strchr(r, ',');
-    regs_log_budget_ = c ? atoi(c + 1) : 20;
+    regs_probe_ = parse_regs_probe(r, RAM_SIZE);
+    if (!regs_probe_) log("invalid FA18_REGS (expected pc[,count[,addr[:b|w|l]...]])\n");
+  } else {
+    regs_probe_.reset();
   }
   if (const char* w = getenv("FA18_WATCH")) {
     watch_addr_ = uint32_t(strtoul(w, nullptr, 16));
@@ -656,12 +657,18 @@ void Machine::execute(int64_t until) {
       }
       if (f && frame_count_ >= from && frame_count_ <= to) fprintf(f, "%llu %06x %08x %08x %08x\n", (unsigned long long)frame_count_, pc, read32(cpu.a[7] + 4), read32(cpu.a[7] + 8), read32(cpu.a[7] + 12));
     }
-    if (regs_addr_ && pc == regs_addr_ && regs_log_budget_ > 0) {
-      --regs_log_budget_;
+    if (regs_probe_ && pc == regs_probe_->pc && regs_probe_->budget > 0) {
+      --regs_probe_->budget;
       log("[regs] pc=%06x frame %llu d:", pc, (unsigned long long)frame_count_);
       for (int i = 0; i < 8; ++i) log(" %08x", cpu.d[i]);
       log(" a:");
       for (int i = 0; i < 8; ++i) log(" %08x", cpu.a[i]);
+      if (!regs_probe_->fields.empty()) log(" ram:");
+      for (auto field : regs_probe_->fields) {
+        char kind = field.width == 1 ? 'b' : field.width == 2 ? 'w' : 'l';
+        log(" %06x:%c=%0*x", field.address, kind, int(field.width) * 2,
+            probe_value(ram_.data(), field));
+      }
       log("\n");
     }
     if (!pc_hooks_.empty() && !in_reference_) {
