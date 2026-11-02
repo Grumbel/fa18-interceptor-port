@@ -96,6 +96,15 @@ the polygon ops translated to emit primitives directly.
 
 ## Open points
 
+- In external aircraft views, some wing and runway corners have dotted or
+  blocky fragments. `FA18_HIRES_DEBUG=1` paints low-resolution fallback cells
+  magenta; a `--gl 3` external-view capture (using scripted `key enter` for
+  Keypad Enter) showed **no fallback cells** on the 3D geometry. These
+  fragments originate in GL primitive rendering (potentially depth and
+  overlapping edges), not the original 320x200 compositor. The HUD remains
+  low-resolution by design. The current code still supports fallback for
+  intentionally uncaptured 2D drawing and post-scene cockpit graphics.
+
 - The order of toggles and overlays is approximated: all plane-1
   inversions are applied (stencil) before the overlays are painted.
 - Primitive precision is the original's 16-bit view space; models are not

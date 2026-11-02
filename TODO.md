@@ -724,6 +724,19 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [x] Add `tools/extract_menu_font.py` to generate a PPM glyph atlas and an
       optional raw 371-byte dump from the user's original ADF.
 
+### Save-state browsers and OpenGL edge diagnostics (2026-11-02)
+- [x] Replace four-slot selector with unlimited Save/Load submenus. New Save
+      creates a unique file; selecting an existing save for overwrite requires
+      confirmation. Recognize old `stateN.sav` without migration.
+- [x] Read descriptions from version-1 save-file RAM (mission, cell, height,
+      speed, kills/targets) without changing the binary format or the machine.
+- [x] Check low-resolution compositing with `FA18_HIRES_DEBUG=1` in an
+      external aircraft view. No fallback pixels appeared on geometry;
+      GL-only edge fragments are not caused by 320x200 overdraw there.
+- [ ] Trace GL geometry/line rasterisation and overlapping depth-tested
+      coplanar primitives at the wing and runway corners, where dotted
+      fragments remain.
+
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in
 packages or the WASM site. Runtime always loads a user-supplied image.
