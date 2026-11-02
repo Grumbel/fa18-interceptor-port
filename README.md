@@ -93,7 +93,10 @@ Keys are passed to the game as on the Amiga (see `manual.txt`):
 | P, Esc, Shift-Esc | Pause, restart, back to mission selection |
 
 Front end keys: **Ctrl+F9** or **Insert** debug menu, **Ctrl+F10** mesh
-viewer, **F11** fullscreen, **Pause** fast-forward, **F12** captures the mouse
+viewer, **Ctrl+F11** switches between original 320×200 and the last enhanced
+graphics setting (OpenGL/software, including its scale; the first switch from
+original defaults to 3× OpenGL, or software if GL is unavailable), **F11**
+fullscreen, **Pause** fast-forward, **F12** captures the mouse
 (port 1; the game reads it but flies with joystick or keyboard). Plain
 **F9/F10** go to the original game for throttle/afterburner.
 The debug menu has a two-page control reference (**H** on keyboard, **Y** on

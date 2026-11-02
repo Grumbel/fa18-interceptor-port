@@ -684,6 +684,8 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [x] WASM: canvas default 960×720 + CSS aspect-ratio; EMSCRIPTEN SDL hints
 - [x] WASM/desktop: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer;
       plain F9/F10 preserved for the game's throttle/afterburner
+- [x] Ctrl+F11 swaps original 320×200 and last enhanced OpenGL/software mode;
+      plain F11 stays fullscreen (and web uses software hi-res fallback)
 - [x] WASM: HTML Menu/Models buttons via fa18_request_*; mouse orbit in mesh viewer
 - [x] WASM: no second WebGL context — menu only software hires scales; init_gl disabled
 - [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot

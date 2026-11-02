@@ -5,6 +5,7 @@
 #include "native/gl_renderer.hpp"
 #include "native/mesh_viewer.hpp"
 #include "frontend_hotkeys.hpp"
+#include "graphics_toggle.hpp"
 #include "native/terrain.hpp"
 #include "native/world.hpp"
 #include "original_menu_font.hpp"
@@ -147,6 +148,7 @@ public:
   int pad_prev_hat = -1;      // pie menu: last direction while a shoulder is held (-1 none, 8 neutral)
   int pad_throttle_cd = 0;    // frames until next throttle step
   FrontendHotkeys debug_hotkeys;
+  GraphicsToggle graphics_toggle;
   bool pad_held_key[128] = {};
   bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
   // Debug overlay with game world statistics (stats_overlay.cpp), drawn at
@@ -213,6 +215,22 @@ public:
     SDL_SetRelativeMouseMode(g ? SDL_TRUE : SDL_FALSE);
   }
 
+  void set_graphics_mode(int scale, bool use_gl) {
+    graphics_toggle.remember({scale, use_gl});
+    glr::set_enabled(use_gl);
+    machine->set_hires_scale(scale);
+  }
+
+  void toggle_graphics() {
+    GraphicsMode mode = graphics_toggle.next({machine->hires_scale, glr::active()});
+    if (mode.scale > 0 && mode.opengl && !glr::ready() &&
+        (gl_failed || !init_gl())) {
+      gl_failed = true;
+      mode.opengl = false;
+    }
+    set_graphics_mode(mode.scale, mode.opengl);
+  }
+
   void handle_events() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -235,9 +253,15 @@ public:
           if (hk == FrontendAction::OpenMenu) { menu_request = true; break; }
           if (hk == FrontendAction::OpenModels) { mesh_viewer_request = true; break; }
           if (hk == FrontendAction::Consumed) break;
-          if (sc == SDL_SCANCODE_F11 && down) {
-            Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
-            SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+          if (sc == SDL_SCANCODE_F11) {
+            if (down && !e.key.repeat) {
+              if (e.key.keysym.mod & KMOD_CTRL) {
+                toggle_graphics();
+              } else {
+                Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+                SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+              }
+            }
             break;
           }
           if (sc == SDL_SCANCODE_PAUSE && down) { fast = !fast; break; }
@@ -713,8 +737,7 @@ public:
             if (!order[idx][1] || glr::ready() || (!gl_failed && init_gl())) break;
             gl_failed = true;
           }
-          glr::set_enabled(order[idx][1] != 0);
-          machine->set_hires_scale(order[idx][0]);
+          set_graphics_mode(order[idx][0], order[idx][1] != 0);
           break;
         }
         case 2: machine->analog_enabled = !machine->analog_enabled; break;
@@ -1210,6 +1233,7 @@ void usage() {
           "  --map-dump FILE  top-down map (water, objects) of the world as PPM\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
           "keys: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
+          "      Ctrl+F11 original/enhanced graphics toggle,\n"
           "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
           "      stick/d-pad fly, A fire, B weapon, X target, Y map,\n"
