@@ -1,5 +1,6 @@
 // F/A-18 Interceptor — SDL2 front end.
 #include "amiga/machine.hpp"
+#include "control_help.hpp"
 #include "font6x10.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/mesh_viewer.hpp"
@@ -621,6 +622,8 @@ public:
     menu_request = false;
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
     int sel = 0;
+    bool help_open = false;
+    int help_page = 0;
     std::vector<uint32_t> cv(size_t(w) * size_t(h));
     const int sc = std::max(1, w / 320);
     bool open = true;
@@ -638,6 +641,8 @@ public:
     auto run_mesh_viewer = [&] { run_mesh_viewer_standalone(bg, w, h); };
 
     const int NITEMS = 12;
+    static_assert(8 + 16 + NITEMS * 12 + 3 + 13 + font6x10::H <= 200,
+                  "debug menu must fit at the original 320x200 resolution");
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
       switch (item) {
         case 0: if (dir == 0) open = false; break;
@@ -695,24 +700,54 @@ public:
         switch (e.type) {
           case SDL_QUIT: quit = true; break;
           case SDL_KEYDOWN:
+            if (help_open) {
+              switch (e.key.keysym.scancode) {
+                case SDL_SCANCODE_ESCAPE:
+                case SDL_SCANCODE_BACKSPACE:
+                case SDL_SCANCODE_H:
+                case SDL_SCANCODE_INSERT: help_open = false; break;
+                case SDL_SCANCODE_LEFT: help_page = 0; break;
+                case SDL_SCANCODE_RIGHT: help_page = 1; break;
+                case SDL_SCANCODE_TAB:
+                case SDL_SCANCODE_RETURN: help_page ^= 1; break;
+                default: break;
+              }
+              break;
+            }
             switch (e.key.keysym.scancode) {
               case SDL_SCANCODE_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
               case SDL_SCANCODE_DOWN: sel = (sel + 1) % NITEMS; break;
               case SDL_SCANCODE_LEFT: activate(sel, -1); break;
               case SDL_SCANCODE_RIGHT: activate(sel, +1); break;
               case SDL_SCANCODE_RETURN: activate(sel, 0); break;
+              case SDL_SCANCODE_H: help_open = true; break;
               case SDL_SCANCODE_ESCAPE:
               case SDL_SCANCODE_INSERT: open = false; break;
               default: break;
             }
             break;
           case SDL_CONTROLLERBUTTONDOWN:
+            if (help_open) {
+              switch (e.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_B:
+                case SDL_CONTROLLER_BUTTON_BACK:
+                case SDL_CONTROLLER_BUTTON_START: help_open = false; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: help_page = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: help_page = 1; break;
+                case SDL_CONTROLLER_BUTTON_A: help_page ^= 1; break;
+                default: break;
+              }
+              break;
+            }
             switch (e.cbutton.button) {
               case SDL_CONTROLLER_BUTTON_DPAD_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
               case SDL_CONTROLLER_BUTTON_DPAD_DOWN: sel = (sel + 1) % NITEMS; break;
               case SDL_CONTROLLER_BUTTON_DPAD_LEFT: activate(sel, -1); break;
               case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: activate(sel, +1); break;
               case SDL_CONTROLLER_BUTTON_A: activate(sel, 0); break;
+              case SDL_CONTROLLER_BUTTON_Y: help_open = true; break;
               case SDL_CONTROLLER_BUTTON_B:
               case SDL_CONTROLLER_BUTTON_BACK:
               case SDL_CONTROLLER_BUTTON_START: open = false; break;
@@ -722,7 +757,7 @@ public:
           default: break;
         }
       }
-      if (pad && axis_cd-- <= 0) {  // left stick with auto repeat
+      if (pad && !help_open && axis_cd-- <= 0) {  // left stick with auto repeat
         int ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
         int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
         if (ly < -16000) { sel = (sel + NITEMS - 1) % NITEMS; axis_cd = 8; }
@@ -751,20 +786,30 @@ public:
           "Quit",
       };
       int px = 8 * sc, py = 8 * sc;
-      draw_text(cv, w, h, px, py, "DEBUG MENU", sc, 0xFFFFD040u);
-      py += 16 * sc;
-      for (int i = 0; i < NITEMS; ++i) {
-        std::string line = (i == sel ? "> " : "  ") + items[size_t(i)];
-        draw_text(cv, w, h, px, py, line, sc, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
-        py += 14 * sc;
-      }
-      py += 6 * sc;
-      draw_text(cv, w, h, px, py, "Up/Down select  Left/Right change", sc, 0xFF80A0FFu);
-      py += 11 * sc;
-      draw_text(cv, w, h, px, py, "A/Enter do  B/Back/Esc close", sc, 0xFF80A0FFu);
-      if (!menu_status.empty()) {
+      if (help_open) {
+        for (size_t i = 0; i < control_help::pages[size_t(help_page)].size(); ++i) {
+          draw_text(cv, w, h, px, py,
+                    std::string(control_help::pages[size_t(help_page)][i]),
+                    sc, i == 0 ? 0xFFFFD040u : 0xFFDDDDDDu);
+          py += control_help::row_height * sc;
+        }
+        draw_text(cv, w, h, px, control_help::footer_y * sc,
+                  "Left/Right page  A/Tab next  B/Esc back", sc, 0xFF80A0FFu);
+      } else {
+        draw_text(cv, w, h, px, py, "DEBUG MENU", sc, 0xFFFFD040u);
         py += 16 * sc;
-        draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
+        for (int i = 0; i < NITEMS; ++i) {
+          std::string line = (i == sel ? "> " : "  ") + items[size_t(i)];
+          draw_text(cv, w, h, px, py, line, sc, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
+          py += 12 * sc;
+        }
+        py += 3 * sc;
+        draw_text(cv, w, h, px, py, "A/Enter do  Up/Down select  L/R change", sc, 0xFF80A0FFu);
+        py += 13 * sc;
+        if (menu_status.empty())
+          draw_text(cv, w, h, px, py, "Y/H controls help   B/Back/Esc close", sc, 0xFF80A0FFu);
+        else
+          draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
       }
       if (w != tex_w || h != tex_h) {
         SDL_DestroyTexture(tex);

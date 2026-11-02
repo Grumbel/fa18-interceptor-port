@@ -96,6 +96,8 @@ Front end keys: **Ctrl+F9** or **Insert** debug menu, **Ctrl+F10** mesh
 viewer, **F11** fullscreen, **Pause** fast-forward, **F12** captures the mouse
 (port 1; the game reads it but flies with joystick or keyboard). Plain
 **F9/F10** go to the original game for throttle/afterburner.
+The debug menu has a two-page control reference (**H** on keyboard, **Y** on
+gamepad); Left/Right switches between original Amiga keys and gamepad bindings.
 
 ### Game controller
 

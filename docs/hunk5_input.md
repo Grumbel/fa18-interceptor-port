@@ -48,6 +48,9 @@ debug menu / mesh viewer, even though both are needed by the game's throttle
 (F10 repeated at full throttle selects afterburner). Host commands now use
 **Ctrl+F9 / Ctrl+F10**, with Insert and the browser Menu/Models buttons kept
 as other ways to reach those tools.
+The port's debug menu also exposes the checked raw-key routes in a keyboard
+and gamepad help view (H/Y to open); the compact labels are maintained in
+`src/control_help.hpp`, with a standalone 320x200 layout test.
 
 ## Priority A: three signed axes, `$2E16C` (`$C1B410`)
 
