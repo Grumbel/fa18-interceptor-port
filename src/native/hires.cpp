@@ -66,6 +66,10 @@ bool in_scene = false;
 bool gf_begun = false;    // layer was started by game_frame
 void on_polygon();
 bool pending_3d = false;  // a 3D polygon was rendered; its $44b50 fill follows
+// The original 68000 $2fc14 scene routine returns to these caller PCs.
+// Interpreted execution needs its own end hook; the native C++ wrapper
+// already invokes scene_end() itself.
+std::vector<uint32_t> scene_return_pcs;
 uint64_t stat_poly = 0, stat_line = 0;
 
 // display plane p is the plane table entry 3-p (entry 3 is the lowest
@@ -702,7 +706,7 @@ static void on_game_frame() {
 }
 
 void scene_begin() {
-  if (gf_begun && in_scene) {
+  if (in_scene) {
     gf_begun = false;
     return;
   }
@@ -769,6 +773,36 @@ void scene_end() {
 
 void install(amiga::Machine& m) {
   scene_hooks = true;
+  scene_return_pcs.clear();
+  // The native $2fc14 wrapper invokes scene_begin/scene_end directly, but
+  // --native off runs the original bytes and skips those C++ calls. Observe
+  // its entry and the return address on the 68000 stack, then hook that
+  // return instruction. Reusing the return hook avoids allocations per frame.
+  m.add_pc_hook(0x2fc14, [&m] {
+    if (!in_scene) glr::scene_begin();
+    scene_begin();
+    const uint32_t ret = rd32(native::cpu().a[7]) & 0x00ffffff;
+    if (ret < 0x20000 || ret >= 0x80000 || (ret & 1)) return;
+    if (std::find(scene_return_pcs.begin(), scene_return_pcs.end(), ret) != scene_return_pcs.end())
+      return;
+    scene_return_pcs.push_back(ret);
+    m.add_pc_hook(ret, [] { scene_end(); });
+    if (std::getenv("FA18_GL_DEBUG"))
+      std::fprintf(stderr, "gl: hooked 68000 scene return at $%06x\n", ret);
+  });
+  // A native object wrapper calls begin_object after decoding the model
+  // pointer. Recreate exactly that state at the original entry labels so
+  // polygons and lines also get a depth/object ID in interpreter mode.
+  m.add_pc_hook(0x31e4a, [] {
+    const m68k::Cpu& c = native::cpu();
+    const uint32_t mesh = rd32(c.a[6] - 44) + uint32_t(int16_t(c.d[0] & 4095));
+    glr::begin_object(mesh, c.a[2], false);
+  });
+  m.add_pc_hook(0x32dda, [] {
+    const m68k::Cpu& c = native::cpu();
+    if (uint16_t(c.d[0]) != 0xffff)
+      glr::begin_object(rd32(c.a[2]), c.a[2] + 4, true);
+  });
   uint32_t dummy = 0;
   (void)dummy;
   // $38c0a falls into $38c0c — hook only $38c0c or every poly is captured twice.
