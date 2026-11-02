@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from reference_addr import Crosswalk, index_notes
+from reference_addr import Crosswalk, index_notes, scan_reference_addresses
 
 
 class CrosswalkTest(unittest.TestCase):
@@ -63,6 +63,21 @@ class CrosswalkTest(unittest.TestCase):
             match, path = rows[0]
             self.assertEqual(match.port, 0x2004C)
             self.assertEqual(str(path), "analysis/routines/c2000c_example.md")
+
+    def test_scan_source_addresses_ignores_comments_hardware_and_duplicates(self):
+        source = [
+            "; old address $C2FFFF must not enter the crosswalk\n",
+            "START equ $C2000C ; stale $C20003\n",
+            "\tbsr.w\t$c00003 ; and $DFF000 is hardware\n",
+            " move.l 0xC2000C,a0\n",
+            " jsr $C20003\n",
+        ]
+        rows = list(scan_reference_addresses(source))
+        self.assertEqual([(addr, line) for addr, line, _ in rows],
+                         [(0xC2000C, 2), (0xC00003, 3), (0xC20003, 5)])
+        self.assertEqual([self.crosswalk.translate(addr, "reference")[0].port
+                          for addr, _, _ in rows], [0x2004C, 0x2000B, 0x20043])
+        self.assertEqual(rows[1][2], "bsr.w $c00003")  # stable TSV field, no tab
 
 
 if __name__ == "__main__":

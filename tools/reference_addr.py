@@ -9,6 +9,8 @@ Usage:
   python3 tools/reference_addr.py ../fa18interceptor --from-reference 0xc1718e
   python3 tools/reference_addr.py ../fa18interceptor --from-port 0x292e6
   python3 tools/reference_addr.py ../fa18interceptor --index
+  python3 tools/reference_addr.py ../fa18interceptor \
+      --scan source_amiga/observed/submit_bounded_tuple_list.asm
   python3 tools/reference_addr.py ../fa18interceptor --executable /path/to/exe \
       --from-reference 0xc2fa7e
 
@@ -23,6 +25,7 @@ from pathlib import Path
 
 
 LOAD_BASE = 0x20000
+SOURCE_ADDRESS_RE = re.compile(r"(?<![\w])(?:\$|0[xX])([cC][0-9a-fA-F]{5})(?![\w])")
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,24 @@ def index_notes(root, crosswalk):
             yield match, path.relative_to(root)
 
 
+def scan_reference_addresses(lines):
+    """Yield unique $Cxxxxx/0xCxxxxx ASM operands with their first source line.
+
+    Strip semicolon comments, since many source slices quote stale addresses in
+    commentary.  The returned operands are candidates: a matching numeral by
+    itself does not prove a relocatable address or identical executable bytes.
+    """
+    seen = set()
+    for lineno, line in enumerate(lines, start=1):
+        code = line.split(";", 1)[0]
+        for token in SOURCE_ADDRESS_RE.finditer(code):
+            address = int(token.group(1), 16)
+            if address in seen:
+                continue
+            seen.add(address)
+            yield address, lineno, " ".join(code.split())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -118,6 +139,8 @@ def main():
                        help="our fixed LoadSeg address(es), e.g. 0x292e6")
     group.add_argument("--index", action="store_true",
                        help="list translated analysis/routines/c*.md notes")
+    group.add_argument("--scan", metavar="FILE", type=Path,
+                       help="translate $Cxxxxx operands of an ASM source file (relative to reference checkout)")
     parser.add_argument("--executable", type=Path,
                         help="optional original executable for Hunk layout verification")
     args = parser.parse_args()
@@ -132,6 +155,23 @@ def main():
             print(f"${match.port:05X}\t{match.hunk}+${match.offset:X}\t"
                   f"${match.reference:06X}\t{match.status}\t{path}")
         return 0
+
+
+    if args.scan:
+        source = args.scan if args.scan.is_absolute() else args.reference_root / args.scan
+        missing = 0
+        print("reference\thunk\tport\tstatus\tline\tsource")
+        with source.open(encoding="utf-8") as f:
+            for address, lineno, code in scan_reference_addresses(f):
+                matches = crosswalk.translate(address, "reference")
+                if not matches:
+                    print(f"${address:06X}\t-\t-\tunmapped\t{lineno}\t{code}")
+                    missing += 1
+                else:
+                    for match in matches:
+                        print(f"${address:06X}\t{match.hunk}+${match.offset:X}\t"
+                              f"${match.port:05X}\t{match.status}\t{lineno}\t{code}")
+        return 1 if missing else 0
 
     direction = "reference" if args.from_reference else "port"
     addresses = args.from_reference if args.from_reference else args.from_port
