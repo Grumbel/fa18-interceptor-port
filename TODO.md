@@ -705,10 +705,15 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [x] Add `tools/verify_line_flags.py`: inspect the exact user's original ADF
       for eight ordered relocated `BTST` selectors in the Hunk-36 line emitter;
       no proprietary executable retained. Synthetic opcode tests included.
-- [ ] Confirm the original-ADF code at `$44782` tests `$5AC4F` in negative
-      mode using the verifier; then fix `src/native/hires.cpp::line_ops()` if
-      confirmed and compare hi-res output against original plane pixels.
-      Run `tests/check_native.sh` before committing *any* native edit.
+- [x] Original-ADF opcode check: eight ordered `BTST.B` selectors match the
+      independent reconstruction; four negative-mode operands use `$5AC4F`.
+      Correct `src/native/hires.cpp::line_ops()` (leave `poly_ops()` alone).
+- [x] After the observer correction, `tests/check_native.sh` with the original
+      ADF and recompiled code: 41 native equivalence scenarios identical,
+      per-call verify 0 mismatches, 41 interpreter equivalence scenarios
+      identical (`PASS`). Headless `free1 --hires 3` frame-1600 smoke test passed.
+- [ ] Inspect hi-res/GL pixel results after the negative-mode colour fix,
+      especially lines and points in frames flagged by the 80-call probe.
 
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in

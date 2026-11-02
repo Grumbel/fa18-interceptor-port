@@ -50,7 +50,7 @@ in `src/native/hires.cpp`:
 an independently matching usage, not a byte-for-byte comparison of our ADF.
 The reference and this port used different executable variants.
 
-## Possible bug: negative-mode line colour
+## Confirmed mismatch: negative-mode line colour
 
 The byte-exact reference `submit_blitter_line_to_active_planes.asm` contains
 this decision for **each** enabled plane:
@@ -68,14 +68,10 @@ tests bit *p* at **`$5AC4F`**, then adds either `$00FA` (set) or `$000A`
 case, following the colour word used by `poly_ops()`.
 
 These are different fields: our variables table already defines
-`w_5ac4c` and `w_5ac4e` separately. This suggests that some negative-mode
-lines and points may receive the wrong colour in the high-resolution overlay
-even while the original low-resolution Amiga blitter is correct.
-
-**Do not change `src/native/hires.cpp` yet.** First compare the reference's
-line-emitter instruction window to the original, patched executable used by
-this port. Changes under `src/native/` require `tests/check_native.sh` to pass;
-the original ADF is available to the user but not in this build environment.
+`w_5ac4c` and `w_5ac4e` separately. The negative-mode line selector in
+`line_ops()` was therefore wrong, even while the original low-resolution
+Amiga blitter was correct. `poly_ops()` must retain its separate `$5AC4C`
+colour field.
 
 ### Original-ADF entry-probe result (2026-11-02)
 
@@ -99,10 +95,36 @@ span 17 frames (beginning at frame 1329) and establish that negative mode is
 | `$0001` / `$0008` | matching lower nibble | 54 | none |
 
 This confirms that a different colour choice would be *observable* in the
-port's hi-res/GL model. It does not yet prove that the user's particular
-executable has the same line-emitter opcode as the independent reconstruction.
-The full log (which includes local machine details) is deliberately not
-included in this repository.
+port's hi-res/GL model. The full log (which includes local machine details)
+is deliberately not included in this repository.
+
+### Original executable opcode verification (2026-11-02)
+
+The actual ADF used for the probe (SHA-256
+`3dd48f8985561be22d902393de3baee002d64255fa3826835fcb209875c62540`)
+was subsequently inspected with `tools/verify_line_flags.py`. **All eight
+`BTST.B` selectors match** the reference and appear in the same order:
+
+| Display plane | Nonnegative-mode selector | Negative-mode selector |
+| --- | --- | --- |
+| 0 | `$4479E` → `$5A9E1` | `$447A8` → `$5AC4F` |
+| 1 | `$44806` → `$5A9E1` | `$44810` → `$5AC4F` |
+| 2 | `$4486E` → `$5A9E1` | `$44878` → `$5AC4F` |
+| 3 | `$448D6` → `$5A9E1` | `$448E0` → `$5AC4F` |
+
+The fix in `src/native/hires.cpp::line_ops()` selects the low four bits of
+`$5AC4E` in negative mode; the low byte is precisely the original instruction's
+`$5AC4F` operand. The check confirms the selector operands, although the
+surrounding branches have not been byte-compared independently. The ADF
+remains external to the repository and is never distributed in a bundle.
+
+The full `tests/check_native.sh` gate passed using this ADF and the statically
+recompiled build: all **41** native-on/native-off scenarios were identical,
+per-call native verification reported **no mismatches**, and all **41**
+interpreter/recompiler scenarios were identical. A headless `--native on
+--hires 3` run of the `free1` scenario through frame 1600 also completed.
+These checks establish game-state equivalence and basic rendering stability;
+they do not yet establish visual pixel equivalence in affected hi-res frames.
 
 To reproduce and automatically summarize future runs:
 
@@ -137,8 +159,8 @@ To reproduce and automatically summarize future runs:
 
    Then compare low-resolution plane pixels and hi-res coverage in the same
    frame.
-3. Only after byte verification, change `line_ops()` to use the correct flags;
-   retain the native equivalence gate and visual regression tests.
+3. Recheck native equivalence using `tests/check_native.sh`, and use the
+   original plane pixels to evaluate the corrected hi-res/GL output visually.
 
 ## Scan another reference source
 

@@ -9,8 +9,9 @@
 //
 // Primitive parameters (see $44b50 / $44686):
 //   $5a9df       plane mask, bit b <-> colour bit b
-//   $5a9e0 < 0   colour bits come from $5ac4c, else bits of $5a9e0 select
-//                set (1) / clear (0); $5a9e2 bit b set = XOR instead
+//   $5a9e0 < 0   polygon colour bits come from $5ac4c, line bits from
+//                $5ac4f (low byte of $5ac4e); else bits of $5a9e0 select
+//                set (1) / clear (0); $5a9e2 bit b set = XOR for polygons
 #include "amiga/machine.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/remaster.hpp"
@@ -114,7 +115,9 @@ PlaneOps line_ops() {
   PlaneOps o;
   uint16_t mask = uint16_t(rd16(0x5a9de)) & 15;
   int16_t w1 = int16_t(rd16(0x5a9e0));
-  uint16_t col = rd16(0x5ac4c);
+  // $44782: the negative-mode line emitter tests $5ac4f, not the polygon
+  // colour word at $5ac4c (verified against the original ADF instructions).
+  uint16_t col = rd16(0x5ac4e);
   for (int b = 0; b < 4; ++b) {
     if (!(mask & (1 << b))) continue;
     int pl = plane_of_bit(b);
