@@ -85,10 +85,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   records (`src/stats_overlay.cpp`); read-only. With it on, script `shot
   F` also writes `F.stats.ppm` with the overlay.
 - Debug menu: gamepad Back button (keyboard: Insert) pauses and offers
-  3D resolution (original/2x/3x/4x), analog stick, save/load state slots
-  (`<save dir>/stateN.sav`) and "send ESC". Save states are applied at the
+  3D resolution (original/2x/3x/4x), analog stick, **Save states >** and
+  **Load states >** browsers (unlimited `.sav` files in `<save dir>`). New
+  saves get unique names; old `stateN.sav` files remain compatible. Entries
+  describe the saved RAM (mission, cell, altitude, speed, kills/targets),
+  and overwrites ask for confirmation. Save states are applied at the
   top of the game's main loop ($27d50), the only point where all state is
-  in RAM/registers; script commands `savestate N`, `loadstate N`, `menu`.
+  in RAM/registers; script commands `savestate N`, `loadstate N`, `menu`
+  retain their legacy numeric paths for test automation.
 
 ## Tools
 - `tools/adf.py list|extract` — OFS ADF reader

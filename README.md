@@ -142,9 +142,15 @@ All off by default; the original behaviour is untouched.
   a stock A500 (they otherwise run several times faster; the game itself
   is not slowed down, see docs/frame_timing.md).
 - **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog
-  stick, text pacing, save/load state slots and a way to send ESC to the game.  Save
-  states are stored next to the flight log; they can also be loaded from
-  the intro.
+  stick, text pacing, save/load state browsers and a way to send ESC to the game.
+  **Save states >** lists existing saves to overwrite (requires confirmation),
+  plus **New Save** for a fresh, uniquely named file. **Load states >** lists
+  all compatible `.sav` files, including the old `stateN.sav` slots. The lists
+  scroll without a fixed slot limit (Up/Down, Left/Right or PgUp/PgDn to page,
+  Enter/A to select, Esc/B to go back). Entries summarize the captured game
+  RAM: mission, map cell, altitude, speed and enemy progress. Save files live
+  in `--save DIR` / the normal user-data directory beside the flight log and
+  can be loaded even from the intro.
 
 The debug menu and its controls reference use the game's original **5x7
 bitmap font**, loaded at runtime from Hunk 61 of the ADF executable. The

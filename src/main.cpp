@@ -8,6 +8,7 @@
 #include "native/terrain.hpp"
 #include "native/world.hpp"
 #include "original_menu_font.hpp"
+#include "savestate_browser.hpp"
 #include "stats_overlay.hpp"
 
 #include <SDL.h>
@@ -442,7 +443,6 @@ public:
   // ---- debug menu (Back button / Insert) -------------------------------------
   bool menu_request = false;
   bool mesh_viewer_request = false;
-  int menu_slot = 1;
   std::string menu_status;
 
   void draw_text(std::vector<uint32_t>& cv, int w, int h, int x, int y, const std::string& t,
@@ -460,10 +460,6 @@ public:
                 if (px >= 0 && px < w && py >= 0 && py < h) cv[size_t(py) * size_t(w) + size_t(px)] = col;
               }
     }
-  }
-
-  std::string state_path(int slot) const {
-    return machine->save_dir + "/state" + std::to_string(slot) + ".sav";
   }
 
   void run_mesh_viewer_standalone(const uint32_t* /*bg*/, int w, int h) {
@@ -625,6 +621,12 @@ public:
     int sel = 0;
     bool help_open = false;
     int help_page = 0;
+    enum class Browser { Closed, Save, Load };
+    Browser browser = Browser::Closed;
+    std::vector<savestate_browser::Entry> saves;
+    int browse_sel = 0;
+    bool confirm_overwrite = false;
+    constexpr int browse_rows = 11;
     std::vector<uint32_t> cv(size_t(w) * size_t(h));
     const int sc = std::max(1, w / 320);
     original_menu_font::Font game_font;
@@ -647,10 +649,48 @@ public:
     // from the executable on the ADF.
     auto run_mesh_viewer = [&] { run_mesh_viewer_standalone(bg, w, h); };
 
-    const int NITEMS = 12;
+    const int NITEMS = 11;
     static_assert(8 + 16 + NITEMS * 12 + 3 + 13 + font6x10::H <= 200,
                   "debug menu must fit at the original 320x200 resolution");
+    auto enter_browser = [&](Browser b) {
+      browser = b;
+      saves = savestate_browser::list(machine->save_dir);
+      browse_sel = 0;
+      confirm_overwrite = false;
+    };
+    auto browse_count = [&] {
+      return int(saves.size()) + (browser == Browser::Save ? 2 : 1);
+    };
+    auto browse_move = [&](int delta) {
+      browse_sel = std::clamp(browse_sel + delta, 0, browse_count() - 1);
+      confirm_overwrite = false;
+    };
     auto activate = [&](int item, int dir) {  // dir: -1/+1 change, 0 select
+      if (browser != Browser::Closed) {
+        if (dir != 0) { browse_move(dir * browse_rows); return; }
+        if (browse_sel == 0) { browser = Browser::Closed; return; }
+        if (browser == Browser::Save && browse_sel == 1) {
+          const auto path = savestate_browser::new_path(machine->save_dir);
+          machine->request_save_state(path.string());
+          menu_status = "saving new state...";
+          open = false;
+          return;
+        }
+        const int index = browse_sel - (browser == Browser::Save ? 2 : 1);
+        if (index >= 0 && index < int(saves.size())) {
+          const std::string path = saves[size_t(index)].path.string();
+          if (browser == Browser::Save) {
+            if (!confirm_overwrite) { confirm_overwrite = true; return; }
+            machine->request_save_state(path);
+            menu_status = "overwriting saved state...";
+          } else {
+            machine->request_load_state(path);
+            menu_status = "loading saved state...";
+          }
+          open = false;
+        }
+        return;
+      }
       switch (item) {
         case 0: if (dir == 0) open = false; break;
         case 1: {
@@ -681,22 +721,15 @@ public:
         case 3: machine->full_detail = !machine->full_detail; break;
         case 4: machine->text_pace = !machine->text_pace; break;
         case 5: stats_on = !stats_on; break;
-        case 6:
-          menu_slot = (menu_slot - 1 + (dir == 0 ? 1 : dir) + 4) % 4 + 1;
-          break;
-        case 7:
-          if (dir == 0) { machine->request_save_state(state_path(menu_slot)); menu_status = "saving..."; open = false; }
-          break;
+        case 6: if (dir == 0) enter_browser(Browser::Save); break;
+        case 7: if (dir == 0) enter_browser(Browser::Load); break;
         case 8:
-          if (dir == 0) { machine->request_load_state(state_path(menu_slot)); menu_status = "loading..."; open = false; }
-          break;
-        case 9:
           if (dir == 0) run_mesh_viewer();
           break;
-        case 10:
+        case 9:
           if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
           break;
-        case 11:
+        case 10:
           if (dir == 0) { quit = true; open = false; }
           break;
       }
@@ -722,14 +755,29 @@ public:
               break;
             }
             switch (e.key.keysym.scancode) {
-              case SDL_SCANCODE_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
-              case SDL_SCANCODE_DOWN: sel = (sel + 1) % NITEMS; break;
+              case SDL_SCANCODE_UP:
+                if (browser != Browser::Closed) browse_move(-1);
+                else sel = (sel + NITEMS - 1) % NITEMS;
+                break;
+              case SDL_SCANCODE_DOWN:
+                if (browser != Browser::Closed) browse_move(+1);
+                else sel = (sel + 1) % NITEMS;
+                break;
+              case SDL_SCANCODE_PAGEUP: if (browser != Browser::Closed) browse_move(-browse_rows); break;
+              case SDL_SCANCODE_PAGEDOWN: if (browser != Browser::Closed) browse_move(+browse_rows); break;
+              case SDL_SCANCODE_HOME: if (browser != Browser::Closed) browse_move(-browse_count()); break;
+              case SDL_SCANCODE_END: if (browser != Browser::Closed) browse_move(+browse_count()); break;
               case SDL_SCANCODE_LEFT: activate(sel, -1); break;
               case SDL_SCANCODE_RIGHT: activate(sel, +1); break;
               case SDL_SCANCODE_RETURN: activate(sel, 0); break;
               case SDL_SCANCODE_H: help_open = true; break;
               case SDL_SCANCODE_ESCAPE:
-              case SDL_SCANCODE_INSERT: open = false; break;
+              case SDL_SCANCODE_BACKSPACE:
+              case SDL_SCANCODE_INSERT:
+                if (confirm_overwrite) confirm_overwrite = false;
+                else if (browser != Browser::Closed) browser = Browser::Closed;
+                else open = false;
+                break;
               default: break;
             }
             break;
@@ -749,15 +797,25 @@ public:
               break;
             }
             switch (e.cbutton.button) {
-              case SDL_CONTROLLER_BUTTON_DPAD_UP: sel = (sel + NITEMS - 1) % NITEMS; break;
-              case SDL_CONTROLLER_BUTTON_DPAD_DOWN: sel = (sel + 1) % NITEMS; break;
+              case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                if (browser != Browser::Closed) browse_move(-1);
+                else sel = (sel + NITEMS - 1) % NITEMS;
+                break;
+              case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                if (browser != Browser::Closed) browse_move(+1);
+                else sel = (sel + 1) % NITEMS;
+                break;
               case SDL_CONTROLLER_BUTTON_DPAD_LEFT: activate(sel, -1); break;
               case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: activate(sel, +1); break;
               case SDL_CONTROLLER_BUTTON_A: activate(sel, 0); break;
               case SDL_CONTROLLER_BUTTON_Y: help_open = true; break;
               case SDL_CONTROLLER_BUTTON_B:
               case SDL_CONTROLLER_BUTTON_BACK:
-              case SDL_CONTROLLER_BUTTON_START: open = false; break;
+              case SDL_CONTROLLER_BUTTON_START:
+                if (confirm_overwrite) confirm_overwrite = false;
+                else if (browser != Browser::Closed) browser = Browser::Closed;
+                else open = false;
+                break;
               default: break;
             }
             break;
@@ -767,8 +825,16 @@ public:
       if (pad && !help_open && axis_cd-- <= 0) {  // left stick with auto repeat
         int ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
         int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
-        if (ly < -16000) { sel = (sel + NITEMS - 1) % NITEMS; axis_cd = 8; }
-        else if (ly > 16000) { sel = (sel + 1) % NITEMS; axis_cd = 8; }
+        if (ly < -16000) {
+          if (browser != Browser::Closed) browse_move(-1);
+          else sel = (sel + NITEMS - 1) % NITEMS;
+          axis_cd = 8;
+        }
+        else if (ly > 16000) {
+          if (browser != Browser::Closed) browse_move(+1);
+          else sel = (sel + 1) % NITEMS;
+          axis_cd = 8;
+        }
         else if (lx < -16000) { activate(sel, -1); axis_cd = 8; }
         else if (lx > 16000) { activate(sel, +1); axis_cd = 8; }
         else axis_cd = 0;
@@ -785,9 +851,8 @@ public:
           std::string("Full detail:    ") + (machine->full_detail ? "on" : "off"),
           std::string("Text pacing:    ") + (machine->text_pace ? "on" : "off"),
           std::string("Stats overlay:  ") + (stats_on ? "on" : "off"),
-          "State slot:     " + std::to_string(menu_slot),
-          "Save state",
-          "Load state",
+          "Save states >",
+          "Load states >",
           "Mesh viewer",
           "Send ESC to game",
           "Quit",
@@ -801,6 +866,35 @@ public:
         }
         menu_text(px, control_help::footer_y * sc,
                   "Left/Right page  A/Tab next  B/Esc back", 0xFF80A0FFu);
+      } else if (browser != Browser::Closed) {
+        menu_text(px, py, browser == Browser::Save ? "SAVE STATES" : "LOAD STATES", 0xFFFFD040u);
+        py += 16 * sc;
+        const int first = (browse_sel / browse_rows) * browse_rows;
+        const int count = browse_count();
+        for (int i = first; i < std::min(count, first + browse_rows); ++i) {
+          std::string name;
+          if (i == 0) name = "Back";
+          else if (browser == Browser::Save && i == 1) name = "New Save";
+          else {
+            const int idx = i - (browser == Browser::Save ? 2 : 1);
+            name = std::to_string(idx + 1) + ". " + saves[size_t(idx)].label;
+          }
+          if (name.size() > 42) name.resize(42);
+          menu_text(px, py, std::string(i == browse_sel ? "> " : "  ") + name,
+                    i == browse_sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
+          py += 12 * sc;
+        }
+        menu_text(px, 164 * sc,
+                  std::to_string(saves.size()) + " SAVES   " +
+                    std::to_string(first + 1) + "-" + std::to_string(std::min(count, first + browse_rows)) +
+                    "/" + std::to_string(count), 0xFFFFD040u);
+        if (confirm_overwrite) {
+          menu_text(px, 178 * sc, "Overwrite selected save?", 0xFFFF6060u);
+          menu_text(px, 190 * sc, "A/Enter YES   B/Esc NO", 0xFF80A0FFu);
+        } else {
+          menu_text(px, 178 * sc, "A/Enter select   B/Esc back", 0xFF80A0FFu);
+          menu_text(px, 190 * sc, "Up/Down browse   L/R page", 0xFF80A0FFu);
+        }
       } else {
         menu_text(px, py, "DEBUG MENU", 0xFFFFD040u);
         py += 16 * sc;
