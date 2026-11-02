@@ -1,0 +1,29 @@
+# PC hooks installed by src/native/hires.cpp. Keep these in sync with
+# Machine::add_pc_hook addresses so recompiled basic blocks dispatch through
+# Machine before executing a hooked 68000 instruction (including a fallthrough).
+# These are hook boundaries, not seeds or native-function replacements.
+02112c
+02126e  # observed return from the $2fc14 scene routine
+02fc14
+031e4a
+032dda
+038c0c
+03f284
+042f62
+042f6a
+0432aa
+0432b6
+04389c
+0438a0
+0438a8
+0438ac
+0438b0
+0438b4
+04397c
+043a56
+044994
+044b00
+044b50
+044dfe
+044f46
+04506e

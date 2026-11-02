@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static recompiler: 68000 game code -> C++.
 
-    python3 tools/recomp.py "assets/F-18 Interceptor" outdir [--seeds file]...
+    python3 tools/recomp.py "assets/F-18 Interceptor" outdir [--seeds file]... [--hooks file]...
 
 Loads the executable exactly like the runtime (tools/loadseg.py layout plus
 the protection patch), discovers code by recursive descent from the entry
@@ -11,6 +11,8 @@ interpreter (src/m68k/cpu.cpp) instruction by instruction, including its
 cycle accounting, so the two can be compared in lockstep.  Anything the
 translator does not handle natively is delegated to the interpreter
 (`c.step()`) for that single instruction.
+The optional --hooks file contains hex 68000 PCs where the generated code
+must re-enter the Machine dispatcher before executing the instruction.
 """
 import os
 import struct
@@ -886,11 +888,15 @@ def main():
     exe = sys.argv[1]
     outdir = sys.argv[2]
     seed_files = []
+    hook_files = []
     func_file = None
     args = sys.argv[3:]
     while args:
         if args[0] == "--seeds":
             seed_files.append(args[1])
+            args = args[2:]
+        elif args[0] == "--hooks":
+            hook_files.append(args[1])
             args = args[2:]
         elif args[0] == "--functions":
             func_file = args[1]
@@ -926,6 +932,16 @@ def main():
                 except ValueError:
                     pass
     insns = discover(seeds)
+    # PC hooks execute in Machine's dispatcher, not inside a recompiled
+    # multi-instruction chunk. Force a dispatcher round-trip *before* each
+    # hooked instruction, including fallthrough and direct intra-chunk jumps.
+    # Entry via the chunk switch already starts at the hook PC normally.
+    hook_pcs = set()
+    for hf in hook_files:
+        for line in open(hf):
+            line = line.split("#", 1)[0].strip()
+            if line:
+                hook_pcs.add(int(line, 16))
     order = sorted(insns)
     # Subroutine entry points: targets of JSR/BSR with a constant address.
     entries = {t for i in insns.values() for t in i.calls if isinstance(t, int) and t in insns}
@@ -987,7 +1003,7 @@ namespace recomp {
                         tgt = int(rest.split(")")[0].rstrip("u"), 16)
                         # Function entries always go through the dispatcher so
                         # native C++ replacements (src/native) take effect.
-                        if tgt in labels and tgt not in entries:
+                        if tgt in labels and tgt not in entries and tgt not in hook_pcs:
                             line = f"{pre}goto L_{tgt:X};"
                         else:
                             line = f"{pre}{{ c.pc = {hx(tgt)}; return; }}"
@@ -997,7 +1013,7 @@ namespace recomp {
                     nxt = a + ins.length
                     out.append(f"  if (c.cycles >= dl) {{ c.pc = {hx(nxt)}; return; }}")
                     following = ch[k + 1] if k + 1 < len(ch) else None
-                    if nxt in entries:
+                    if nxt in entries or nxt in hook_pcs:
                         out.append(f"  c.pc = {hx(nxt)}; return;")
                     elif following != nxt:
                         if nxt in labels:

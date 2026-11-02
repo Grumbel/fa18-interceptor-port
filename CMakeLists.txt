@@ -128,9 +128,11 @@ if(FA18_RECOMP)
     OUTPUT ${RECOMP_SRCS}
     COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/recomp.py ${RECOMP_EXE} ${RECOMP_DIR}
             --seeds ${CMAKE_SOURCE_DIR}/tools/recomp_seeds.txt
+            --hooks ${CMAKE_SOURCE_DIR}/tools/recomp_hooks.txt
     DEPENDS ${RECOMP_EXE} ${RECOMP_EXTRA_DEPS}
             ${CMAKE_SOURCE_DIR}/tools/recomp.py ${CMAKE_SOURCE_DIR}/tools/loadseg.py
             ${CMAKE_SOURCE_DIR}/tools/hunks.py ${CMAKE_SOURCE_DIR}/tools/recomp_seeds.txt
+            ${CMAKE_SOURCE_DIR}/tools/recomp_hooks.txt
     COMMENT "Recompiling 68000 game code to C++"
     VERBATIM)
   add_library(recomp STATIC ${RECOMP_SRCS})

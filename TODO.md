@@ -745,6 +745,17 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
       avoid low-resolution staircase strokes and unsupported GLES line widths.
 - [ ] Inspect remaining short/dotted narrow runway polygons and object
       coplanar depth overlap separately; these are not low-res underdraw.
+- [x] Fix missing OpenGL scene lifecycle in interpreter-only execution:
+      hook `$2fc14` entry and its observed return PC, and restore the
+      `$31e4a`/`$32dda` object IDs and model pointers from 68000 state.
+      Previously `--native off --gl 3` was byte-identical to `--hires 3`.
+      Now the off-screen interpreter render is distinct from software and
+      byte-identical to the native GL path on free1 at frame 4000.
+- [x] Add optional ADF-backed `tests/check_gl_scene.sh` to guard against
+      a renderer that initializes but never captures a scene. The static
+      recompiler must also dispatch at the capture PC hooks rather than
+      bypassing them with C++ fallthrough/goto; `tools/recomp_hooks.txt`
+      enumerates these barriers. All three GL modes match byte-for-byte.
 
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in

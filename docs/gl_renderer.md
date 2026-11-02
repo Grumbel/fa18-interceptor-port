@@ -12,10 +12,19 @@ work with `SDL_VIDEODRIVER=offscreen`.
 The original renderer keeps running unchanged (game state is identical
 with and without `--gl`).  Per game frame:
 
-1. `$2112c` (game frame): start a capture.
+1. `$2112c` (game frame): start a capture. On `--native off`, the PC hook
+   at `$2fc14` also enters the scene and installs a hook at the original
+   subroutine's observed return PC (`$2126e` in the supplied ADF) to finish
+   the capture. In the native C++ path, `draw_scene_2fc14` calls begin/end
+   itself. These routes are deliberately idempotent.
 2. Every object the original draws announces itself when its LOD is
    chosen (`render_body` `$31e4a`, `distant_body` `$32dda` ->
-   `glr::begin_object`): flat models (mesh header +7 bit 1, not
+   `glr::begin_object`). In interpreter mode, PC hooks recover the model
+   and stream pointers from the original registers/stack at those labels.
+   The static recompiler also returns to `Machine`'s dispatcher before
+   each capture hook, using the addresses in `tools/recomp_hooks.txt`;
+   without this, an internal C++ goto skipped the hook entirely.
+   Flat models (mesh header +7 bit 1, not
    articulated) and the distant ground objects go to the ground layer.
 3. The primitives the original rasterises are captured in view space
    (the hires.cpp hooks: polygons `$38c0c`, lines `$43a56`/`$4397c`,
@@ -58,11 +67,14 @@ with and without `--gl`).  Per game frame:
    The former `index / 255` plus low-nibble readback silently lost colours
    on GLES2 RGBA4, and was susceptible to framebuffer quantisation.
    Set `FA18_GL_FORCE_RGBA4=1` to test the fallback even on desktop GL.
-   In an off-screen Mesa replay of `tests/scenarios/free1.txt` at frame
-   4000, forced RGBA4 and normal RGBA8 produced byte-identical 960x600
-   screenshots. The previous palette encoding showed a mostly black ground
-   in the same scene; the corrected encoding restores the green terrain
-   and gray runway.
+   With interpreter scene capture properly enabled, an off-screen Mesa
+   replay of `tests/scenarios/free1.txt` at frame 4000 can verify the two
+   framebuffer formats and their output. **Earlier** RGBA4/RGBA8 checks
+   used an interpreter path that silently fell back to software hi-res,
+   so those screenshots were not valid GL palette tests. The dedicated
+   `tests/check_gl_scene.sh` checks that GL actually draws primitives in
+   both interpreted and recompiled execution, that their snapshots match
+   native C++, and that forced RGBA4 matches normal RGBA8.
    Captured 3D lines are expanded into one-output-pixel-wide camera-facing
    quads before rendering: GLES2 does not guarantee wide `GL_LINES`, and
    `glLineWidth(scale)` caused coarse line stair steps at high resolution.
@@ -108,6 +120,17 @@ still runs because its input is what is captured; skipping it would need
 the polygon ops translated to emit primitives directly.
 
 ## Open points
+
+- The original interpreter's `$2fc14` had no scene-end callback before the
+  return-PC hook was added. The OpenGL context could initialize, but no
+  captured scene was rendered: `--native off --interpret --gl 3` produced
+  *exactly the same pixels* as `--hires 3`. With the return and object-start
+  hooks installed, the interpreter instead captures 3D primitives and the
+  runway markings render as continuous polygons. Its GL frame matches the
+  native path, whereas the software frame differs.
+  The statically recompiled path likewise needs explicit dispatch barriers
+  at every capture PC; after adding them its frame-4000 screenshot is
+  byte-identical to the interpreter and native GL output.
 
 - In external aircraft views, some wing and runway corners have dotted or
   blocky fragments. `FA18_HIRES_DEBUG=1` paints low-resolution fallback cells
