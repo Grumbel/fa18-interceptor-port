@@ -682,7 +682,8 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [x] WASM: `-fexceptions` + DISABLE_EXCEPTION_CATCHING=0 (QuitRequested); live runtime if no ADF
 - [x] WASM: ASYNCIFY + `emscripten_sleep` in present() so the tab stays responsive
 - [x] WASM: canvas default 960×720 + CSS aspect-ratio; EMSCRIPTEN SDL hints
-- [x] WASM/desktop: F9/Insert debug menu, F10 mesh viewer; documented in shell.html
+- [x] WASM/desktop: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer;
+      plain F9/F10 preserved for the game's throttle/afterburner
 - [x] WASM: HTML Menu/Models buttons via fa18_request_*; mouse orbit in mesh viewer
 - [x] WASM: no second WebGL context — menu only software hires scales; init_gl disabled
 - [ ] `nix build .#fa18-wasm` end-to-end; confirm Upload + IDBFS boot

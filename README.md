@@ -92,9 +92,10 @@ Keys are passed to the game as on the Amiga (see `manual.txt`):
 | `[` `]` | Zoom |
 | P, Esc, Shift-Esc | Pause, restart, back to mission selection |
 
-Front end keys: **F11** fullscreen, **Pause** fast-forward, **F12**
-captures the mouse (port 1; the game reads it but flies with joystick or
-keyboard).
+Front end keys: **Ctrl+F9** or **Insert** debug menu, **Ctrl+F10** mesh
+viewer, **F11** fullscreen, **Pause** fast-forward, **F12** captures the mouse
+(port 1; the game reads it but flies with joystick or keyboard). Plain
+**F9/F10** go to the original game for throttle/afterburner.
 
 ### Game controller
 

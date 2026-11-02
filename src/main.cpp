@@ -3,6 +3,7 @@
 #include "font6x10.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/mesh_viewer.hpp"
+#include "frontend_hotkeys.hpp"
 #include "native/terrain.hpp"
 #include "native/world.hpp"
 #include "stats_overlay.hpp"
@@ -142,6 +143,7 @@ public:
   uint32_t pad_prev_btns = 0;
   int pad_prev_hat = -1;      // pie menu: last direction while a shoulder is held (-1 none, 8 neutral)
   int pad_throttle_cd = 0;    // frames until next throttle step
+  FrontendHotkeys debug_hotkeys;
   bool pad_held_key[128] = {};
   bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
   // Debug overlay with game world statistics (stats_overlay.cpp), drawn at
@@ -218,12 +220,18 @@ public:
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
-          // INSERT is the historical binding; F9 is easier on laptop / web keyboards.
-          if ((sc == SDL_SCANCODE_INSERT || sc == SDL_SCANCODE_F9) && down) {
+          if (sc == SDL_SCANCODE_INSERT && down) {
             menu_request = true;
             break;
           }
-          if (sc == SDL_SCANCODE_F10 && down) { mesh_viewer_request = true; break; }
+          // F9/F10 are game throttle keys; only Ctrl+F9/F10 belong to us.
+          auto hk = debug_hotkeys.key(
+              sc == SDL_SCANCODE_F9 ? FrontendKey::F9 :
+              sc == SDL_SCANCODE_F10 ? FrontendKey::F10 : FrontendKey::Other,
+              down, (e.key.keysym.mod & KMOD_CTRL) != 0, e.key.repeat != 0);
+          if (hk == FrontendAction::OpenMenu) { menu_request = true; break; }
+          if (hk == FrontendAction::OpenModels) { mesh_viewer_request = true; break; }
+          if (hk == FrontendAction::Consumed) break;
           if (sc == SDL_SCANCODE_F11 && down) {
             Uint32 fl = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
             SDL_SetWindowFullscreen(win, fl ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -753,7 +761,7 @@ public:
       py += 6 * sc;
       draw_text(cv, w, h, px, py, "Up/Down select  Left/Right change", sc, 0xFF80A0FFu);
       py += 11 * sc;
-      draw_text(cv, w, h, px, py, "A/Enter do  B/Back/F9 close", sc, 0xFF80A0FFu);
+      draw_text(cv, w, h, px, py, "A/Enter do  B/Back/Esc close", sc, 0xFF80A0FFu);
       if (!menu_status.empty()) {
         py += 16 * sc;
         draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
@@ -1056,7 +1064,7 @@ void usage() {
           "  --world FILE     remaster: use an edited world file (docs/world_format.md)\n"
           "  --map-dump FILE  top-down map (water, objects) of the world as PPM\n"
           "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
-          "keys: F9/Insert debug menu, F10 mesh viewer,\n"
+          "keys: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
           "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
           "      stick/d-pad fly, A fire, B weapon, X target, Y map,\n"
