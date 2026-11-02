@@ -100,11 +100,13 @@ verified map gives Hunk 5 + `$10EC`). Prefer the machine-readable mapping.
 2. **Line blitter and plane submits, Hunk 36 (`$44686-$451B2`).** The
    reference reconstructs line parameter preparation, hardware waits,
    per-plane blits and small submission leaves (`analysis/routines/` and
-   `source_amiga/observed/`). We already emulate the Amiga blitter and capture
-   geometry for hi-res/GL. Use these traces to check original plane/pen
-   semantics and coverage gaps, particularly where the high-resolution scene
-   capture misses non-mesh primitives. Its byte-exact assembly is evidence,
-   not a drop-in replacement for our render path.
+   `source_amiga/observed/`). `docs/retro_foundry_hunk36.md` now ties the
+   reference's `$C2FF48` wrapper to our `$44B50` polygon path and matches
+   the `$C2FD8C` four-plane packet to our `$44994` backdrop blits. It also
+   identifies a possible negative-mode line-colour mismatch (`$5AC4F` versus
+   `$5AC4C`) in the *hi-res observer*. This needs original-ADF verification
+   before changing any native routine; the independent assembly is evidence,
+   not a drop-in replacement for the renderer.
 
 3. **Separate validation of flight/control structure.** The reference's
    `analysis/control_record_layout.md` confirms the 512-byte stride and
