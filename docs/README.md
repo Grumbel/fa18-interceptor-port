@@ -18,3 +18,6 @@ runtime addresses to the addresses used in this port.
 `hunk5_input.md` drills down into the input command tables, physical Amiga
 raw-key identities, control-record fields, and the tests needed before
 registering more native Hunk-5 routines.
+
+The mapped reference routine notes can also be imported as non-primary
+labels into Ghidra; instructions are in `../tools/ghidra/README.md`.

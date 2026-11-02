@@ -37,6 +37,9 @@ python3 tools/reference_addr.py ../fa18interceptor --index
 and includes a linkable path to each note. At the examined commit, **all 159
 address-named routine notes map to Hunk ranges marked `verified`**. The tool
 does not copy or vendor its large trace files or reconstructed binary bytes.
+To annotate those addresses in our Ghidra project without replacing existing
+function names, see `tools/ghidra/README.md` and
+`tools/ghidra/ImportRetroFoundryNotes.java`.
 
 The translation is:
 

@@ -96,6 +96,16 @@ def fmt(match):
             f"= port ${match.port:05X} [{match.status}]")
 
 
+def index_notes(root, crosswalk):
+    """Yield every address-named routine note with its verified Hunk mapping."""
+    for path in sorted((root / "analysis/routines").glob("c*.md")):
+        m = re.match(r"(c[0-9a-fA-F]{5})(?:_|\.)", path.name)
+        if m is None:
+            continue
+        for match in crosswalk.translate(int(m.group(1), 16), "reference"):
+            yield match, path.relative_to(root)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -118,14 +128,9 @@ def main():
 
     if args.index:
         print("port\thunk\treference\tstatus\tanalysis note")
-        notes = args.reference_root / "analysis/routines"
-        for path in sorted(notes.glob("c*.md")):
-            m = re.match(r"(c[0-9a-fA-F]{5})(?:_|\.)", path.name)
-            if m is None:
-                continue
-            for match in crosswalk.translate(int(m.group(1), 16), "reference"):
-                print(f"${match.port:05X}\t{match.hunk}+${match.offset:X}\t"
-                      f"${match.reference:06X}\t{match.status}\t{path.relative_to(args.reference_root)}")
+        for match, path in index_notes(args.reference_root, crosswalk):
+            print(f"${match.port:05X}\t{match.hunk}+${match.offset:X}\t"
+                  f"${match.reference:06X}\t{match.status}\t{path}")
         return 0
 
     direction = "reference" if args.from_reference else "port"
