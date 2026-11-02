@@ -7,6 +7,7 @@
 #include "frontend_hotkeys.hpp"
 #include "native/terrain.hpp"
 #include "native/world.hpp"
+#include "original_menu_font.hpp"
 #include "stats_overlay.hpp"
 
 #include <SDL.h>
@@ -626,6 +627,12 @@ public:
     int help_page = 0;
     std::vector<uint32_t> cv(size_t(w) * size_t(h));
     const int sc = std::max(1, w / 320);
+    original_menu_font::Font game_font;
+    game_font.load_executable(machine->disk_read("F-18 Interceptor"));
+    auto menu_text = [&](int x, int y, const std::string& text, uint32_t colour) {
+      if (game_font.valid()) game_font.draw(cv, w, h, x, y, text, sc, colour);
+      else draw_text(cv, w, h, x, y, text, sc, colour);
+    };
     bool open = true;
     int axis_cd = 0;
     // pressed/held controller state needs explicit handling: no SDL events
@@ -788,28 +795,27 @@ public:
       int px = 8 * sc, py = 8 * sc;
       if (help_open) {
         for (size_t i = 0; i < control_help::pages[size_t(help_page)].size(); ++i) {
-          draw_text(cv, w, h, px, py,
-                    std::string(control_help::pages[size_t(help_page)][i]),
-                    sc, i == 0 ? 0xFFFFD040u : 0xFFDDDDDDu);
+          menu_text(px, py, std::string(control_help::pages[size_t(help_page)][i]),
+                    i == 0 ? 0xFFFFD040u : 0xFFDDDDDDu);
           py += control_help::row_height * sc;
         }
-        draw_text(cv, w, h, px, control_help::footer_y * sc,
-                  "Left/Right page  A/Tab next  B/Esc back", sc, 0xFF80A0FFu);
+        menu_text(px, control_help::footer_y * sc,
+                  "Left/Right page  A/Tab next  B/Esc back", 0xFF80A0FFu);
       } else {
-        draw_text(cv, w, h, px, py, "DEBUG MENU", sc, 0xFFFFD040u);
+        menu_text(px, py, "DEBUG MENU", 0xFFFFD040u);
         py += 16 * sc;
         for (int i = 0; i < NITEMS; ++i) {
           std::string line = (i == sel ? "> " : "  ") + items[size_t(i)];
-          draw_text(cv, w, h, px, py, line, sc, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
+          menu_text(px, py, line, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
           py += 12 * sc;
         }
         py += 3 * sc;
-        draw_text(cv, w, h, px, py, "A/Enter do  Up/Down select  L/R change", sc, 0xFF80A0FFu);
+        menu_text(px, py, "A/Enter do  Up/Down select  L/R change", 0xFF80A0FFu);
         py += 13 * sc;
         if (menu_status.empty())
-          draw_text(cv, w, h, px, py, "Y/H controls help   B/Back/Esc close", sc, 0xFF80A0FFu);
+          menu_text(px, py, "Y/H controls help   B/Back/Esc close", 0xFF80A0FFu);
         else
-          draw_text(cv, w, h, px, py, menu_status, sc, 0xFF60FF60u);
+          menu_text(px, py, menu_status, 0xFF60FF60u);
       }
       if (w != tex_w || h != tex_h) {
         SDL_DestroyTexture(tex);

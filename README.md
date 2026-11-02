@@ -146,6 +146,17 @@ All off by default; the original behaviour is untouched.
   states are stored next to the flight log; they can also be loaded from
   the intro.
 
+The debug menu and its controls reference use the game's original **5x7
+bitmap font**, loaded at runtime from Hunk 61 of the ADF executable. The
+font's 53 glyphs are not embedded in the port; when the expected table is
+unavailable, the menu falls back to the built-in host font. To extract a
+preview sheet (or the raw glyph bytes) from your own ADF:
+
+```sh
+python3 tools/extract_menu_font.py game.adf /tmp/fa18-menu-font.ppm
+# Optionally: add --raw /tmp/fa18-menu-font.bin
+```
+
 ## Project layout
 
 - `src/m68k/` – 68000 interpreter and shared ALU semantics

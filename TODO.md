@@ -715,6 +715,15 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [ ] Inspect hi-res/GL pixel results after the negative-mode colour fix,
       especially lines and points in frames flagged by the 80-call probe.
 
+### Original game menu font (2026-11-02)
+- [x] Locate 53 contiguous 5x7 glyphs in Hunk 61 CODE at offset `$1F3`;
+      compare rendered digits and uppercase letters to the original menu.
+- [x] Load the font from the supplied ADF at runtime for the host debug menu
+      and controls-help pages. Never commit the copyrighted glyph bytes;
+      fall back to the existing host font for a different executable variant.
+- [x] Add `tools/extract_menu_font.py` to generate a PPM glyph atlas and an
+      optional raw 371-byte dump from the user's original ADF.
+
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in
 packages or the WASM site. Runtime always loads a user-supplied image.
