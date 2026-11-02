@@ -74,26 +74,70 @@ even while the original low-resolution Amiga blitter is correct.
 
 **Do not change `src/native/hires.cpp` yet.** First compare the reference's
 line-emitter instruction window to the original, patched executable used by
-this port, then observe the two flags at actual line-hook calls. Changes under
-`src/native/` require `tests/check_native.sh` to pass, and the original ADF is
-not available in this environment. There is no evidence yet that the negative
-branch is taken in ordinary gameplay.
+this port. Changes under `src/native/` require `tests/check_native.sh` to pass;
+the original ADF is available to the user but not in this build environment.
 
-Useful probes once the original ADF is available:
+### Original-ADF entry-probe result (2026-11-02)
 
-1. Record `$5A9E0`, `$5AC4C`, `$5AC4E`, and `$5A9DF` on entries to `$44686`
-   while `--hires` and `--gl` are active, and count negative-mode calls:
+The user ran the port with their 331,232-byte original ADF, `--native off
+--interpret --hires 3`, and `FA18_REGS=44686,80,...`. The resulting 80 calls
+span 17 frames (beginning at frame 1329) and establish that negative mode is
+**common**, not a merely theoretical branch:
+
+- **80/80** entries had mode `$FFFF` (negative).
+- **72** calls used mask `$FF`; **8** used `$0F`. Both enable all four display
+  planes as far as the observed low nibble is concerned.
+- **26/80** entries had differing active plane bits between the current
+  hi-res observer's colour and the independently reconstructed source's
+  `$5AC4F` flags. The other 54 entries agreed.
+
+| `$5AC4C` | `$5AC4E` | Calls | Active plane bits that disagree |
+| --- | --- | ---: | --- |
+| `$0001` | `$0000` | 9 | 0 |
+| `$0008` | `$0001` | 9 | 0, 3 |
+| `$100B` | `$0008` | 8 | 0, 1 |
+| `$0001` / `$0008` | matching lower nibble | 54 | none |
+
+This confirms that a different colour choice would be *observable* in the
+port's hi-res/GL model. It does not yet prove that the user's particular
+executable has the same line-emitter opcode as the independent reconstruction.
+The full log (which includes local machine details) is deliberately not
+included in this repository.
+
+To reproduce and automatically summarize future runs:
+
+1. Record `$5A9E0`, `$5AC4C`, `$5AC4E`, and `$5A9DF` at `$44686`:
 
    ```sh
-   FA18_REGS=44686,80,5a9df:b,5a9e0:w,5ac4c:w,5ac4e:w \
-     ./build/fa18 --native off --interpret --hires 3 /path/to/original.adf
+   FA18_REGS=44686,500,5a9df:b,5a9e0:w,5ac4c:w,5ac4e:w \
+     ./build/fa18 --native off --interpret --hires 3 /path/to/original.adf \
+     2>&1 | tee /tmp/fa18-line-probe.log
+   python3 tools/analyze_line_regs.py /tmp/fa18-line-probe.log
    ```
 
    The entry logger reads these fields directly from emulated RAM (byte/word/
    long, big endian), so diagnostic reads cannot alter custom-chip state.
-2. Check whether `$5AC4F` differs from `$5AC4C` on those calls, and compare
-   low-resolution plane pixels and hi-res coverage in the same frame.
-3. Verify the original opcode uses `$5AC4F` before changing `line_ops()`;
+2. Check the original opcode's branch and data operand at `$44782` (the
+   per-plane submit) against the reference:
+
+   ```sh
+   python3 tools/verify_line_flags.py \
+     "/path/to/FA-18 Interceptor (1988)(Electronic Arts).adf"
+   ```
+
+   The verifier extracts the `F-18 Interceptor` Hunk executable temporarily,
+   relocates it using the port's existing `loadseg.py` layout, and checks for
+   eight ordered `BTST.B #plane,($address).L` instructions: four referencing
+   `$5A9E1` (nonnegative mode) and four referencing `$5AC4F` (negative mode).
+   It does not store the executable or the ADF in the repo. `MATCH` means the
+   byte operands match the independent reconstruction; `INCONCLUSIVE` reports
+   missing instructions and any other likely RAM selectors for follow-up
+   disassembly. It does **not** independently prove the surrounding branches
+   have identical control flow.
+
+   Then compare low-resolution plane pixels and hi-res coverage in the same
+   frame.
+3. Only after byte verification, change `line_ops()` to use the correct flags;
    retain the native equivalence gate and visual regression tests.
 
 ## Scan another reference source

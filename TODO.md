@@ -695,6 +695,21 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [ ] Android: in-app file picker / SAF (current: `adb push` into app files dir as `disk.adf`)
 - [ ] Desktop Linux package still the primary path; ports are interpreter-only until a host-side recomp + ship of generated sources is wired
 
+### Hunk-36 line colour (2026-11-02)
+- [x] Compare independent `submit_blitter_line_to_active_planes.asm` against
+      the hi-res observer's plane-operation addresses (`docs/retro_foundry_hunk36.md`).
+- [x] User's original-ADF interpreter probe: 80/80 line entries used negative
+      mode; 26/80 had different active plane bits in `$5AC4C` vs `$5AC4F`.
+      `tools/analyze_line_regs.py` summarizes these logs without saving the
+      original game or user-specific capture.
+- [x] Add `tools/verify_line_flags.py`: inspect the exact user's original ADF
+      for eight ordered relocated `BTST` selectors in the Hunk-36 line emitter;
+      no proprietary executable retained. Synthetic opcode tests included.
+- [ ] Confirm the original-ADF code at `$44782` tests `$5AC4F` in negative
+      mode using the verifier; then fix `src/native/hires.cpp::line_ops()` if
+      confirmed and compare hi-res output against original plane pixels.
+      Run `tests/check_native.sh` before committing *any* native edit.
+
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in
 packages or the WASM site. Runtime always loads a user-supplied image.
