@@ -738,6 +738,13 @@ Scaffolding adapted from kurvenrausch (WASM, Win32/Win64, R36S, Android).
 - [ ] Trace GL geometry/line rasterisation and overlapping depth-tested
       coplanar primitives at the wing and runway corners, where dotted
       fragments remain.
+- [x] Encode GL palette indices in the high red nibble, preserving all 16
+      colours even with the GLES2 RGBA4 fallback; verify RGBA8/RGBA4 parity
+      with the scripted runway scene (`FA18_GL_FORCE_RGBA4=1`).
+- [x] Replace GL wide lines with projected one-output-pixel-thick quads to
+      avoid low-resolution staircase strokes and unsupported GLES line widths.
+- [ ] Inspect remaining short/dotted narrow runway polygons and object
+      coplanar depth overlap separately; these are not low-res underdraw.
 
 ### ADF policy (all ports)
 The original ADF is **not** redistributable and must never be embedded in

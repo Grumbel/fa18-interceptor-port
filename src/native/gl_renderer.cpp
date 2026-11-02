@@ -11,6 +11,8 @@
 // it, toggling patches invert it), painted once, and each flat overlay gets
 // the colour of its operation on the land or the water class underneath.
 #include "native/gl_renderer.hpp"
+#include "native/gl_palette.hpp"
+#include "native/gl_line_quad.hpp"
 
 #include "native/runtime.hpp"
 #include "native/terrain.hpp"
@@ -44,7 +46,7 @@ using GLbitfield = unsigned int;
 using GLchar = char;
 using GLsizeiptr = ptrdiff_t;
 
-constexpr GLenum GL_TRIANGLES = 0x0004, GL_LINES = 0x0001, GL_POINTS = 0x0000;
+constexpr GLenum GL_TRIANGLES = 0x0004, GL_POINTS = 0x0000;
 constexpr GLenum GL_DEPTH_TEST = 0x0B71, GL_STENCIL_TEST = 0x0B90, GL_LEQUAL = 0x0203;
 constexpr GLenum GL_ALWAYS = 0x0207, GL_EQUAL = 0x0202, GL_KEEP = 0x1E00;
 constexpr GLenum GL_REPLACE = 0x1E01, GL_INVERT = 0x150A;
@@ -82,7 +84,6 @@ struct GL {
   void (*ColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
   void (*StencilFunc)(GLenum, GLint, GLuint);
   void (*StencilOp)(GLenum, GLenum, GLenum);
-  void (*LineWidth)(GLfloat);
   GLuint (*CreateShader)(GLenum);
   void (*ShaderSource)(GLuint, GLsizei, const GLchar* const*, const GLint*);
   void (*CompileShader)(GLuint);
@@ -138,7 +139,6 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.ColorMask, "glColorMask", m);
   load(p, gl.StencilFunc, "glStencilFunc", m);
   load(p, gl.StencilOp, "glStencilOp", m);
-  load(p, gl.LineWidth, "glLineWidth", m);
   load(p, gl.CreateShader, "glCreateShader", m);
   load(p, gl.ShaderSource, "glShaderSource", m);
   load(p, gl.CompileShader, "glCompileShader", m);
@@ -364,7 +364,7 @@ void push(double x, double y, double z) {
 uint8_t resolve(const Ops& o, uint8_t bg) { return uint8_t((((bg & ~o.clr) | o.set) ^ o.xr) & 15); }
 constexpr uint8_t kLand = 4, kWater = 6;  // backdrop and plane 1 set
 
-void set_colour(uint8_t index) { gl.Uniform4f(st.u_colour, float(index) / 255.f, 0.f, 0.f, 1.f); }
+void set_colour(uint8_t index) { gl.Uniform4f(st.u_colour, palette::encode(index), 0.f, 0.f, 1.f); }
 void set_param(float rows, float point, float log_depth, float bias) {
   gl.Uniform4f(st.u_param, rows, point, log_depth, bias);
 }
@@ -400,11 +400,14 @@ bool ensure_fbo(int w, int h) {
     gl.RenderbufferStorage(GL_RENDERBUFFER, format, w, h);
     return r;
   };
-  // Prefer RGBA8; fall back to RGBA4 on strict GLES2 without the sized formats.
-  st.colour_rb = rb(GL_RGBA8);
-  gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
-  if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    gl.DeleteRenderbuffers(1, &st.colour_rb);
+  // Prefer RGBA8; fall back to RGBA4 on strict GLES2 without sized formats.
+  // For reproducible tests FA18_GL_FORCE_RGBA4 exercises the GLES fallback.
+  if (!std::getenv("FA18_GL_FORCE_RGBA4")) {
+    st.colour_rb = rb(GL_RGBA8);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
+  }
+  if (!st.colour_rb || gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (st.colour_rb) gl.DeleteRenderbuffers(1, &st.colour_rb);
     st.colour_rb = rb(GL_RGBA4);
     gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
   }
@@ -528,10 +531,23 @@ void note_line(const double a[3], const double b[3], const Ops& o) {
   std::vector<P3> pts = {{a[0] * k, a[1] * k, a[2] * k}, {b[0] * k, b[1] * k, b[2] * k}};
   clip_near(pts, false);
   if (pts.size() != 2) return;
-  Prim& p = add_prim(GL_LINES, o);
-  push(pts[0].x, pts[0].y, pts[0].z);
-  push(pts[1].x, pts[1].y, pts[1].z);
-  p.count = 2;
+  using line_quad::Vec3;
+  std::array<Vec3, 6> quad;
+  // The Amiga's one-low-res-pixel stroke became S-pixel-wide stair steps
+  // when passed to glLineWidth(S).  At high resolution draw a one-output-
+  // pixel stroke instead; do not rely on implementation-defined wide lines.
+  const double pixel_width = 1.0 / double(std::max(1, native::mach().hires_scale));
+  if (!line_quad::make({pts[0].x, pts[0].y, pts[0].z},
+                       {pts[1].x, pts[1].y, pts[1].z}, quad, pixel_width)) {
+    Prim& p = add_prim(GL_POINTS, o);
+    p.size = float(pixel_width);
+    push(pts[0].x, pts[0].y, pts[0].z);
+    p.count = 1;
+    return;
+  }
+  Prim& p = add_prim(GL_TRIANGLES, o);
+  for (const Vec3& v : quad) push(v.x, v.y, v.z);
+  p.count = 6;
 }
 
 void note_point(const double q[3], int kind, int radius, const Ops& o) {
@@ -572,10 +588,9 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
 #endif
   gl.ColorMask(1, 1, 1, 1);
   gl.DepthMask(1);
-  gl.ClearColor(5.f / 255.f, 0, 0, 1);  // sky
+  gl.ClearColor(palette::encode(5), 0, 0, 1);  // sky
   gl.ClearStencil(0);
   gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-  gl.LineWidth(float(std::max(1, S)));
   gl.Disable(GL_DEPTH_TEST);
   gl.DepthMask(0);
 
@@ -684,7 +699,7 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   for (int y = 0; y < h; ++y) {
     const uint8_t* src = &rgba[size_t(h - 1 - y) * size_t(w) * 4];
     uint8_t* dst = &px[size_t(y) * size_t(w)];
-    for (int x = 0; x < w; ++x) dst[x] = src[x * 4] & 15;
+    for (int x = 0; x < w; ++x) dst[x] = palette::decode(src[x * 4]);
   }
   gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
   if (st.debug && (++st.frames % 100) == 0)

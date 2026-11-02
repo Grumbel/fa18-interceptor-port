@@ -53,6 +53,19 @@ with and without `--gl`).  Per game frame:
      primitives of an object get a small depth bias (decals).
    The projection is the original's (`sx = 159.5 - 160 vx/vz`,
    `sy = 89.5 - 90 vy/vz`).
+   Palette indices are encoded as `index / 15` in red and decoded using
+   its high nibble after readback: this is exact for **both RGBA8 and RGBA4**.
+   The former `index / 255` plus low-nibble readback silently lost colours
+   on GLES2 RGBA4, and was susceptible to framebuffer quantisation.
+   Set `FA18_GL_FORCE_RGBA4=1` to test the fallback even on desktop GL.
+   In an off-screen Mesa replay of `tests/scenarios/free1.txt` at frame
+   4000, forced RGBA4 and normal RGBA8 produced byte-identical 960x600
+   screenshots. The previous palette encoding showed a mostly black ground
+   in the same scene; the corrected encoding restores the green terrain
+   and gray runway.
+   Captured 3D lines are expanded into one-output-pixel-wide camera-facing
+   quads before rendering: GLES2 does not guarantee wide `GL_LINES`, and
+   `glLineWidth(scale)` caused coarse line stair steps at high resolution.
 5. The indices are read back into the hi-res layer of `hires.cpp`, whose
    composition is unchanged: pixels the game drew after the scene (HUD,
    cockpit) and 2D drawing during the scene that no 3D primitive explains
@@ -101,9 +114,11 @@ the polygon ops translated to emit primitives directly.
   magenta; a `--gl 3` external-view capture (using scripted `key enter` for
   Keypad Enter) showed **no fallback cells** on the 3D geometry. These
   fragments originate in GL primitive rendering (potentially depth and
-  overlapping edges), not the original 320x200 compositor. The HUD remains
-  low-resolution by design. The current code still supports fallback for
-  intentionally uncaptured 2D drawing and post-scene cockpit graphics.
+  overlapping edges), not the original 320x200 compositor. Driver-dependent
+  wide lines have been removed; remaining dotted details in runway markings
+  need investigation of the actual narrow polygon geometry and edge coverage.
+  The HUD remains low-resolution by design. The current code still supports
+  fallback for intentionally uncaptured 2D drawing and post-scene cockpit graphics.
 
 - The order of toggles and overlays is approximated: all plane-1
   inversions are applied (stencil) before the overlays are painted.
