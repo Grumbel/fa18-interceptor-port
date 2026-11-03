@@ -171,6 +171,21 @@ before committing. Note limitations explicitly rather than masking them.
   otherwise composite the generated LCD. In flight, the native five-digit
   renderer activates and produces an identical screenshot. See
   `FA18_COCKPIT_FUEL_NATIVE=0` and `FA18_COCKPIT_FUEL_DEBUG=1`.
+- [x] Replace the fuel LCD pixel-parity timing oracle with a per-buffer
+  native redraw latch. The original pixel writer at `$4744e` supplies the
+  refresh event and destination; a recognized bitplane-3 LCD destination
+  records the fuel value for that screen buffer. The actual displayed
+  row pointer selects the correct five digits during compositing. Buffers
+  not yet observed retain the original pixels until their first redraw.
+  Pixel-exact replay at VBL 4000 additionally exposed and corrected the
+  unusual last-row shape of the original font's digit `9`. The corresponding
+  `tools/recomp_hooks.txt` boundary prevents recompiled blocks from skipping
+  the instrument's original redraw instruction.
+- [ ] Trace the right-hand altimeter and airspeed readouts next (known
+  original entry points `$47080` / `$470f2`; native record fields `+24`
+  and `+110`). Recover their glyph and colour conventions, then introduce
+  independent per-buffer native overlays with the same strict flight/Pause
+  screenshot tests before removing their original bitplane fallback.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

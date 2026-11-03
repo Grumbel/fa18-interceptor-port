@@ -247,13 +247,23 @@ formats the five-digit LCD at screen coordinates (104,183)–(122,187), and
 generates its original 3×5 numeric font. This is drawn by the CPU composer or
 uploaded in the direct-GPU foreground, rather than copied from the emulated
 LCD pixels. The ILBM glyph ink/background indices are 16/24; the live LCD
-uses their lower four bits, 0/8. To retain exact game-frame presentation
-timing, the native digits replace the original ones only when the displayed
-LCD still agrees with the current player value. Set
+uses their lower four bits, 0/8. A pixel comparison at VBL 4000 also
+recovered the LCD font's unusual `9`: its last row is only the rightmost
+pixel, not a three-pixel bar. Original instruction `$4744e` writes the
+fuel glyph's first bitplane-3 word. A PC hook observes that instruction and
+its destination, associating the current player fuel with the corresponding
+double-buffered screen row pointer. The presenter selects the latched value
+using its actual row pointer at scanline 183. This preserves delayed LCD
+refreshes **without inspecting any original fuel digit pixel**. Before a
+given buffer has been identified and refreshed, the original foreground
+remains as a conservative fallback. The address also appears in
+`tools/recomp_hooks.txt` to force an instruction boundary in the statically
+recompiled execution path, where internal instructions would otherwise
+skip PC hooks. Set
 `FA18_COCKPIT_FUEL_NATIVE=0` to disable just this new instrument; use
-`FA18_COCKPIT_FUEL_DEBUG=1` to log successful substitutions and cases where
-the original redraw has not caught up. Matching the original LCD update
-cadence without framebuffer checks is still outstanding.
+`FA18_COCKPIT_FUEL_DEBUG=1` to log discovered screen buffers and redraw
+latches. The original code still executes to supply the refresh event; the
+next step is an independent native instrument scheduler and further gauges.
 
 ## Open points
 

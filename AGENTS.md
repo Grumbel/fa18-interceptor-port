@@ -97,8 +97,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   still use the Amiga screen as a dynamic overlay. Set
   `FA18_COCKPIT_NATIVE=0` to compare the prior compositing path, and run
   `tests/check_gl_cockpit.sh` to verify flight and Pause pixel parity.
-  The five-digit fuel LCD is generated from the player's native fuel value,
-  with the original digit pixels used only to preserve HUD redraw timing.
+  The five-digit fuel LCD is generated from the player's native fuel value;
+  the original digit-writing PC $4744e latches redraws independently for
+  the two screen buffers. The displayed row pointer selects its value,
+  without reading the original digit pixels; an unobserved buffer retains
+  the original foreground until its first captured redraw. Keep `$4744e`
+  listed in `tools/recomp_hooks.txt` so recompiled blocks dispatch before
+  the instrument writer instead of skipping this PC hook.
   `FA18_COCKPIT_FUEL_NATIVE=0` disables this native instrument alone;
   `FA18_COCKPIT_FUEL_DEBUG=1` traces it.
 

@@ -1,5 +1,5 @@
 // First native dynamic cockpit instrument: the five-digit fuel LCD.
-// Generated from game state, with source-image parity as an incremental gate.
+// Generated from game state, with redraws latched per original screen buffer.
 #pragma once
 
 #include <array>
@@ -24,7 +24,12 @@ struct FuelDigits {
   }
 };
 
+// Observe the original digit writer so the displayed value tracks the
+// double-buffered cockpit refresh instead of the current physics value.
+void install_cockpit_instrument_hooks(amiga::Machine& m);
+void reset_cockpit_instrument_state();
+
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
-                               const uint8_t* screen_index, const uint32_t* screen_rgb,
+                               const uint32_t* row_keys,
                                const uint32_t* row_palette, bool enabled);
 }  // namespace remaster

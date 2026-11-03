@@ -693,6 +693,7 @@ void sky_quad_done(bool ok) {
 void reset() {
   layers.clear();
   reset_cockpit_atlas();
+  reset_cockpit_instrument_state();
   gf_begun = false;
   cur = nullptr;
   in_scene = false;
@@ -797,6 +798,7 @@ void scene_end() {
 void install(amiga::Machine& m) {
   scene_hooks = true;
   scene_return_pcs.clear();
+  install_cockpit_instrument_hooks(m);
   // The native $2fc14 wrapper invokes scene_begin/scene_end directly, but
   // --native off runs the original bytes and skips those C++ calls. Observe
   // its entry and the return address on the 68000 stack, then hook that
@@ -910,7 +912,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   if (!idx || !key) return false;
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
-  const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), idx, rgb, pal, cockpit_enabled);
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), key, pal, cockpit_enabled);
   if (getenv("FA18_HIRES_KEYS") && m.frame_count() % 400 == 0) {
     std::fprintf(stderr, "[hires] frame %llu key0=%06x key50=%06x key100=%06x layers:", (unsigned long long)m.frame_count(), key[0], key[50], key[100]);
     for (auto& l : layers) std::fprintf(stderr, " %06x(rows=%d done=%d)", l.base, l.rows, l.done);
@@ -984,7 +986,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   // bitplane-backed path without changing any emulated code or game state.
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
-  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, idx, rgb, pal, cockpit_enabled);
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
@@ -1107,7 +1109,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const CockpitAtlas& cockpit = cockpit_atlas(m);
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
-  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, idx, rgb, pal, cockpit_enabled);
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.

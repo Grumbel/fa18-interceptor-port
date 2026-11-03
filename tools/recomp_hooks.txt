@@ -28,3 +28,4 @@
 044dfe
 044f46
 04506e
+04744e  # per-screen-buffer fuel LCD redraw, cockpit_instruments.cpp

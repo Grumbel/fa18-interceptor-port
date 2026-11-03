@@ -48,6 +48,30 @@ for mode in flight pause; do
     echo 'FAIL: native fuel digits were not drawn from the player record' >&2
     exit 1
   fi
+  if [ "$mode" = flight ]; then
+    buffers=$(sed -n 's/^cockpit: fuel latch frame .* buffer=\([0-9a-f]*\) value=.*/\1/p' \
+                "$tmp/$mode-native.log" | sort -u | wc -l)
+    if [ "$buffers" -lt 2 ]; then
+      echo 'FAIL: native fuel LCD did not capture both double buffers' >&2
+      exit 1
+    fi
+    if ! grep -Eq 'cockpit: fuel latch frame .* value=24998' "$tmp/$mode-native.log"; then
+      echo 'FAIL: native fuel LCD did not latch a changed fuel value' >&2
+      exit 1
+    fi
+  fi
 done
+
+# The recompiler executes multiple 68000 instructions per dispatch. Its
+# generated chunk must break at $4744e or the native redraw PC hook never
+# fires, silently leaving the original bitplane digits as a fallback.
+FA18_COCKPIT_FUEL_DEBUG=1 "$bin" --native off --det-timing --fast --gl 1 \
+  --frames 3550 --script "$repo/tests/scenarios/free1.txt" "$adf" \
+  >"$tmp/recompiled-fuel.log" 2>&1
+if [ "$(grep -c 'cockpit: observed fuel display buffer' "$tmp/recompiled-fuel.log")" -lt 2 ] ||
+   ! grep -Eq 'cockpit: fuel latch frame .* value=24999' "$tmp/recompiled-fuel.log"; then
+  echo 'FAIL: recompiled fuel LCD bypassed the native redraw hook' >&2
+  exit 1
+fi
 
 echo 'PASS: native ILBM cockpit and dynamic fuel LCD are pixel-exact during flight and Pause'
