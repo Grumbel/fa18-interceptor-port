@@ -18,6 +18,7 @@
 #include "native/terrain.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #ifndef M_PI
@@ -107,6 +108,7 @@ struct GL {
   void (*BufferData)(GLenum, GLsizeiptr, const void*, GLenum);
   void (*VertexAttribPointer)(GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
   void (*EnableVertexAttribArray)(GLuint);
+  void (*DisableVertexAttribArray)(GLuint);
   void (*DrawArrays)(GLenum, GLint, GLsizei);
   void (*ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
   void (*PixelStorei)(GLenum, GLint);
@@ -114,6 +116,14 @@ struct GL {
 };
 
 GL gl;
+decltype(GL::DrawArrays) raw_draw_arrays = nullptr;
+uint64_t frame_draw_calls = 0, frame_draw_vertices = 0;
+
+void counted_draw_arrays(GLenum mode, GLint first, GLsizei count) {
+  ++frame_draw_calls;
+  frame_draw_vertices += uint64_t(std::max(0, count));
+  raw_draw_arrays(mode, first, count);
+}
 
 template <typename F>
 void load(GetProc proc, F& f, const char* name, std::string& missing) {
@@ -163,6 +173,7 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.BufferData, "glBufferData", m);
   load(p, gl.VertexAttribPointer, "glVertexAttribPointer", m);
   load(p, gl.EnableVertexAttribArray, "glEnableVertexAttribArray", m);
+  load(p, gl.DisableVertexAttribArray, "glDisableVertexAttribArray", m);
   load(p, gl.DrawArrays, "glDrawArrays", m);
   load(p, gl.ReadPixels, "glReadPixels", m);
   load(p, gl.PixelStorei, "glPixelStorei", m);
@@ -188,18 +199,22 @@ const char* kVertex = R"(
 precision highp float;
 #endif
 attribute vec3 a_pos;
+attribute vec2 a_style;
 uniform mat3 u_view;
 uniform vec4 u_param;
 uniform float u_xscale;
+uniform float u_water_class;
+varying float v_palette;
 void main() {
   vec3 v = u_view * a_pos;
   float rows = u_param.x;
   float zlin = v.z - 128.0;
-  float zlog = (log2(max(v.z, 1.0e-6)) * (2.0 / 40.0) - 1.0 - u_param.w) * v.z;
+  float zlog = (log2(max(v.z, 1.0e-6)) * (2.0 / 40.0) - 1.0 - u_param.w - a_style.y) * v.z;
   gl_Position = vec4((-0.003125 * v.z - v.x) * u_xscale,
                      (1.0 - 179.0 / rows) * v.z + (180.0 / rows) * v.y,
                      mix(zlin, zlog, u_param.z), v.z);
   gl_PointSize = u_param.y;
+  v_palette = mix(a_style.x, a_style.y, u_water_class);
 }
 )";
 
@@ -208,7 +223,9 @@ const char* kFragment = R"(
 precision mediump float;
 #endif
 uniform vec4 u_colour;
-void main() { gl_FragColor = u_colour; }
+uniform float u_coloured;
+varying float v_palette;
+void main() { gl_FragColor = vec4(mix(u_colour.r, v_palette, u_coloured), 0.0, 0.0, 1.0); }
 )";
 
 GLuint compile(GLenum type, const char* src, std::string& err) {
@@ -253,6 +270,7 @@ struct State {
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   int fb_w = 0, fb_h = 0;
   GLint u_view = -1, u_param = -1, u_colour = -1, u_xscale = -1;
+  GLint u_coloured = -1, u_water_class = -1;
   // current frame
   bool capturing = false;
   bool has_frame = false, has_previous = false;
@@ -405,8 +423,18 @@ void set_view(const float view[9]) {
 void upload(const std::vector<float>& v) {
   gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
   gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(v.size() * sizeof(float)), v.data(), GL_STREAM_DRAW);
+  gl.DisableVertexAttribArray(1);
   gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
   gl.EnableVertexAttribArray(0);
+}
+void upload_coloured(const std::vector<float>& v) {
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
+  gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(v.size() * sizeof(float)), v.data(), GL_STREAM_DRAW);
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 5 * sizeof(float), nullptr);
+  gl.VertexAttribPointer(1, 2, GL_FLOAT, 0, 5 * sizeof(float),
+                         reinterpret_cast<const void*>(3 * sizeof(float)));
+  gl.EnableVertexAttribArray(0);
+  gl.EnableVertexAttribArray(1);
 }
 void stencil_class(int water) {
   gl.StencilFunc(GL_EQUAL, water, 1);
@@ -467,6 +495,8 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.make_current = std::move(make_current);
   st.make_current();
   if (!load_gl(proc, err)) return false;
+  raw_draw_arrays = gl.DrawArrays;
+  gl.DrawArrays = counted_draw_arrays;
   GLuint vs = compile(GL_VERTEX_SHADER, kVertex, err);
   if (!vs) return false;
   GLuint fs = compile(GL_FRAGMENT_SHADER, kFragment, err);
@@ -475,6 +505,7 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   gl.AttachShader(st.prog, vs);
   gl.AttachShader(st.prog, fs);
   gl.BindAttribLocation(st.prog, 0, "a_pos");
+  gl.BindAttribLocation(st.prog, 1, "a_style");
   gl.LinkProgram(st.prog);
   GLint ok = 0;
   gl.GetProgramiv(st.prog, GL_LINK_STATUS, &ok);
@@ -488,6 +519,8 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.u_param = gl.GetUniformLocation(st.prog, "u_param");
   st.u_colour = gl.GetUniformLocation(st.prog, "u_colour");
   st.u_xscale = gl.GetUniformLocation(st.prog, "u_xscale");
+  st.u_coloured = gl.GetUniformLocation(st.prog, "u_coloured");
+  st.u_water_class = gl.GetUniformLocation(st.prog, "u_water_class");
   gl.GenBuffers(1, &st.vbo);
   build_terrain();
   st.debug = std::getenv("FA18_GL_DEBUG") != nullptr;
@@ -572,16 +605,17 @@ void note_line(const double a[3], const double b[3], const Ops& o) {
   if (pts.size() != 2) return;
   using line_quad::Vec3;
   std::array<Vec3, 6> quad;
-  // The Amiga's one-low-res-pixel stroke became S-pixel-wide stair steps
-  // when passed to glLineWidth(S).  At high resolution draw a one-output-
-  // pixel stroke instead; do not rely on implementation-defined wide lines.
-  const double pixel_width = 1.0 / double(std::max(1, native::mach().hires_scale));
+  // Screen-facing triangles avoid GLES2's optional wide GL_LINES. The
+  // former 1/output-pixel strokes disappeared at high resolution; use a
+  // restrained part of an original screen pixel with a physical minimum.
+  const double pixel_width = line_quad::stroke_width(native::mach().hires_scale);
   if (!line_quad::make({pts[0].x, pts[0].y, pts[0].z},
                        {pts[1].x, pts[1].y, pts[1].z}, quad, pixel_width)) {
-    Prim& p = add_prim(GL_POINTS, o);
+    Prim& p = add_prim(GL_TRIANGLES, o);
     p.size = float(pixel_width);
-    push(pts[0].x, pts[0].y, pts[0].z);
-    p.count = 1;
+    for (const Vec3& v : line_quad::square({pts[0].x, pts[0].y, pts[0].z}, pixel_width))
+      push(v.x, v.y, v.z);
+    p.count = 6;
     return;
   }
   Prim& p = add_prim(GL_TRIANGLES, o);
@@ -607,10 +641,11 @@ void note_point(const double q[3], int kind, int radius, const Ops& o) {
     p.count = GLsizei(st.verts.size() / 3) - p.first;
     return;
   }
-  Prim& p = add_prim(GL_POINTS, o);
+  Prim& p = add_prim(GL_TRIANGLES, o);
   p.size = kind == 0 ? 1.f : 2.f;
-  push(x, y, z);
-  p.count = 1;
+  for (const line_quad::Vec3& v : line_quad::square({x, y, z}, p.size))
+    push(v.x, v.y, v.z);
+  p.count = 6;
 }
 
 Camera capture_camera() {
@@ -793,11 +828,16 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
                    (unsigned long long)matched_total, alpha, st.interval_vblanks);
   }
   st.make_current();
+  const bool profile = std::getenv("FA18_GL_PROFILE") != nullptr;
+  const auto t0 = std::chrono::steady_clock::now();
+  frame_draw_calls = frame_draw_vertices = 0;
   if (!ensure_fbo(w, h)) return false;
   const float rows = float(h / S);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
+  gl.Uniform1f(st.u_coloured, 0.f);
+  gl.Uniform1f(st.u_water_class, 0.f);
   // A wider FBO must reveal more of the world, not stretch the central view.
   // With w=320*S this is exactly 1.0 and preserves the original projection.
   gl.Uniform1f(st.u_xscale, float(320 * S) / float(w));
@@ -849,11 +889,21 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   bool any_toggle = false;
   for (const Prim& p : st.prims) any_toggle |= toggles(p);
   if (any_toggle) {
-    upload(*verts);
+    // Stencil inversion is XOR: overlapping toggle triangles commute.
+    // One ordered buffer has precisely the same result as one draw call
+    // per island/marking primitive, with far less host/driver overhead.
+    static std::vector<float> toggle_verts;
+    toggle_verts.clear();
+    for (const Prim& p : st.prims) {
+      if (!toggles(p)) continue;
+      const size_t at = size_t(p.first) * 3;
+      toggle_verts.insert(toggle_verts.end(), verts->begin() + at,
+                          verts->begin() + at + size_t(p.count) * 3);
+    }
+    upload(toggle_verts);
     set_view(ident);
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_INVERT);
-    for (const Prim& p : st.prims)
-      if (toggles(p)) gl.DrawArrays(p.mode, p.first, p.count);
+    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(toggle_verts.size() / 3));
     upload(g);
     set_view(cam.view);
   }
@@ -865,47 +915,93 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   set_colour(rd8(0x5aaa8) ? rd16(0x5ac4c) & 15 : kWater);
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
 
-  // ---- flat objects: their colour on land / water ----
-  upload(*verts);
+  // ---- flat objects: preserve their order *within* each stencil class ----
+  // The land and water classes never overlap and the stencil is fixed by
+  // this point. They can be drawn in two ordered batches instead of doing
+  // two draw calls + uniforms for each flat primitive. a_style stores
+  // (palette-on-land, palette-on-water); u_water_class selects a channel.
   set_view(ident);
   auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
+  static std::vector<float> flat_styled;
+  flat_styled.clear();
   for (const Prim& p : st.prims) {
     if (!p.flat || toggles(p)) continue;
-    set_param(rows, point_size(p), 0, 0);
-    const uint8_t on_land = resolve(p.ops, kLand), on_water = resolve(p.ops, kWater);
-    if (on_land == on_water) {
-      gl.Disable(GL_STENCIL_TEST);
-      set_colour(on_land);
-      gl.DrawArrays(p.mode, p.first, p.count);
-      gl.Enable(GL_STENCIL_TEST);
-      continue;
+    const float land = palette::encode(resolve(p.ops, kLand));
+    const float water = palette::encode(resolve(p.ops, kWater));
+    const size_t first = size_t(p.first) * 3;
+    for (int j = 0; j < p.count; ++j) {
+      const size_t at = first + size_t(j) * 3;
+      flat_styled.insert(flat_styled.end(), {(*verts)[at], (*verts)[at + 1],
+                                              (*verts)[at + 2], land, water});
     }
+  }
+  if (!flat_styled.empty()) {
+    upload_coloured(flat_styled);
+    set_param(rows, 1.f, 0.f, 0.f);
+    gl.Uniform1f(st.u_coloured, 1.f);
     stencil_class(0);
-    set_colour(on_land);
-    gl.DrawArrays(p.mode, p.first, p.count);
+    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(flat_styled.size() / 5));
     stencil_class(1);
-    set_colour(on_water);
-    gl.DrawArrays(p.mode, p.first, p.count);
+    gl.Uniform1f(st.u_water_class, 1.f);
+    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(flat_styled.size() / 5));
+    gl.Uniform1f(st.u_water_class, 0.f);
+    gl.Uniform1f(st.u_coloured, 0.f);
   }
   gl.Disable(GL_STENCIL_TEST);
 
-  // ---- 3D objects: flat colours with the depth test ----
+  // ---- 3D objects: ordered, per-vertex coloured triangle batches ----
+  // A separate GL draw for every polygon changed uniforms hundreds of
+  // times on full detail. Consecutive triangle primitives can instead use
+  // a shared stream: colour and the original per-primitive depth bias are
+  // constant attributes for each triangle. Keep points in their original
+  // draw order between the batches rather than moving them to the end.
   gl.Enable(GL_DEPTH_TEST);
   gl.DepthFunc(GL_LEQUAL);
   gl.DepthMask(1);
-  for (const Prim& p : st.prims) {
-    if (p.flat) continue;
-    set_param(rows, point_size(p), 1, p.bias);
-    set_colour(resolve(p.ops, kLand));
-    gl.DrawArrays(p.mode, p.first, p.count);
+  static std::vector<float> styled;
+  bool original_vertices_bound = true;
+  for (size_t i = 0; i < st.prims.size();) {
+    const Prim& p = st.prims[i];
+    if (p.flat) { ++i; continue; }
+    if (p.mode != GL_TRIANGLES) {
+      if (!original_vertices_bound) { upload(*verts); original_vertices_bound = true; }
+      set_param(rows, point_size(p), 1, p.bias);
+      set_colour(resolve(p.ops, kLand));
+      gl.DrawArrays(p.mode, p.first, p.count);
+      ++i;
+      continue;
+    }
+    styled.clear();
+    while (i < st.prims.size()) {
+      const Prim& t = st.prims[i];
+      if (t.flat) { ++i; continue; }
+      if (t.mode != GL_TRIANGLES) break;
+      const float colour = palette::encode(resolve(t.ops, kLand));
+      const size_t first = size_t(t.first) * 3;
+      const size_t count = size_t(t.count);
+      for (size_t j = 0; j < count; ++j) {
+        const size_t at = first + j * 3;
+        styled.insert(styled.end(), {(*verts)[at], (*verts)[at + 1], (*verts)[at + 2],
+                                      colour, t.bias});
+      }
+      ++i;
+    }
+    upload_coloured(styled);
+    original_vertices_bound = false;
+    set_param(rows, 1.f, 1.f, 0.f);
+    gl.Uniform1f(st.u_coloured, 1.f);
+    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(styled.size() / 5));
+    gl.Uniform1f(st.u_coloured, 0.f);
   }
   gl.Disable(GL_DEPTH_TEST);
 
   // ---- read back the palette indices ----
+  const auto t1 = std::chrono::steady_clock::now();
   static std::vector<uint8_t> rgba;
   rgba.resize(size_t(w) * size_t(h) * 4);
   gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
   gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+  const auto t2 = std::chrono::steady_clock::now();
   px.resize(size_t(w) * size_t(h));
   for (int y = 0; y < h; ++y) {
     const uint8_t* src = &rgba[size_t(h - 1 - y) * size_t(w) * 4];
@@ -913,6 +1009,19 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
     for (int x = 0; x < w; ++x) dst[x] = palette::decode(src[x * 4]);
   }
   gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (profile && first_render && (st.frames % 20) == 0) {
+    const auto t3 = std::chrono::steady_clock::now();
+    const auto ms = [](auto a, auto b) {
+      return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    std::fprintf(stderr,
+                 "gl: profile capture %llu prims %zu calls %llu vertices %llu "
+                 "draw_ms %.2f read_ms %.2f convert_ms %.2f fb %dx%d\n",
+                 (unsigned long long)st.frames, st.prims.size(),
+                 (unsigned long long)frame_draw_calls,
+                 (unsigned long long)frame_draw_vertices,
+                 ms(t0, t1), ms(t1, t2), ms(t2, t3), w, h);
+  }
   if (st.debug && first_render && (st.frames % 100) == 0)
     std::fprintf(stderr, "gl: frame %llu objects %d prims %zu\n", (unsigned long long)st.frames,
                  st.object + 1, st.prims.size());

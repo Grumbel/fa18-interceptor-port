@@ -139,6 +139,9 @@ public:
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
   uint64_t last_gl_serial = 0;
   uint64_t extra_gl_presented = 0;
+  uint64_t extra_gl_missed = 0;
+  uint32_t present_report_ms = 0;
+  int present_report_count = 0;
   int last_gl_tick = 0, gl_interval_ticks = 4;
   bool quit = false;
   uint64_t next_frame = 0;
@@ -1000,8 +1003,29 @@ public:
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
-    if (stats_on) draw_stats();
+    if (stats_on) draw_stats(logical_w);
     SDL_RenderPresent(ren);
+    // Fast-forward deliberately ignores the real-time presentation target;
+    // never include it in the achieved-Hz diagnostic.
+    if (fast) {
+      present_report_ms = 0;
+      present_report_count = 0;
+      extra_gl_missed = 0;
+    } else if (render_fps > 60 && glr::active() &&
+               std::getenv("FA18_GL_PRESENT_DEBUG")) {
+      ++present_report_count;
+      const uint32_t now = SDL_GetTicks();
+      if (!present_report_ms) present_report_ms = now;
+      const uint32_t elapsed = now - present_report_ms;
+      if (elapsed >= 1000) {
+        fprintf(stderr, "gl: observed %.1f presents/s (target %d), missed %llu extra deadlines\n",
+                double(present_report_count) * 1000.0 / double(elapsed), render_fps,
+                (unsigned long long)extra_gl_missed);
+        present_report_count = 0;
+        extra_gl_missed = 0;
+        present_report_ms = now;
+      }
+    }
   }
   void present(const uint32_t* fb, int w, int h) {
     ++frame_no;
@@ -1069,7 +1093,10 @@ public:
           SDL_Delay(1);
 #endif
         }
-        if (SDL_GetPerformanceCounter() > target + freq / 120) continue;
+        if (SDL_GetPerformanceCounter() > target + freq / 120) {
+          ++extra_gl_missed;
+          continue;
+        }
         if (!remaster::compose_view(*machine, view_buf, side,
                                     phase(float(i) / samples), true)) break;
         display_frame(view_buf.data(), vw, vh, logical_w);
@@ -1183,7 +1210,7 @@ public:
 
   // Render the statistics into stats_buf (transparent except for a dimmed
   // panel behind the text) and blend it over the game picture.
-  void draw_stats() {
+  void draw_stats(int logical_w) {
     stats_buf.assign(size_t(STATS_W) * STATS_H, 0);
     const auto lines = stats_overlay::build(*machine);
     if (lines.empty()) return;
@@ -1206,22 +1233,35 @@ public:
       SDL_SetTextureBlendMode(stats_tex, SDL_BLENDMODE_BLEND);
     }
     SDL_UpdateTexture(stats_tex, nullptr, stats_buf.data(), STATS_W * 4);
-    SDL_RenderCopy(ren, stats_tex, nullptr, nullptr);
+    // Keep this panel at its original 320x240 logical dimensions instead
+    // of stretching its texture to fill a widened OpenGL viewport. Anchor
+    // it to the left of the original 4:3 image in the central region.
+    SDL_Rect dst{(logical_w - amiga::FB_W) / 2, 0,
+                 amiga::FB_W, amiga::FB_H * 6 / 5};
+    SDL_RenderCopy(ren, stats_tex, nullptr, &dst);
   }
 
-  // Script "shot" with the overlay on: also write the picture as shown
-  // (game picture scaled to the overlay size, overlay blended on top).
+  // Script "shot" with the overlay on: write what the player actually sees.
+  // The panel occupies the central 320-column region at the game's own
+  // resolution; widened extensions stay intact in the screenshot too.
   void save_stats_screenshot(const uint32_t* fb, const std::string& path) {
     FILE* f = fopen(path.c_str(), "wb");
     if (!f || stats_buf.empty()) {
       if (f) fclose(f);
       return;
     }
-    fprintf(f, "P6\n%d %d\n255\n", STATS_W, STATS_H);
-    for (int y = 0; y < STATS_H; ++y)
-      for (int x = 0; x < STATS_W; ++x) {
-        uint32_t g = fb[size_t(y * tex_h / STATS_H) * size_t(tex_w) + size_t(x * tex_w / STATS_W)];
-        uint32_t o = stats_buf[size_t(y) * STATS_W + size_t(x)];
+    fprintf(f, "P6\n%d %d\n255\n", tex_w, tex_h);
+    const int centre_w = std::min(tex_w, amiga::FB_W * std::max(1, machine->hires_scale));
+    const int left = (tex_w - centre_w) / 2;
+    for (int y = 0; y < tex_h; ++y)
+      for (int x = 0; x < tex_w; ++x) {
+        const uint32_t g = fb[size_t(y) * size_t(tex_w) + size_t(x)];
+        uint32_t o = 0;
+        if (x >= left && x < left + centre_w) {
+          const int sx = (x - left) * STATS_W / centre_w;
+          const int sy = y * STATS_H / tex_h;
+          o = stats_buf[size_t(sy) * STATS_W + size_t(sx)];
+        }
         uint32_t a = o >> 24;
         uint8_t px[3];
         for (int c = 0; c < 3; ++c) {

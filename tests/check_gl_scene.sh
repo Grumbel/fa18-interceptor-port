@@ -19,10 +19,15 @@ unset FA18_GL_FORCE_RGBA4
 args=(--interpret --det-timing --fast --frames 4010
       --script "$repo/tests/scenarios/free1.txt")
 
-FA18_GL_DEBUG=1 "$bin" --native off --gl 3 "${args[@]}" \
+FA18_GL_DEBUG=1 FA18_GL_PROFILE=1 "$bin" --native off --gl 3 "${args[@]}" \
   --screenshot 4000 "$tmp/gl-interpreter.ppm" "$adf" >"$tmp/gl.log" 2>&1
 if ! grep -Eq 'gl: frame [0-9]+ objects [1-9][0-9]* prims [1-9][0-9]*' "$tmp/gl.log"; then
   echo 'FAIL: interpreter initialized GL but never captured scene objects' >&2
+  exit 1
+fi
+if ! awk '$1 == "gl:" && $2 == "profile" { seen = 1; if ($8 * 2 >= $6) bad = 1 }
+           END { exit !(seen && !bad) }' "$tmp/gl.log"; then
+  echo 'FAIL: GL full-scene batch did not substantially reduce draw calls' >&2
   exit 1
 fi
 
@@ -52,9 +57,15 @@ FA18_GL_FORCE_RGBA4=1 "$bin" --native off --gl 3 "${args[@]}" \
   --screenshot 4000 "$tmp/gl-rgba4.ppm" "$adf" >"$tmp/rgba4.log" 2>&1
 cmp "$tmp/gl-interpreter.ppm" "$tmp/gl-rgba4.ppm"
 
-"$bin" --native off --gl 3 --widescreen "${args[@]}" \
+# The wide centre now uses the *same current capture* as its side bands,
+# rather than retaining the preceding Amiga double buffer. Compare it to
+# a 4:3 render with that same capture phase, not to the old 60 Hz
+# compositor that may display the preceding scene.
+"$bin" --native off --gl 3 --render-fps 120 "${args[@]}" \
+  --screenshot 4000 "$tmp/gl-centered.ppm" "$adf" >"$tmp/centered.log" 2>&1
+"$bin" --native off --gl 3 --widescreen --render-fps 120 "${args[@]}" \
   --screenshot 4000 "$tmp/gl-widescreen.ppm" "$adf" >"$tmp/widescreen.log" 2>&1
 python3 "$repo/tests/compare_ppm_center.py" \
-  "$tmp/gl-interpreter.ppm" "$tmp/gl-widescreen.ppm"
+  "$tmp/gl-centered.ppm" "$tmp/gl-widescreen.ppm" 8
 
 echo 'PASS: GL interpreter/native/recompiled agree, GL differs from software, RGBA4 == RGBA8'

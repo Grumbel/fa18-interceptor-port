@@ -968,13 +968,13 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         const uint8_t li = idx[y * W + x];
         const size_t ci = size_t(ly < 0 ? 0 : ly) * W + size_t(x);
         if (L && li % 16 == L->snap[ci] && !L->unexplained[ci]) {
-          // The visible Amiga buffer often holds the preceding captured
-          // scene. For smooth 120+ Hz output replace its explained 3D pixels
-          // with the blended current GL scene as well as widening the sides.
-          // With widening alone, keep the old layer for pixel-exact 4:3.
-          const uint8_t* src = (L == cur || (refresh_center && ly < cur->rows))
-            ? &scene_pixels[size_t(ly * S + yy) * size_t(stride) + size_t(left + x * S)]
-            : &L->px[size_t(ly * S + yy) * size_t(W * S) + size_t(x * S)];
+          // The screen may point to the preceding Amiga 3D buffer. Its
+          // contents are temporally different from the new GL side bands;
+          // blending the sides against an old centre creates a flickering
+          // join. Both sides and centre must use *one* GL scene. Unexplained
+          // screen-space 2D drawing and the cockpit remain on top below.
+          const uint8_t* src = &scene_pixels[size_t(ly * S + yy) * size_t(stride) +
+                                             size_t(left + x * S)];
           for (int xx = 0; xx < S; ++xx)
             dst[left + x * S + xx] = pal[size_t(y) * 32 + ((src[xx] & 15) | (li & 16))];
         } else {

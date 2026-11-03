@@ -13,11 +13,14 @@ work with `SDL_VIDEODRIVER=offscreen`.
 and right as the SDL window aspect ratio changes. The vertex shader scales
 its X clip coordinate by `320*N / framebuffer_width`: no central stretch or
 change of the original camera's horizontal field of view. `compose_view`
-reuses the original 320-column compositor for the centre of the image
-(cockpit, palette effects and unexplained 2D drawing) and puts new rendered
-world pixels in the side bands. At frame 4000 of the free1 replay, a cropped
-central 960x600 region of the wide 1284x600 screenshot matches the original
-4:3 GL render pixel for pixel. Menus retain their original logical aspect.
+uses the same GL scene for the centre and both side bands: the original
+Amiga double buffer can lag by one capture and previously produced a
+temporally mismatched seam. Only unclassified 2D drawing and cockpit/HUD
+foreground pixels are copied from the old framebuffer. At free1 frame 4000,
+the 960x600 centre of a wide 1284x600 120 Hz screenshot differed from its
+4:3 **same-phase** screenshot at just one polygon raster edge pixel on Mesa.
+Menus retain their original logical aspect. The stats overlay now has a
+fixed logical destination rectangle and does not stretch across widescreen.
 
 `--render-fps 120` (or 180/240) optionally adds extra OpenGL presentations
 between the original 60 Hz emulated VBL ticks. The original game continues
@@ -44,8 +47,9 @@ redraws are skipped when the host falls too far behind its 60 Hz deadline.
 For inspection, `FA18_GL_INTERP_DEBUG=1` reports interpolation and extra
 presentation counts, while `FA18_GL_MATCH_DEBUG=1` shows matched primitives,
 including those recovered across draw-list reorderings.
-`tests/check_gl_scene.sh` asserts pixel-exact 4:3
-centre preservation in addition to interpreter/native/recompiler parity;
+`tests/check_gl_scene.sh` asserts the same-phase 4:3 centre is preserved
+apart from a handful of edge-raster precision differences, in addition to
+interpreter/native/recompiler parity;
 `tests/check_gl_interpolation.sh` verifies extra blended presentations,
 identical emulated RAM at 60 and 120 Hz, and equal 120 Hz screenshots in
 interpreter, recompiled and native execution.
@@ -54,6 +58,27 @@ replay for visual inspection: at frame 4655 (241 knots), its 60 and 120 Hz
 OpenGL screenshots differ in 3,778 output pixels on the tested offscreen
 Mesa renderer, demonstrating actual scene motion rather than just extra
 identical presentations.
+
+`FA18_GL_PRESENT_DEBUG=1` reports the **observed** presents per second and
+missed extra-frame deadlines during normal-speed 120+ Hz play. This is
+the important diagnostic when high refresh seems ineffective: CPU emulation,
+GPU/CPU readback, compositing and SDL presentation can leave too little
+time for an extra redraw. `FA18_GL_PROFILE=1` reports per-20-capture
+primitive/draw-call/vertex counts, draw submission, synchronous readback
+and palette conversion time. The hidden GL context still reads pixels back
+into SDL; an on-screen GL compositor is the next architecture step (see
+`docs/gl_renderer_roadmap.md`).
+
+Full-detail baseline on the bundled free1 replay (3,700 deterministic,
+fast-forwarded frames, native mode, offscreen Mesa/llvmpipe): original
+320x200 took **7.5 s**, software `--hires 3` took **19.1 s**, and
+`--gl 3` took **15.8 s**. The new GL path itself submits only **6–7 draw
+calls** for scenes with roughly 80–140 captured primitives (down from
+about 90–160 calls before batching), and a typical GL capture has
+0.2–0.4 ms draw submission plus 0.8–1.8 ms synchronous readback. These
+timings are *not* from a real GPU and do not isolate all CPU costs. They
+show why GL batching alone cannot remove the remaining cost of the
+original rasteriser, CPU composition and SDL texture upload.
 
 ## Pipeline
 
@@ -123,9 +148,14 @@ with and without `--gl`).  Per game frame:
    `tests/check_gl_scene.sh` checks that GL actually draws primitives in
    both interpreted and recompiled execution, that their snapshots match
    native C++, and that forced RGBA4 matches normal RGBA8.
-   Captured 3D lines are expanded into one-output-pixel-wide camera-facing
-   quads before rendering: GLES2 does not guarantee wide `GL_LINES`, and
-   `glLineWidth(scale)` caused coarse line stair steps at high resolution.
+   Captured 3D lines are camera-facing quads with a 1.5-output-pixel
+   physical minimum and 0.55 original-low-resolution-pixel target weight
+   at larger scales. This avoids both invisible hairlines and the earlier
+   blocky full-pixel steps, without relying on optional GLES2 wide lines.
+   3D points become view-facing triangle squares; all compatible 3D
+   triangles share ordered batches with per-vertex palette and depth bias.
+   Flat overlays are drawn as two ordered batches in disjoint land/water
+   stencil classes, preserving the overlay order within each class.
 5. The indices are read back into the hi-res layer of `hires.cpp`, whose
    composition is unchanged: pixels the game drew after the scene (HUD,
    cockpit) and 2D drawing during the scene that no 3D primitive explains
@@ -167,7 +197,25 @@ artefacts.  The original rasteriser (`$38c0c` onwards, the blitter code)
 still runs because its input is what is captured; skipping it would need
 the polygon ops translated to emit primitives directly.
 
+## Cockpit extraction and native composition
+
+The original ADF contains `pix/inst5` (320x55) and `pix/frnt5`
+(288x12), both ByteRun1-compressed 5-plane ILBMs with a transparent colour.
+To extract the genuine artwork as separate RGBA PNGs without adding
+copyrighted pixels to this repository:
+
+```
+python3 tools/extract_cockpit.py /path/to/FA-18.adf /tmp/fa18-cockpit
+```
+
+The two bitmaps are only the static instrument/backdrop art. Needles,
+radar, fonts, indicators and flight-mode changes still have to be
+reconstructed as foreground layers before OpenGL can stop reading the
+original screen. The priority is pixel/behaviour parity first, then a
+high-resolution 2D cockpit and optional 3D enhancements.
+
 ## Open points
+
 
 - The original interpreter's `$2fc14` had no scene-end callback before the
   return-PC hook was added. The OpenGL context could initialize, but no
