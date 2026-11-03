@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+namespace remaster { struct GpuLayers; }
 namespace glr {
 
 using GetProc = void* (*)(const char*);
@@ -66,6 +67,14 @@ void note_point(const double p[3], int kind, int radius, const Ops& o);
 // original central 320*S pixels. `alpha` blends previous/current captured
 // view-space geometry and ground camera without advancing game simulation.
 bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha = 1.f);
+// Opt-in visible-context presentation: draw into the scene FBO and composite
+// original 2D elements using tiny GL textures. No scene glReadPixels or
+// SDL_UpdateTexture; the host swaps the window after a successful call.
+bool present_gpu(const remaster::GpuLayers& layers, int side, int S, float alpha,
+                 int drawable_w, int drawable_h);
+// Debug/test-only: read the visible GL back buffer before swapping. Never
+// called by the ordinary presentation path.
+bool read_gpu_window(std::vector<uint8_t>& rgba, int w, int h);
 bool interpolation_available();
 uint64_t capture_serial();         // advances only when the game draws a new 3D scene
 int capture_interval_vblanks();    // observed spacing between game scenes

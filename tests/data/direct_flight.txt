@@ -1,0 +1,12 @@
+# Like interpolation_flight.txt, but also force a GPU -> SDL -> GPU change
+# in the cockpit after the game enters its real-time flight loop.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3550 fast off
+3575 stats on
+3595 stats off

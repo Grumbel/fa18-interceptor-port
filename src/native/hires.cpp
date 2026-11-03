@@ -1000,4 +1000,59 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   return true;
 }
 
+bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
+  if (!glr::active() || !cur || !cur->done || m.hires_scale <= 0 ||
+      cur->rows <= 0 || cur->rows >= 255) return false;
+  const uint32_t* rgb = m.frame_rgb();
+  const uint8_t* idx = m.frame_idx();
+  const uint32_t* key = m.frame_row_key();
+  const uint32_t* pal = m.frame_row_pal();
+  if (!rgb || !idx || !key || !pal) return false;
+
+  out.scene_rows = cur->rows;
+  out.overlay.resize(size_t(W) * 200 * 4);
+  out.palette.resize(size_t(32) * 200 * 4);
+  out.rows.resize(200 * 4);
+  for (int y = 0; y < 200; ++y) {
+    const Layer* L = nullptr;
+    int ly = -1;
+    for (const auto& l : layers) {
+      if (!l.done || key[y] < l.base) continue;
+      const uint32_t d = key[y] - l.base;
+      if (d % 40) continue;
+      const int row = int(d / 40);
+      if (row < l.rows) { L = &l; ly = row; break; }
+    }
+    const bool scene = L && ly >= 0 && ly < cur->rows;
+    out.rows[size_t(y) * 4] = scene ? uint8_t(ly) : 255;
+    out.rows[size_t(y) * 4 + 1] = scene ? 255 : 0;
+    out.rows[size_t(y) * 4 + 2] = (idx[y * W] & 16) ? 255 : 0;
+    out.rows[size_t(y) * 4 + 3] = (idx[y * W + W - 1] & 16) ? 255 : 0;
+    for (int n = 0; n < 32; ++n) {
+      const uint32_t c = pal[size_t(y) * 32 + n];
+      uint8_t* p = &out.palette[(size_t(y) * 32 + n) * 4];
+      p[0] = uint8_t(c >> 16);
+      p[1] = uint8_t(c >> 8);
+      p[2] = uint8_t(c);
+      p[3] = 255;
+    }
+    for (int x = 0; x < W; ++x) {
+      const uint8_t li = idx[y * W + x];
+      const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
+      uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (scene && li % 16 == L->snap[ci] && !L->unexplained[ci]) {
+        p[0] = p[1] = p[2] = 0;
+        p[3] = (li & 16) ? 16 : 0;
+      } else {
+        const uint32_t c = rgb[y * W + x];
+        p[0] = uint8_t(c >> 16);
+        p[1] = uint8_t(c >> 8);
+        p[2] = uint8_t(c);
+        p[3] = 255;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace remaster

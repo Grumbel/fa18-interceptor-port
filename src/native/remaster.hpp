@@ -20,4 +20,16 @@ void sky_quad_done(bool ok);  // $42f70 returns (the RTS $432aa / $432b6)
 // region; otherwise (widescreen only) its pixels remain exactly unchanged.
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center);
+
+// Separate the original Amiga screen-space drawing (cockpit, HUD, text and
+// otherwise unexplained pixels) from the captured 3D scene. The GL presenter
+// uses these small 320x200/32x200 textures to composite on the GPU instead
+// of reading a multi-megapixel scene back to the CPU each presentation.
+// Overlay alpha: 255 = original RGBA pixel, 16 = scene with EHB bit set,
+// 0 = ordinary scene. Row RGBA: scene row, validity, left/right EHB bits.
+struct GpuLayers {
+  std::vector<uint8_t> overlay, palette, rows;
+  int scene_rows = 0;
+};
+bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out);
 }  // namespace remaster

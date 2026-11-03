@@ -83,7 +83,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   original 3D redraws occur at 15 Hz. Higher rates are best-effort: an
   expensive frame can miss its extra presentation deadlines. See
   `docs/gl_renderer_roadmap.md` for the remaining independent-compositor
-  and cockpit work.
+  and cockpit work. Experimental `--gl-direct` opts into rendering to the
+  visible OpenGL window instead of `glReadPixels` + CPU compositing + SDL
+  texture upload. Its fragment shader composites separately uploaded 2D
+  fallback, scanline palettes and double-buffered row mapping; it still
+  relies on the original 2D drawing for the cockpit and HUD. Menus, stats
+  and screenshots fall back to SDL, and the original 3D rasterizer is not
+  yet bypassed. Use `tests/check_gl_direct.sh` for parity validation.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

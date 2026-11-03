@@ -100,7 +100,23 @@ before committing. Note limitations explicitly rather than masking them.
   the remaining per-presentation readback or SDL texture upload.
 - [x] Move host options into Graphics, Controls, and Extras menus. Widescreen
   and 60/120/180/240 render FPS are selectable at runtime.
-- [ ] Eliminate synchronous readback and SDL upload in interactive GL mode.
+- [x] Add an **opt-in visible GPU compositor** (`--gl-direct`, or
+  `FA18_GL_DIRECT=1`): render captured geometry into the GL scene FBO, copy
+  GPU-to-GPU to a scene texture and combine it with a 320x200 original 2D
+  overlay, a 32x200 scanline palette, and a 1x200 scene-row map using a
+  fullscreen shader. Normal presentations call no `glReadPixels` or
+  `SDL_UpdateTexture`. The original SDL compositor handles menus, stats and
+  screenshots; GPU display therefore remains experimental pending real-GPU
+  testing and cockpit parity. The Amiga 3D rasterizer still executes for
+  emulated-RAM fidelity. `FA18_GL_DIRECT_COMPARE=1` deliberately enables a
+  readback *for diagnostics* and samples every logical pixel centre against
+  the CPU compositor; `tests/check_gl_direct.sh` gates 4:3/widescreen parity.
+  Short `--gl 3 --widescreen --render-fps 240` real-time replay on Mesa
+  llvmpipe: legacy path observed 176.6/168.5 presents/s (63/73 missed extra
+  deadlines), direct path 226.0/241.0 presents/s (15/0 missed deadlines).
+  These figures are not a substitute for prolonged real-GPU testing.
+- [ ] Remove the intermediate GPU-to-GPU FBO copy by using a scene colour
+  texture attachment; investigate a GLES2-safe RGBA4 path.
 - [ ] Make the compositor independent of the original HUD bitplanes;
   reconcile cockpit instruments and dynamic overlays as first-class layers.
 - [ ] Validate sustained 120/240 Hz and seam stability on real GPU/monitor.

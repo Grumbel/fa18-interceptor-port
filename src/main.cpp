@@ -122,7 +122,7 @@ int amiga_rawkey(SDL_Scancode sc) {
   }
 }
 
-bool init_gl();
+bool init_gl(SDL_Window* visible = nullptr);
 bool gl_failed = false;  // no OpenGL context: the menu skips the GL entries
 
 class SdlHost : public amiga::Host {
@@ -136,6 +136,7 @@ public:
   bool mouse_grab = false;
   bool fast = false;
   bool widescreen = false;
+  bool direct_gl = false;   // --gl-direct / FA18_GL_DIRECT=1
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
   uint64_t last_gl_serial = 0;
   uint64_t extra_gl_presented = 0;
@@ -168,6 +169,8 @@ public:
   SDL_Texture* stats_tex = nullptr;
   std::vector<uint32_t> stats_buf;
   std::vector<uint32_t> view_buf;
+  remaster::GpuLayers gpu_layers;
+  int gpu_layers_frame = -1;
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -181,8 +184,9 @@ public:
 #endif
     const int win_h = amiga::FB_H * scale * 6 / 5;
     const int win_w = widescreen ? win_h * 16 / 9 : amiga::FB_W * scale;
+    const Uint32 window_flags = SDL_WINDOW_RESIZABLE | (direct_gl ? SDL_WINDOW_OPENGL : 0);
     win = SDL_CreateWindow("F/A-18 Interceptor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                           win_w, win_h, SDL_WINDOW_RESIZABLE);
+                           win_w, win_h, window_flags);
     if (!win) return false;
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     if (!ren) ren = SDL_CreateRenderer(win, -1, 0);
@@ -235,7 +239,7 @@ public:
   void toggle_graphics() {
     GraphicsMode mode = graphics_toggle.next({machine->hires_scale, glr::active()});
     if (mode.scale > 0 && mode.opengl && !glr::ready() &&
-        (gl_failed || !init_gl())) {
+        (gl_failed || !init_gl(direct_gl ? win : nullptr))) {
       gl_failed = true;
       mode.opengl = false;
     }
@@ -714,7 +718,7 @@ public:
     };
     auto set_widescreen = [&] {
       widescreen = !widescreen;
-      glr::set_deferred_scene_readback(widescreen || render_fps > 60);
+      glr::set_deferred_scene_readback(widescreen || render_fps > 60 || direct_gl);
       // When entering widescreen from the regular window, make the extra
       // columns visible immediately. In fullscreen the display owns the size.
       if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP)) {
@@ -729,7 +733,7 @@ public:
       int i = 0;
       while (i < 3 && choices[i] != render_fps) ++i;
       render_fps = choices[(i + (delta < 0 ? 3 : 1)) % 4];
-      glr::set_deferred_scene_readback(widescreen || render_fps > 60);
+      glr::set_deferred_scene_readback(widescreen || render_fps > 60 || direct_gl);
     };
     // Integration tests can inject the same SDL key events that a person
     // uses to navigate the menu; screenshots then verify the resulting page.
@@ -824,7 +828,8 @@ public:
             if (order[i][0] == s && order[i][1] == g) idx = i;
           for (int tries = 0; tries < n; ++tries) {
             idx = (idx + (dir == 0 ? 1 : dir) + n) % n;
-            if (!order[idx][1] || glr::ready() || (!gl_failed && init_gl())) break;
+            if (!order[idx][1] || glr::ready() ||
+                (!gl_failed && init_gl(direct_gl ? win : nullptr))) break;
             gl_failed = true;
           }
           set_graphics_mode(order[idx][0], order[idx][1] != 0);
@@ -1102,6 +1107,9 @@ public:
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     if (stats_on) draw_stats(logical_w);
     SDL_RenderPresent(ren);
+    report_presentation();
+  }
+  void report_presentation() {
     // Fast-forward deliberately ignores the real-time presentation target;
     // never include it in the achieved-Hz diagnostic.
     if (fast) {
@@ -1124,6 +1132,59 @@ public:
       }
     }
   }
+  bool display_gpu(int side, float alpha) {
+    if (gpu_layers_frame != frame_no) {
+      if (!remaster::prepare_gpu_layers(*machine, gpu_layers)) return false;
+      gpu_layers_frame = frame_no;
+    }
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh))
+      return false;
+    if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
+      // Diagnostic only: compare the GPU-owned window against the existing
+      // CPU compositor at corresponding logical pixel centres. Normal GL
+      // presentation has no readback; this mode deliberately does one.
+      std::vector<uint8_t> actual;
+      const bool read = glr::read_gpu_window(actual, dw, dh);
+      const bool expected = remaster::compose_view(*machine, view_buf, side, alpha, true);
+      if (read && expected) {
+        const int wide = amiga::FB_W + 2 * side;
+        const int S = machine->hires_scale;
+        const double aspect = double(wide) / 240.0;
+        const int vw = std::min(dw, int(std::round(dh * aspect)));
+        const int vh = std::min(dh, int(std::round(dw / aspect)));
+        const int ox = (dw - vw) / 2, oy = (dh - vh) / 2;
+        int mismatches = 0, total = 0;
+        for (int y = 0; y < 200; ++y) {
+          const int sy = std::clamp(oy + int((y + 0.5) * vh / 200), 0, dh - 1);
+          for (int x = 0; x < wide; ++x) {
+            const int sx = std::clamp(ox + int((x + 0.5) * vw / wide), 0, dw - 1);
+            const uint8_t* p = &actual[(size_t(dh - 1 - sy) * dw + sx) * 4];
+            const uint32_t colour = view_buf[size_t(y * S + S / 2) * wide * S + x * S + S / 2];
+            ++total;
+            if (p[0] != uint8_t(colour >> 16) || p[1] != uint8_t(colour >> 8) ||
+                p[2] != uint8_t(colour)) {
+              if (mismatches < 3)
+                fprintf(stderr, "gl: direct diff at %d,%d gpu=%02x%02x%02x cpu=%06x\n",
+                        x, y, p[0], p[1], p[2], colour & 0xffffff);
+              ++mismatches;
+            }
+          }
+        }
+        fprintf(stderr, "gl: direct parity frame %d different %d/%d (%.2f%%)\n",
+                frame_no, mismatches, total, 100.0 * mismatches / total);
+      }
+    }
+    SDL_GL_SwapWindow(win);
+    if (std::getenv("FA18_GL_DIRECT_DEBUG")) {
+      static int reports = 0;
+      if (++reports == 1 || reports % 120 == 0)
+        fprintf(stderr, "gl: direct GPU presentation %d\n", reports);
+    }
+    report_presentation();
+    return true;
+  }
   void present(const uint32_t* fb, int w, int h) {
     ++frame_no;
     {
@@ -1136,7 +1197,7 @@ public:
     }
     if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
     const bool gl_video = glr::active() && machine->hires_scale > 0 &&
-                          (widescreen || render_fps > 60);
+                          (widescreen || render_fps > 60 || direct_gl);
     const int side = gl_video ? side_columns() : 0;
     if (gl_video && glr::capture_serial() != last_gl_serial) {
       last_gl_serial = glr::capture_serial();
@@ -1153,14 +1214,19 @@ public:
     };
     const uint32_t* video = fb;
     int vw = w, vh = h, logical_w = amiga::FB_W;
-    if (gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
+    // Keep SDL compositing for screenshots/stats and for contexts that cannot
+    // present directly. GPU mode is opt-in while cockpit parity is checked.
+    const bool try_gpu = direct_gl && gl_video && !fast && !stats_on &&
+                         frame_no != screenshot_frame && pending_shot.empty();
+    const bool gpu_presented = try_gpu && display_gpu(side, phase(0.f));
+    if (!gpu_presented && gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
                                            render_fps > 60)) {
       video = view_buf.data();
       vw = (amiga::FB_W + 2 * side) * machine->hires_scale;
       vh = amiga::FB_H * machine->hires_scale;
       logical_w = amiga::FB_W + 2 * side;
     }
-    display_frame(video, vw, vh, logical_w);
+    if (!gpu_presented) display_frame(video, vw, vh, logical_w);
     if (frame_no == screenshot_frame) save_screenshot(video);
     if (!pending_shot.empty()) {
       std::swap(pending_shot, screenshot_path);
@@ -1179,7 +1245,8 @@ public:
     next_frame += freq / 60;
     uint64_t now = SDL_GetPerformanceCounter();
     if (fast || int64_t(next_frame - now) < -int64_t(freq / 10)) next_frame = now;
-    if (!fast && gl_video && render_fps > 60 && video == view_buf.data()) {
+    if (!fast && gl_video && render_fps > 60 &&
+        (gpu_presented || video == view_buf.data())) {
       const int samples = render_fps / 60;
       for (int i = 1; i < samples; ++i) {
         const uint64_t target = tick_start + (freq / 60) * uint64_t(i) / uint64_t(samples);
@@ -1194,9 +1261,13 @@ public:
           ++extra_gl_missed;
           continue;
         }
-        if (!remaster::compose_view(*machine, view_buf, side,
-                                    phase(float(i) / samples), true)) break;
-        display_frame(view_buf.data(), vw, vh, logical_w);
+        if (gpu_presented) {
+          if (!display_gpu(side, phase(float(i) / samples))) break;
+        } else {
+          if (!remaster::compose_view(*machine, view_buf, side,
+                                      phase(float(i) / samples), true)) break;
+          display_frame(view_buf.data(), vw, vh, logical_w);
+        }
         ++extra_gl_presented;
         if (std::getenv("FA18_GL_INTERP_DEBUG") &&
             (extra_gl_presented == 1 || extra_gl_presented % 60 == 0))
@@ -1428,6 +1499,7 @@ void usage() {
           "  --fast           run unthrottled\n"
           "  --hires N        remaster: render the 3D view at N times resolution\n"
           "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
+          "  --gl-direct      experimental: GPU-present OpenGL (no scene readback)\n"
           "  --widescreen     extend OpenGL view horizontally (16:9 window; resizable)\n"
           "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (physics stays 60)\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
@@ -1456,9 +1528,9 @@ void usage() {
           "      RETURN weapon, numpad views (full list in the manual).\n");
 }
 
-// OpenGL renderer of the 3D view (--gl): its own context on a hidden
-// window, so the presentation path (SDL_Renderer) stays as it is.
-bool init_gl() {
+// OpenGL renderer of the 3D view (--gl): normally a hidden context with SDL
+// presentation; --gl-direct uses a second context on the visible SDL window.
+bool init_gl(SDL_Window* visible) {
   // Prefer GLES 2 on ports built with FA18_OPENGLES2 (Android, Emscripten,
   // R36S) or when FA18_GLES=1; otherwise try desktop GL 2.1 first.
 #if defined(__EMSCRIPTEN__)
@@ -1468,7 +1540,7 @@ bool init_gl() {
   fprintf(stderr, "gl: not available on the web build (single canvas); using software hi-res\n");
   return false;
 #endif
-  SDL_Window* w = nullptr;
+  SDL_Window* w = visible;
   SDL_GLContext ctx = nullptr;
   std::string err;
 #if defined(FA18_OPENGLES2) || defined(__ANDROID__)
@@ -1486,8 +1558,10 @@ bool init_gl() {
     if (!ctx) err = SDL_GetError();
   }
   if (ctx && glr::init([](const char* n) { return SDL_GL_GetProcAddress(n); },
-                       [w, ctx] { SDL_GL_MakeCurrent(w, ctx); }, err))
+                       [w, ctx] { SDL_GL_MakeCurrent(w, ctx); }, err)) {
+    if (visible) SDL_GL_SetSwapInterval(std::getenv("FA18_GL_VSYNC") ? 1 : 0);
     return true;
+  }
   fprintf(stderr, "gl: not available (%s); using the software hi-res renderer\n", err.c_str());
   return false;
 }
@@ -1513,6 +1587,7 @@ int main(int argc, char** argv) {
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
   bool full_detail = false, stats = false, text_pace = false, widescreen = false;
+  bool gl_direct = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
@@ -1538,6 +1613,7 @@ int main(int argc, char** argv) {
     else if (a == "--stats") stats = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
+    else if (a == "--gl-direct") gl_direct = true;
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -1722,12 +1798,14 @@ int main(int argc, char** argv) {
   host.quit_after = quit_after;
   host.fast = fast;
   host.widescreen = widescreen;
+  host.direct_gl = gl_direct || std::getenv("FA18_GL_DIRECT") != nullptr;
   host.render_fps = render_fps;
-  glr::set_deferred_scene_readback(widescreen || render_fps > 60);
+  glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
-  if (gl_scale > 0 && !init_gl()) gl_failed = true;  // software hi-res renderer
+  if (gl_scale > 0 && !init_gl(host.direct_gl ? host.win : nullptr))
+    gl_failed = true;  // software hi-res renderer
   if (grab_mouse) host.set_grab(true);
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);

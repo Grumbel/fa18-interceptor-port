@@ -140,6 +140,15 @@ All off by default; the original behaviour is untouched.
   interpolated OpenGL geometry between game frames without increasing the
   game's physics tick rate; HUD and unconverted 2D elements still update at
   their original frequency. These options have no effect on non-GL scenes.
+- `--gl-direct` (experimental; equivalent to `FA18_GL_DIRECT=1`): present
+  OpenGL directly to the game window, compositing palette/scanline colours
+  and the original 2D cockpit/HUD layer on the GPU. Avoids expensive GPU
+  scene readback and the full-frame SDL texture upload on normal frames;
+  the SDL path remains for menus, statistics and screenshots. For testing,
+  `FA18_GL_DIRECT_COMPARE=1` checks the visible frame's logical pixel
+  centres against the CPU compositor (and intentionally reads pixels back).
+  See `tests/check_gl_direct.sh` and `docs/gl_renderer_roadmap.md`. The old
+  3D rasterizer still executes in the emulated game for now.
 - `FA18_SCENE_RENDER=<N>`: software hi-res path from the captured
   `SceneFrame` — depth-sorts all prims (fills, polys, lines, points),
   rasterizes them at N× into the 3D view, then pastes only HUD/cockpit

@@ -13,6 +13,7 @@
 #include "native/gl_renderer.hpp"
 #include "native/gl_palette.hpp"
 #include "native/gl_line_quad.hpp"
+#include "native/remaster.hpp"
 
 #include "native/runtime.hpp"
 #include "native/terrain.hpp"
@@ -66,6 +67,11 @@ constexpr GLenum GL_VERTEX_SHADER = 0x8B31, GL_FRAGMENT_SHADER = 0x8B30;
 constexpr GLenum GL_COMPILE_STATUS = 0x8B81, GL_LINK_STATUS = 0x8B82;
 constexpr GLenum GL_PACK_ALIGNMENT = 0x0D05, GL_PROGRAM_POINT_SIZE = 0x8642;
 constexpr GLenum GL_VERSION = 0x1F02, GL_RENDERER = 0x1F01;
+constexpr GLenum GL_TEXTURE_2D = 0x0DE1, GL_TEXTURE0 = 0x84C0;
+constexpr GLenum GL_TEXTURE_MIN_FILTER = 0x2801, GL_TEXTURE_MAG_FILTER = 0x2800;
+constexpr GLenum GL_TEXTURE_WRAP_S = 0x2802, GL_TEXTURE_WRAP_T = 0x2803;
+constexpr GLenum GL_NEAREST = 0x2600, GL_CLAMP_TO_EDGE = 0x812F;
+constexpr GLenum GL_SCISSOR_TEST = 0x0C11, GL_BLEND = 0x0BE2, GL_CULL_FACE = 0x0B44;
 
 struct GL {
   void (*GenFramebuffers)(GLsizei, GLuint*);
@@ -112,6 +118,16 @@ struct GL {
   void (*DrawArrays)(GLenum, GLint, GLsizei);
   void (*ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
   void (*PixelStorei)(GLenum, GLint);
+  void (*GenTextures)(GLsizei, GLuint*);
+  void (*BindTexture)(GLenum, GLuint);
+  void (*TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+  void (*TexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*);
+  void (*TexParameteri)(GLenum, GLenum, GLint);
+  void (*ActiveTexture)(GLenum);
+  void (*CopyTexSubImage2D)(GLenum, GLint, GLint, GLint, GLint, GLint, GLsizei, GLsizei);
+  void (*Uniform1i)(GLint, GLint);
+  void (*Uniform2f)(GLint, GLfloat, GLfloat);
+  GLenum (*GetError)();
   const unsigned char* (*GetString)(GLenum);
 };
 
@@ -177,6 +193,16 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.DrawArrays, "glDrawArrays", m);
   load(p, gl.ReadPixels, "glReadPixels", m);
   load(p, gl.PixelStorei, "glPixelStorei", m);
+  load(p, gl.GenTextures, "glGenTextures", m);
+  load(p, gl.BindTexture, "glBindTexture", m);
+  load(p, gl.TexImage2D, "glTexImage2D", m);
+  load(p, gl.TexSubImage2D, "glTexSubImage2D", m);
+  load(p, gl.TexParameteri, "glTexParameteri", m);
+  load(p, gl.ActiveTexture, "glActiveTexture", m);
+  load(p, gl.CopyTexSubImage2D, "glCopyTexSubImage2D", m);
+  load(p, gl.Uniform1i, "glUniform1i", m);
+  load(p, gl.Uniform2f, "glUniform2f", m);
+  load(p, gl.GetError, "glGetError", m);
   load(p, gl.GetString, "glGetString", m);
   if (!m.empty()) {
     err = "missing GL functions: " + m;
@@ -228,6 +254,56 @@ varying float v_palette;
 void main() { gl_FragColor = vec4(mix(u_colour.r, v_palette, u_coloured), 0.0, 0.0, 1.0); }
 )";
 
+// The original Amiga screen is only needed where 2D drawing has changed a
+// pixel since the geometry capture. The 3D scene is a palette-index texture,
+// with row-local colours and an EHB bit (the original copper palette can
+// change between scanlines). Scene rows need remapping for double buffering.
+const char* kPresentVertex = R"(
+attribute vec2 a_pos;
+varying vec2 v_uv;
+void main() {
+  v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5);
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+)";
+const char* kPresentFragment = R"(
+#ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+#endif
+uniform sampler2D u_scene, u_overlay, u_palette, u_rows;
+uniform vec2 u_dimensions;  // display width in source pixels; scene rows
+uniform float u_side, u_scale;
+varying vec2 v_uv;
+void main() {
+  float x = floor(v_uv.x * u_dimensions.x);
+  float y = min(199.0, floor(v_uv.y * 200.0));
+  float centre_x = x - u_side;
+  vec4 row = texture2D(u_rows, vec2(0.5, (y + 0.5) / 200.0));
+  float ehb = 0.0;
+  if (centre_x >= 0.0 && centre_x < 320.0) {
+    vec4 overlay = texture2D(u_overlay,
+      vec2((centre_x + 0.5) / 320.0, (y + 0.5) / 200.0));
+    if (overlay.a > 0.5) { gl_FragColor = vec4(overlay.rgb, 1.0); return; }
+    ehb = overlay.a > 0.03 ? 16.0 : 0.0;
+  } else {
+    ehb = (centre_x < 0.0 ? row.b : row.a) > 0.5 ? 16.0 : 0.0;
+  }
+  if (row.g < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  // Scene texture is rendered in GL bottom-first order; row/overlay data
+  // uploaded from CPU top-first begins at GL texture coordinate V=0.
+  float scene_y = (floor(row.r * 255.0 + 0.5) + fract(v_uv.y * 200.0)) * u_scale;
+  float tex_y = 1.0 - scene_y / (u_dimensions.y * u_scale);
+  float idx = floor(texture2D(u_scene, vec2(v_uv.x, tex_y)).r * 15.0 + 0.5);
+  vec3 colour = texture2D(u_palette,
+    vec2((idx + ehb + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+  gl_FragColor = vec4(colour, 1.0);
+}
+)";
+
 GLuint compile(GLenum type, const char* src, std::string& err) {
   GLuint s = gl.CreateShader(type);
   gl.ShaderSource(s, 1, &src, nullptr);
@@ -269,6 +345,9 @@ struct State {
   bool deferred_scene_readback = false;
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
+  GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
+  bool present_failed = false;
+  int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
   GLint u_view = -1, u_param = -1, u_colour = -1, u_xscale = -1;
   GLint u_coloured = -1, u_water_class = -1;
@@ -790,7 +869,7 @@ void finish_capture() {
   ++st.frames;
 }
 
-bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
+static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alpha) {
   if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
   finish_capture();
   // A capture may be finalised at scene_end without rendering (deferred
@@ -1005,18 +1084,22 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   }
   gl.Disable(GL_DEPTH_TEST);
 
-  // ---- read back the palette indices ----
+  // ---- read back only when the caller needs a CPU frame ----
   const auto t1 = std::chrono::steady_clock::now();
   static std::vector<uint8_t> rgba;
-  rgba.resize(size_t(w) * size_t(h) * 4);
-  gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
-  gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+  if (px) {
+    rgba.resize(size_t(w) * size_t(h) * 4);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+  }
   const auto t2 = std::chrono::steady_clock::now();
-  px.resize(size_t(w) * size_t(h));
-  for (int y = 0; y < h; ++y) {
-    const uint8_t* src = &rgba[size_t(h - 1 - y) * size_t(w) * 4];
-    uint8_t* dst = &px[size_t(y) * size_t(w)];
-    for (int x = 0; x < w; ++x) dst[x] = palette::decode(src[x * 4]);
+  if (px) {
+    px->resize(size_t(w) * size_t(h));
+    for (int y = 0; y < h; ++y) {
+      const uint8_t* src = &rgba[size_t(h - 1 - y) * size_t(w) * 4];
+      uint8_t* dst = &(*px)[size_t(y) * size_t(w)];
+      for (int x = 0; x < w; ++x) dst[x] = palette::decode(src[x * 4]);
+    }
   }
   gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
   if (profile && first_render && (st.frames % 20) == 0) {
@@ -1036,6 +1119,130 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
     std::fprintf(stderr, "gl: frame %llu objects %d prims %zu\n", (unsigned long long)st.frames,
                  st.object + 1, st.prims.size());
   st.last_rendered_serial = st.serial;
+  return true;
+}
+
+bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
+  return draw_layer(&px, w, h, S, alpha);
+}
+
+bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
+                 int drawable_w, int drawable_h) {
+  if (!active() || S <= 0 || side < 0 || layer.scene_rows <= 0 ||
+      layer.overlay.size() != size_t(320 * 200 * 4) ||
+      layer.palette.size() != size_t(32 * 200 * 4) ||
+      layer.rows.size() != size_t(200 * 4) ||
+      drawable_w <= 0 || drawable_h <= 0) return false;
+  st.make_current();
+  if (st.present_failed) return false;
+  const int wide = 320 + side * 2;
+  const int width = wide * S, height = layer.scene_rows * S;
+
+  if (!st.present_prog) {
+    std::string err;
+    const GLuint vs = compile(GL_VERTEX_SHADER, kPresentVertex, err);
+    const GLuint fs = compile(GL_FRAGMENT_SHADER, kPresentFragment, err);
+    if (!vs || !fs) {
+      std::fprintf(stderr, "gl: GPU compositor unavailable (%s)\n", err.c_str());
+      st.present_failed = true;
+      return false;
+    }
+    st.present_prog = gl.CreateProgram();
+    gl.AttachShader(st.present_prog, vs);
+    gl.AttachShader(st.present_prog, fs);
+    gl.BindAttribLocation(st.present_prog, 0, "a_pos");
+    gl.LinkProgram(st.present_prog);
+    GLint ok = 0;
+    gl.GetProgramiv(st.present_prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+      char log[2048] = {};
+      gl.GetProgramInfoLog(st.present_prog, sizeof(log), nullptr, log);
+      std::fprintf(stderr, "gl: GPU compositor link: %s\n", log);
+      st.present_failed = true;
+      return false;
+    }
+  }
+  if (!draw_layer(nullptr, width, height, S, alpha)) return false;
+
+  auto bind_texture = [&](GLuint& tex, int unit, int w, int h, const void* pixels) {
+    gl.ActiveTexture(GL_TEXTURE0 + unit);
+    const bool created = !tex;
+    if (created) gl.GenTextures(1, &tex);
+    gl.BindTexture(GL_TEXTURE_2D, tex);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (created || !pixels)
+      gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    else
+      gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+  };
+  // GPU-to-GPU copy from the RGBA8/RGBA4 scene renderbuffer. This preserves
+  // the strict GLES2 renderbuffer fallback until the scene can use an FBO
+  // texture attachment directly; neither path synchronously reads pixels.
+  if (!st.scene_tex || st.scene_tex_w != width || st.scene_tex_h != height) {
+    bind_texture(st.scene_tex, 0, width, height, nullptr);
+    st.scene_tex_w = width;
+    st.scene_tex_h = height;
+  } else {
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.BindTexture(GL_TEXTURE_2D, st.scene_tex);
+  }
+  gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
+  gl.CopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+  gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+  bind_texture(st.overlay_tex, 1, 320, 200, layer.overlay.data());
+  bind_texture(st.palette_tex, 2, 32, 200, layer.palette.data());
+  bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data());
+
+  gl.Viewport(0, 0, drawable_w, drawable_h);
+  gl.ColorMask(1, 1, 1, 1);
+  gl.ClearColor(0, 0, 0, 1);
+  gl.Clear(GL_COLOR_BUFFER_BIT);
+  const double aspect = double(wide) / 240.0;
+  const int vw = std::min(drawable_w, int(std::round(drawable_h * aspect)));
+  const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
+  gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
+  gl.Disable(GL_SCISSOR_TEST);
+  gl.Disable(GL_BLEND);
+  gl.Disable(GL_CULL_FACE);
+  gl.UseProgram(st.present_prog);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_scene"), 0);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_overlay"), 1);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_palette"), 2);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_rows"), 3);
+  gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_dimensions"), float(wide),
+               float(layer.scene_rows));
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_side"), float(side));
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_scale"), float(S));
+  static const float quad[12] = {-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1};
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
+  gl.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
+  gl.DisableVertexAttribArray(1);
+  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+  gl.DrawArrays(GL_TRIANGLES, 0, 6);
+  if (std::getenv("FA18_GL_DIRECT_DEBUG")) {
+    static int errors = 0;
+    const GLenum err = gl.GetError();
+    if (err || errors++ == 0)
+      std::fprintf(stderr, "gl: direct viewport %dx%d at %d,%d drawable %dx%d GL error %#x\n",
+                   vw, vh, (drawable_w - vw) / 2, (drawable_h - vh) / 2,
+                   drawable_w, drawable_h, err);
+  }
+  gl.UseProgram(0);
+  gl.ActiveTexture(GL_TEXTURE0);
+  return true;
+}
+
+bool read_gpu_window(std::vector<uint8_t>& rgba, int w, int h) {
+  if (!active() || w <= 0 || h <= 0) return false;
+  st.make_current();
+  gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+  gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+  rgba.resize(size_t(w) * size_t(h) * 4);
+  gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
   return true;
 }
 
