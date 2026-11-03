@@ -92,6 +92,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the GPU compositor itself, anchored at the widescreen left edge. The
   original 3D rasterizer is not yet bypassed. Use `tests/check_gl_direct.sh`
   for parity validation.
+  The original `pix/inst5` and `pix/frnt5` artwork is now decoded from the
+  user's ADF into a native GL cockpit texture. Changed instrument pixels
+  still use the Amiga screen as a dynamic overlay. Set
+  `FA18_COCKPIT_NATIVE=0` to compare the prior compositing path, and run
+  `tests/check_gl_cockpit.sh` to verify flight and Pause pixel parity.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

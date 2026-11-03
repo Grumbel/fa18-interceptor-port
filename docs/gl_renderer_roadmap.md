@@ -153,6 +153,16 @@ before committing. Note limitations explicitly rather than masking them.
   use the original bitplanes. A direct-GPU paused comparison at VBL 3570 had
   one unrelated raster-edge mismatch (160,108) in 85,600 source pixels;
   `tests/check_gl_direct.sh` allows at most two on that transition.
+- [x] Add the first asset-backed cockpit layer. The C++ ILBM/ByteRun1 loader
+  reads `inst5` and `frnt5` directly from the user's ADF and builds a native
+  320x200 indexed/RGB cockpit texture. CPU composition and the visible GL
+  shader choose original asset pixels wherever the live screen still matches
+  their index or CMAP colour; the original dynamic instrument drawing stays
+  in front. A flight replay logged 19,292 static artwork pixels and
+  1,764 dynamic/palette fallbacks out of 21,056 available at VBL 3482.
+  Widescreen GL flight and Pause screenshots are pixel-exact against the
+  previous compositor. `FA18_COCKPIT_NATIVE=0` supplies the deterministic
+  legacy oracle for `tests/check_gl_cockpit.sh`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
@@ -161,5 +171,6 @@ before committing. Note limitations explicitly rather than masking them.
 - [ ] Remove the intermediate GPU-to-GPU FBO copy by using a scene colour
   texture attachment; investigate a GLES2-safe RGBA4 path.
 - [ ] Make the compositor independent of the original HUD bitplanes;
-  reconcile cockpit instruments and dynamic overlays as first-class layers.
+  classify cockpit instrument writes directly (not by comparing bitplanes
+  against the static ILBM) and re-render them at output resolution.
 - [ ] Validate sustained 120/240 Hz and seam stability on real GPU/monitor.

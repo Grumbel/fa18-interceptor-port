@@ -218,8 +218,28 @@ python3 tools/extract_cockpit.py /path/to/FA-18.adf /tmp/fa18-cockpit
 The two bitmaps are only the static instrument/backdrop art. Needles,
 radar, fonts, indicators and flight-mode changes still have to be
 reconstructed as foreground layers before OpenGL can stop reading the
-original screen. The priority is pixel/behaviour parity first, then a
-high-resolution 2D cockpit and optional 3D enhancements.
+original screen. The original assets now also have a **runtime C++ ILBM
+decoder** (`src/native/cockpit_assets.cpp`) and a separate native cockpit
+texture in the high-refresh/widescreen CPU compositor and the direct-GL
+shader. Nothing generated from the ADF is committed.
+
+`inst5` is placed at source (0,145); `frnt5` at (16,133). Together they
+provide 21,056 static pixels. The renderer compares the live pixel against
+both the original ILBM palette index and its CMAP colour (normalized from
+the ILBM 16-step components to Amiga 17-step components). Matching pixels
+are drawn from the native asset, resolved through the current row palette
+when possible; the changed gauge, text, radar and marker pixels remain in
+the original 2D foreground layer. This also preserves palette fades, since
+nonmatching pixels fall back rather than forcing the original CMAP.
+
+`FA18_COCKPIT_NATIVE=0` restores the old bitplane-backed composition for
+pixel-exact A/B comparison; `FA18_COCKPIT_DEBUG=1` logs the number of decoded
+and substituted pixels. `tests/check_gl_cockpit.sh ORIGINAL.adf` checks
+equivalent flight and Pause screenshots. The native layer still uses the
+original bitplanes to classify *dynamic* pixels — the next step is to
+capture instrument writes directly and make the interface independent of
+that classification. Afterwards, the original bitmap artwork can be
+replaced with higher-resolution or fully 3D cockpit parts.
 
 ## Open points
 

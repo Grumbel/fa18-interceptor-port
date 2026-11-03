@@ -4,6 +4,7 @@
 #include "font6x10.hpp"
 #include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
+#include "native/cockpit_assets.hpp"
 #include "native/remaster.hpp"
 #include "native/mesh_viewer.hpp"
 #include "frontend_hotkeys.hpp"
@@ -1263,7 +1264,8 @@ public:
     }
     if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh,
                           new_hud, show_hud,
-                          pause_visible ? pause_rgba.data() : nullptr, pause_visible))
+                          pause_visible ? pause_rgba.data() : nullptr, pause_visible,
+                          remaster::cockpit_atlas(*machine).rgba.data()))
       return false;
     if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
       // Diagnostic only: compare the GPU-owned window against the existing

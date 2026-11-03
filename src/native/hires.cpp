@@ -14,6 +14,7 @@
 //                set (1) / clear (0); $5a9e2 bit b set = XOR for polygons
 #include "amiga/machine.hpp"
 #include "native/gl_renderer.hpp"
+#include "native/cockpit_assets.hpp"
 #include "native/remaster.hpp"
 #include "native/runtime.hpp"
 #include "native/scene_frame.hpp"
@@ -690,6 +691,7 @@ void sky_quad_done(bool ok) {
 
 void reset() {
   layers.clear();
+  reset_cockpit_atlas();
   gf_begun = false;
   cur = nullptr;
   in_scene = false;
@@ -968,6 +970,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const uint32_t* key = m.frame_row_key();
   const uint32_t* pal = m.frame_row_pal();
   if (!rgb || !idx || !key || !pal) return false;
+  const CockpitAtlas& cockpit = cockpit_atlas(m);
+  // Diagnostic oracle: compare the asset-backed composition to the previous
+  // bitplane-backed path without changing any emulated code or game state.
+  const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
+  const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
@@ -978,6 +985,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                       state == 0x23b7e || state == 0x23ba8; // frozen Pause world
   const bool paused = pause_screen_active();
   const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
+  int static_pixels = 0, dynamic_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
@@ -1018,6 +1026,21 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         const uint8_t li = idx[y * W + x];
+        const size_t cp = size_t(y) * W + x;
+        const bool index_matches = li == cockpit.index[cp];
+        const bool colour_matches = (rgb[cp] & 0xFFFFFFu) == (cockpit.rgb[cp] & 0xFFFFFFu);
+        if (cockpit_enabled && cockpit.valid[cp] && (index_matches || colour_matches)) {
+          // The original bitplanes merely tell us which static pixels are
+          // visible; the colour now comes from the decoded ADF artwork and
+          // the *current scanline's* copper palette. A changed pixel belongs
+          // to a dynamic gauge, label, or other foreground and stays original.
+          const uint32_t colour = index_matches ? pal[size_t(y) * 32 + cockpit.index[cp]]
+                                                : cockpit.rgb[cp];
+          if (yy == 0) ++static_pixels;
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+          continue;
+        }
+        if (yy == 0 && cockpit_enabled && cockpit.valid[cp]) ++dynamic_pixels;
         const size_t ci = size_t(ly < 0 ? 0 : ly) * W + size_t(x);
         // A scanline can temporarily point at a not-yet-completed Amiga
         // back buffer during a 3D redraw. It has no matching Layer; taking
@@ -1047,6 +1070,14 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       }
     }
   }
+  if (std::getenv("FA18_COCKPIT_DEBUG") && static_pixels > 10000) {
+    static bool reported = false;
+    if (!reported) {
+      reported = true;
+      std::fprintf(stderr, "cockpit: CPU frame %llu native static=%d dynamic/fallback=%d\n",
+                   (unsigned long long)m.frame_count(), static_pixels, dynamic_pixels);
+    }
+  }
   return true;
 }
 
@@ -1058,6 +1089,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const uint32_t* key = m.frame_row_key();
   const uint32_t* pal = m.frame_row_pal();
   if (!rgb || !idx || !key || !pal) return false;
+  const CockpitAtlas& cockpit = cockpit_atlas(m);
+  const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
+  const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.
@@ -1072,6 +1106,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
+  int static_pixels = 0, dynamic_pixels = 0;
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
     int ly = -1;
@@ -1108,6 +1143,21 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[3] = 255;
         continue;
       }
+      const size_t cp = size_t(y) * W + x;
+      if (cockpit_enabled && cockpit.valid[cp]) {
+        const bool index_matches = li == cockpit.index[cp];
+        const bool colour_matches = (rgb[cp] & 0xFFFFFFu) == (cockpit.rgb[cp] & 0xFFFFFFu);
+        if (index_matches || colour_matches) {
+          // Alpha 32/255 selects the indexed artwork with the current copper
+          // palette; 48/255 uses the ILBM's RGB when the screen palette has
+          // remapped those colour indices. Both reproduce the source pixel.
+          p[0] = p[1] = p[2] = 0;
+          p[3] = index_matches ? 32 : 48;
+          ++static_pixels;
+          continue;
+        }
+        ++dynamic_pixels;
+      }
       const bool missing_3d_row = flight && !paused && y < cur->rows && !scene;
       if (missing_3d_row ||
           (scene && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
@@ -1120,6 +1170,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[2] = uint8_t(c);
         p[3] = 255;
       }
+    }
+  }
+  if (std::getenv("FA18_COCKPIT_DEBUG") && static_pixels > 10000) {
+    static bool reported = false;
+    if (!reported) {
+      reported = true;
+      std::fprintf(stderr, "cockpit: frame %llu native static=%d dynamic/fallback=%d\n",
+                   (unsigned long long)m.frame_count(), static_pixels, dynamic_pixels);
     }
   }
   return true;
