@@ -181,11 +181,22 @@ before committing. Note limitations explicitly rather than masking them.
   unusual last-row shape of the original font's digit `9`. The corresponding
   `tools/recomp_hooks.txt` boundary prevents recompiled blocks from skipping
   the instrument's original redraw instruction.
-- [ ] Trace the right-hand altimeter and airspeed readouts next (known
-  original entry points `$47080` / `$470f2`; native record fields `+24`
-  and `+110`). Recover their glyph and colour conventions, then introduce
-  independent per-buffer native overlays with the same strict flight/Pause
-  screenshot tests before removing their original bitplane fallback.
+- [x] Trace the right-hand altitude and airspeed LCD fields and reconstruct
+  their live glyph pixels in the native cockpit layer. The `$47080` /
+  `$470f2` formatting routines describe the game values but are not the
+  normal text-pixel redraw entry: the resident 3x5 font (offset table at
+  `$528c0`) is blitted via `$47476` into bitplane 2, giving green pen 4
+  over black pen 0. Its glyph-source pointer, destination word and shift
+  yield the exact 240..265,158..170 digit positions, including blank glyphs
+  used to erase earlier values. Native per-buffer masks now track this
+  branch and compose the two numeric rows entirely from the source font
+  and live copper colours; untouched/unseen pixels retain the old layer.
+  `$47476` is a recompiled-code hook boundary. Verify with
+  `tests/check_gl_cockpit.sh` and `FA18_COCKPIT_READOUTS_NATIVE=0`.
+- [ ] Extend native glyph capture to the throttle/Mach fields below the
+  airspeed readout and the two rightmost purple numerical displays. Recover
+  their exact foreground/background indices and redraw lifetimes from the
+  same original font writers, and add nonzero-speed pixel-parity scenarios.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

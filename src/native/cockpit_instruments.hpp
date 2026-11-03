@@ -24,6 +24,23 @@ struct FuelDigits {
   }
 };
 
+// Two right-hand LCD number fields in the original 320x200 cockpit. The
+// surrounding FT/KTS labels remain part of the native inst5 image.
+struct FlightReadouts {
+  static constexpr int X = 240, Y = 158, W = 26, H = 13;
+  std::array<uint32_t, W * H> rgba{};
+  std::array<uint8_t, W * H> valid{};
+  bool active = false;
+
+  bool contains(int x, int y) const {
+    return active && x >= X && x < X + W && y >= Y && y < Y + H &&
+           valid[std::size_t(y - Y) * W + std::size_t(x - X)];
+  }
+  uint32_t pixel(int x, int y) const {
+    return rgba[std::size_t(y - Y) * W + std::size_t(x - X)];
+  }
+};
+
 // Observe the original digit writer so the displayed value tracks the
 // double-buffered cockpit refresh instead of the current physics value.
 void install_cockpit_instrument_hooks(amiga::Machine& m);
@@ -32,4 +49,6 @@ void reset_cockpit_instrument_state();
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
                                const uint32_t* row_keys,
                                const uint32_t* row_palette, bool enabled);
+FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
+                                       const uint32_t* row_palette, bool enabled);
 }  // namespace remaster

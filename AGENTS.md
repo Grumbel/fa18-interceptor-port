@@ -106,6 +106,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the instrument writer instead of skipping this PC hook.
   `FA18_COCKPIT_FUEL_NATIVE=0` disables this native instrument alone;
   `FA18_COCKPIT_FUEL_DEBUG=1` traces it.
+  The altitude and airspeed LCD digits on the right-hand instrument use
+  the game's resident 3x5 glyph table, not the fuel writer. The original
+  alternate font blitter branch `$47476` supplies each glyph and its
+  destination; native code reconstructs only the numeric fields from the
+  font bytes, latching the pixels separately for each screen buffer. It
+  never samples the original bitplane glyph pixels. Keep `$47476` in
+  `tools/recomp_hooks.txt`. `FA18_COCKPIT_READOUTS_NATIVE=0` disables
+  these native glyphs and `FA18_COCKPIT_TEXT_DEBUG=1` traces their capture.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

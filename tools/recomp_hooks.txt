@@ -29,3 +29,4 @@
 044f46
 04506e
 04744e  # per-screen-buffer fuel LCD redraw, cockpit_instruments.cpp
+047476  # per-screen-buffer altitude/airspeed glyphs, cockpit_instruments.cpp

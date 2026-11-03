@@ -1,7 +1,6 @@
-// Native pixel-exact reproduction of the fuel LCD at inst5 (104,183)..(122,187).
-// The original hardware draws this text into double-buffered bitplanes.
-// The original digit writer tells us when each buffer's LCD was refreshed;
-// the glyphs themselves are synthesized from the player record.
+// Native cockpit digits, independent of the Amiga's displayed bitplane pixels.
+// The original glyph writers provide precise per-buffer redraw timing; the
+// actual shapes come from the player record or the game's resident 3x5 font.
 #include "native/cockpit_instruments.hpp"
 
 #include "amiga/machine.hpp"
@@ -16,8 +15,10 @@ namespace remaster {
 namespace {
 
 constexpr uint32_t kFuelPixelWriter = 0x4744e;
+constexpr uint32_t kRightGlyphWriter = 0x47476;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
+constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
 
 struct FuelBank {
   uint32_t row_key = 0;
@@ -25,6 +26,9 @@ struct FuelBank {
   uint64_t last_latch_frame = UINT64_MAX;
   bool known = false;
   bool refreshed = false;
+  std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_valid{};
+  std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_ink{};
+  bool right_refreshed = false;
 };
 
 std::array<FuelBank, 4> fuel_banks{};
@@ -99,6 +103,42 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       return;
     }
   });
+  // The other branch of the original font blitter ($47476) writes LCD pen
+  // 4, including the green right-hand altitude/airspeed figures. Capture
+  // its *source glyph bytes*, never the destination bitmap. The destination
+  // address identifies the Amiga screen bank and exact glyph position.
+  m.add_pc_hook(kRightGlyphWriter, [&m] {
+    const uint32_t dst = m.cpu.a[3] & 0x00ffffff;
+    const uint32_t glyph_base = m.cpu.d[4] & 0x00ffffff;
+    const uint32_t glyph_byte = m.cpu.a[0] & 0x00ffffff;
+    if (glyph_base < 0x52900 || glyph_base >= 0x52b00 ||
+        glyph_byte < glyph_base || glyph_byte - glyph_base >= 5) return;
+    const int glyph_row = int(glyph_byte - glyph_base);
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t screen_base = bank.row_key - FuelDigits::Y * kRowStride;
+      if (dst < screen_base + 2 * kPlaneBytes ||
+          dst >= screen_base + 3 * kPlaneBytes) continue;
+      const uint32_t offset = dst - screen_base - 2 * kPlaneBytes;
+      const int y = int(offset / kRowStride);
+      const int x = int((offset % kRowStride) * 8 + (m.cpu.d[2] & 15));
+      if ((y - glyph_row != 158 && y - glyph_row != 166) ||
+          x < FlightReadouts::X || x + 2 >= FlightReadouts::X + FlightReadouts::W)
+        continue;
+      const uint8_t pattern = m.r8(glyph_byte);
+      for (int i = 0; i < 3; ++i) {
+        const size_t at = size_t(y - FlightReadouts::Y) * FlightReadouts::W +
+                          size_t(x + i - FlightReadouts::X);
+        bank.right_valid[at] = 1;
+        bank.right_ink[at] = (pattern >> (7 - i)) & 1;
+      }
+      bank.right_refreshed = true;
+      if (std::getenv("FA18_COCKPIT_TEXT_DEBUG") && glyph_row == 0)
+        std::fprintf(stderr, "cockpit: right glyph frame=%llu buffer=%06x x=%d y=%d font=%06x\n",
+                     (unsigned long long)m.frame_count(), bank.row_key, x, y, glyph_base);
+      return;
+    }
+  });
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
@@ -160,6 +200,41 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
       std::fprintf(stderr, "cockpit: native fuel LCD %05u at (%d,%d), %dx%d\n",
                    out.value, FuelDigits::X, FuelDigits::Y, FuelDigits::W, FuelDigits::H);
     }
+  }
+  return out;
+}
+
+FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
+                                       const uint32_t* row_palette, bool enabled) {
+  FlightReadouts out;
+  if (const char* mode = std::getenv("FA18_COCKPIT_READOUTS_NATIVE");
+      mode && mode[0] == '0' && mode[1] == '\0') return out;
+  if (!enabled || !row_keys || !row_palette || m.r8(0x5aa7d) != 0 ||
+      (m.r8(0x5aa8d) == 0 && !pause_screen_active())) return out;
+
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || !bank.right_refreshed ||
+        bank.row_key != row_keys[FuelDigits::Y]) continue;
+    for (int y = 0; y < FlightReadouts::H; ++y)
+      for (int x = 0; x < FlightReadouts::W; ++x) {
+        const size_t i = size_t(y) * FlightReadouts::W + size_t(x);
+        if (!bank.right_valid[i]) continue;
+        out.valid[i] = 1;
+        out.rgba[i] = row_palette[size_t(FlightReadouts::Y + y) * 32 +
+                                  (bank.right_ink[i] ? 4 : 0)];
+      }
+    out.active = true;
+    if (std::getenv("FA18_COCKPIT_TEXT_DEBUG")) {
+      static bool reported = false;
+      if (!reported) {
+        reported = true;
+        std::fprintf(stderr, "cockpit: native altitude/airspeed glyphs at (%d,%d), %dx%d\n",
+                     FlightReadouts::X, FlightReadouts::Y,
+                     FlightReadouts::W, FlightReadouts::H);
+      }
+    }
+    break;
   }
   return out;
 }
