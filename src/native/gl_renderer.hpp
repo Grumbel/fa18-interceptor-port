@@ -75,7 +75,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha = 1
 // SDL_UpdateTexture; the host swaps the window after a successful call.
 bool present_gpu(const remaster::GpuLayers& layers, int side, int S, float alpha,
                  int drawable_w, int drawable_h,
-                 const uint8_t* hud_rgba = nullptr, bool hud_visible = false);
+                 const uint8_t* hud_rgba = nullptr, bool hud_visible = false,
+                 const uint8_t* pause_rgba = nullptr, bool pause_visible = false);
 // Debug/test-only: read the visible GL back buffer before swapping. Never
 // called by the ordinary presentation path.
 bool read_gpu_window(std::vector<uint8_t>& rgba, int w, int h);

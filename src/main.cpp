@@ -172,6 +172,8 @@ public:
   std::vector<uint32_t> stats_buf;
   std::vector<uint8_t> hud_rgba;
   int hud_frame = -1;
+  std::vector<uint32_t> pause_ui;  // 960x720 transparent, original-view centred
+  std::vector<uint8_t> pause_rgba;
   std::vector<uint32_t> view_buf;
   remaster::GpuLayers gpu_layers;
   int gpu_layers_frame = -1;
@@ -502,6 +504,99 @@ public:
                 int px = x + (int(i) * font6x10::W + gx) * sc + xx, py = y + gy * sc + yy;
                 if (px >= 0 && px < w && py >= 0 && py < h) cv[size_t(py) * size_t(w) + size_t(px)] = col;
               }
+    }
+  }
+
+  // First native flight-interface element. Draw the Pause heading with
+  // resolution-independent antialiased strokes instead of magnifying the
+  // original 7-pixel-tall blitter lettering. Its low-res title is removed
+  // by the GL compositor, while the rest of the original panel stays intact.
+  void prepare_pause_ui() {
+    if (!pause_ui.empty()) return;
+    pause_ui.assign(size_t(STATS_W) * STATS_H, 0);
+    constexpr uint32_t amber = 0x00B87800u;
+    const std::string label = "- PAUSED -";
+    const float advance = 20.f;
+    const float left = (STATS_W - advance * label.size()) * .5f;
+    const float top = 155.f;
+    auto line = [&](float x1, float y1, float x2, float y2) {
+      const int xlo = std::max(0, int(std::floor(std::min(x1, x2) - 2.5f)));
+      const int xhi = std::min(STATS_W - 1, int(std::ceil(std::max(x1, x2) + 2.5f)));
+      const int ylo = std::max(0, int(std::floor(std::min(y1, y2) - 2.5f)));
+      const int yhi = std::min(STATS_H - 1, int(std::ceil(std::max(y1, y2) + 2.5f)));
+      const float dx = x2 - x1, dy = y2 - y1;
+      const float length2 = dx * dx + dy * dy;
+      for (int y = ylo; y <= yhi; ++y)
+        for (int x = xlo; x <= xhi; ++x) {
+          const float t = length2 > 0 ? std::clamp(((x + .5f - x1) * dx +
+                                  (y + .5f - y1) * dy) / length2, 0.f, 1.f) : 0.f;
+          const float dist = std::hypot(x + .5f - (x1 + dx * t),
+                                        y + .5f - (y1 + dy * t));
+          const uint32_t a = uint32_t(std::lround(255.f *
+                                std::clamp(1.8f - dist, 0.f, 1.f)));
+          uint32_t& pixel = pause_ui[size_t(y) * STATS_W + size_t(x)];
+          if (a > pixel >> 24) pixel = (a << 24) | amber;
+        }
+    };
+    for (size_t i = 0; i < label.size(); ++i) {
+      const float x = left + float(i) * advance, y = top;
+      auto stroke = [&](int ax, int ay, int bx, int by) {
+        line(x + ax, y + ay, x + bx, y + by);
+      };
+      switch (label[i]) {
+        case '-': stroke(3, 10, 14, 10); break;
+        case 'P': stroke(2, 2, 2, 20); stroke(2, 2, 13, 2);
+                  stroke(13, 2, 13, 10); stroke(2, 10, 13, 10); break;
+        case 'A': stroke(2, 20, 2, 6); stroke(2, 6, 6, 2);
+                  stroke(6, 2, 11, 2); stroke(11, 2, 14, 6);
+                  stroke(14, 6, 14, 20); stroke(2, 12, 14, 12); break;
+        case 'U': stroke(2, 2, 2, 17); stroke(2, 17, 5, 20);
+                  stroke(5, 20, 11, 20); stroke(11, 20, 14, 17);
+                  stroke(14, 17, 14, 2); break;
+        case 'S': stroke(14, 2, 4, 2); stroke(4, 2, 2, 5);
+                  stroke(2, 5, 2, 9); stroke(2, 9, 14, 12);
+                  stroke(14, 12, 14, 17); stroke(14, 17, 11, 20);
+                  stroke(11, 20, 2, 20); break;
+        case 'E': stroke(14, 2, 2, 2); stroke(2, 2, 2, 20);
+                  stroke(2, 11, 12, 11); stroke(2, 20, 14, 20); break;
+        case 'D': stroke(2, 2, 2, 20); stroke(2, 2, 10, 2);
+                  stroke(10, 2, 14, 6); stroke(14, 6, 14, 16);
+                  stroke(14, 16, 10, 20); stroke(10, 20, 2, 20); break;
+        default: break;
+      }
+    }
+    pause_rgba.resize(pause_ui.size() * 4);
+    for (size_t i = 0; i < pause_ui.size(); ++i) {
+      const uint32_t p = pause_ui[i];
+      pause_rgba[4 * i] = uint8_t(p >> 16);
+      pause_rgba[4 * i + 1] = uint8_t(p >> 8);
+      pause_rgba[4 * i + 2] = uint8_t(p);
+      pause_rgba[4 * i + 3] = uint8_t(p >> 24);
+    }
+  }
+
+  void blend_pause_ui(std::vector<uint32_t>& fb, int side, int scale) {
+    if (!remaster::pause_screen_active() || fb.empty()) return;
+    prepare_pause_ui();
+    const int pitch = (amiga::FB_W + 2 * side) * scale;
+    // Only sample the heading's small footprint rather than its large
+    // transparent texture; this also keeps high-refresh Pause inexpensive.
+    for (int y = 42 * scale; y < 51 * scale; ++y) {
+      const int sy = y * STATS_H / (200 * scale);
+      for (int x = 116 * scale; x < 204 * scale; ++x) {
+        const int sx = x * STATS_W / (320 * scale);
+        const uint32_t src = pause_ui[size_t(sy) * STATS_W + size_t(sx)];
+        const uint32_t a = src >> 24;
+        if (!a) continue;
+        uint32_t& dst = fb[size_t(y) * pitch + size_t(side * scale + x)];
+        uint32_t out = 0xFF000000u;
+        for (int shift = 0; shift < 24; shift += 8) {
+          const uint32_t c = (((src >> shift) & 255) * a +
+                              ((dst >> shift) & 255) * (255 - a) + 127) / 255;
+          out |= c << shift;
+        }
+        dst = out;
+      }
     }
   }
 
@@ -1147,6 +1242,8 @@ public:
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
     const bool show_hud = stats_on || fps_on;
+    const bool pause_visible = remaster::pause_screen_active();
+    if (pause_visible) prepare_pause_ui();
     const uint8_t* new_hud = nullptr;
     if (show_hud && hud_frame != frame_no) {
       prepare_hud();
@@ -1165,7 +1262,8 @@ public:
                 frame_no, int(stats_on), int(fps_on));
     }
     if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh,
-                          new_hud, show_hud))
+                          new_hud, show_hud,
+                          pause_visible ? pause_rgba.data() : nullptr, pause_visible))
       return false;
     if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
       // Diagnostic only: compare the GPU-owned window against the existing
@@ -1175,6 +1273,7 @@ public:
       const bool read = glr::read_gpu_window(actual, dw, dh);
       const bool expected = remaster::compose_view(*machine, view_buf, side, alpha, true);
       if (read && expected) {
+        blend_pause_ui(view_buf, side, machine->hires_scale);
         const int wide = amiga::FB_W + 2 * side;
         const int S = machine->hires_scale;
         const double aspect = double(wide) / 240.0;
@@ -1247,6 +1346,7 @@ public:
     const bool gpu_presented = try_gpu && display_gpu(side, phase(0.f));
     if (!gpu_presented && gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
                                            render_fps > 60)) {
+      blend_pause_ui(view_buf, side, machine->hires_scale);
       video = view_buf.data();
       vw = (amiga::FB_W + 2 * side) * machine->hires_scale;
       vh = amiga::FB_H * machine->hires_scale;
@@ -1292,6 +1392,7 @@ public:
         } else {
           if (!remaster::compose_view(*machine, view_buf, side,
                                       phase(float(i) / samples), true)) break;
+          blend_pause_ui(view_buf, side, machine->hires_scale);
           display_frame(view_buf.data(), vw, vh, logical_w);
         }
         ++extra_gl_presented;

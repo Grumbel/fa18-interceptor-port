@@ -91,7 +91,13 @@ before committing. Note limitations explicitly rather than masking them.
 - [x] Added a stdlib-only ILBM/ByteRun1 extractor for `pix/inst5` (320x55)
   and `pix/frnt5` (288x12). The images are original cockpit/instrument art,
   not the dynamic needle/text/radar layers. Extracted files are never
-  added to git.
+  added to git. A 320x200 screenshot at VBL 4000 verifies `inst5` at (0,145):
+  after converting ILBM 4-bit palette components from 16-step to Amiga
+  17-step values, **17,332/17,600** pixels match the existing cockpit.
+  `frnt5` at (16,133) has average 0.67 colour-channel error over its
+  nonblack pixels (the next-nearest x offset is >5). These are the correct
+  source rectangles for the next native GL cockpit texture layer; the
+  differences need classification as dynamic gauges/markers or palette effects.
 - [x] Defer the redundant 320x200-scale GL readback at scene-end when
   widescreen or high refresh will immediately redraw at output dimensions.
   A mode switch back to normal 60 Hz materialises the current capture on
@@ -127,13 +133,31 @@ before committing. Note limitations explicitly rather than masking them.
   that toggling stats no longer falls back to the SDL compositor.
 - [x] Preserve the last completed 3D scene when Pause/menu enters a game
   frame without a matching scene-end capture; avoid presenting the unfinished
-  geometry as a blank frame. The *original* Pause lettering and instrument
-  graphics are still sourced from 320x200 bitplanes pending native 2D work.
-- [ ] Add a native text/UI capture path for the Pause screen and cockpit
-  overlays, preserving palette/copper fades without keeping their original
-  pixelated bitplanes as the presentation source.
-- [ ] Reproduce and eliminate residual widescreen seam flicker across
-  consecutive real-time frames (not only CPU/GPU parity within one frame).
+  geometry as a blank frame.
+- [x] Reproduce a **consecutive-frame** widescreen seam failure at 3510/3511
+  during the scripted flight launch. The game clears its in-flight flag and
+  displays an unfinished 3D bitplane buffer while the most recent complete
+  geometry is still current. Recent GL captures now keep the sides visible;
+  rows without any completed 3D layer are projected from that same capture
+  instead of flashing the Amiga back buffer. The Pause state is explicitly
+  excluded from this last rule to preserve its genuine original 2D graphics.
+  `tests/check_gl_seam.py` checks those sky rows in adjacent screenshots.
+- [x] Render the first independent native flight UI element: the Pause
+  heading. Clear its old 320x200 text rectangle using the panel's live colour
+  (including copper fades) and paint an antialiased vector heading in a
+  separate 960x720 transparent UI texture, centred on the original 4:3
+  region. This works in the CPU fallback and the opt-in direct GPU compositor;
+  stats/FPS retain their separate top-left-anchored layer. The new title
+  currently uses a fixed amber rather than tracking the original title's
+  per-frame fade. The rest of the Pause panel and instrument graphics still
+  use the original bitplanes. A direct-GPU paused comparison at VBL 3570 had
+  one unrelated raster-edge mismatch (160,108) in 85,600 source pixels;
+  `tests/check_gl_direct.sh` allows at most two on that transition.
+- [ ] Expand the native text/UI capture path to the rest of Pause and the
+  cockpit overlay, preserving palette/copper fades and separating dynamic
+  gauges from original bitplane backgrounds.
+- [ ] Verify residual seam flicker under other transitions (views, terrain,
+  Pause/resume) on real GPU hardware, including the 120/240 Hz present loop.
 - [ ] Remove the intermediate GPU-to-GPU FBO copy by using a scene colour
   texture attachment; investigate a GLES2-safe RGBA4 path.
 - [ ] Make the compositor independent of the original HUD bitplanes;

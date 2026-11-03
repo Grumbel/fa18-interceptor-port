@@ -20,6 +20,9 @@ void sky_quad_done(bool ok);  // $42f70 returns (the RTS $432aa / $432b6)
 // region; otherwise (widescreen only) its pixels remain exactly unchanged.
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center);
+// The 68000 menu-state addresses for the flight Pause overlay. Used to
+// replace its low-resolution heading with a host-rendered 2D UI layer.
+bool pause_screen_active();
 
 // Separate the original Amiga screen-space drawing (cockpit, HUD, text and
 // otherwise unexplained pixels) from the captured 3D scene. The GL presenter

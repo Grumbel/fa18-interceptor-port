@@ -45,6 +45,25 @@ for mode in centred wide rgba4; do
   fi
 done
 
+# The original Pause screen is a distinct state reached after flight and
+# uses an independent native high-resolution heading texture. Exercise the
+# visible GPU presentation *after* fast-forwarding to the Pause state.
+# One original screen-space raster edge can differ at a 3x GPU sample centre.
+env FA18_GL_DIRECT_COMPARE=1 FA18_GL_DIRECT_DEBUG=1 \
+  "$bin" --native off --interpret --det-timing --fast --gl 3 --gl-direct \
+  --widescreen --render-fps 120 --frames 3590 \
+  --script "$repo/tests/data/pause_direct_gl.txt" "$adf" >"$tmp/pause.log" 2>&1
+if ! grep -q 'gl: direct GPU presentation 1' "$tmp/pause.log" ||
+   ! awk '$1 == "gl:" && $2 == "direct" && $3 == "parity" &&
+             $4 == "frame" && $5 == 3570 {
+               split($7, diff, "/"); seen = 1;
+               if (diff[1] > 2) bad = 1;
+           } END { exit !(seen && !bad) }' "$tmp/pause.log"; then
+  echo 'FAIL: paused GPU heading/parity differs from the CPU compositor' >&2
+  grep 'gl: direct parity' "$tmp/pause.log" >&2 || true
+  exit 1
+fi
+
 # GL presentation is not permitted to advance simulation or alter emulated
 # memory. Keep the traditional CPU compositor as the deterministic oracle.
 "$bin" "${common[@]}" --render-fps 120 --widescreen \

@@ -969,8 +969,14 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const uint32_t* pal = m.frame_row_pal();
   if (!rgb || !idx || !key || !pal) return false;
   const uint32_t state = native::rd32(0x2a6d4);
-  const bool flight = native::rd8(0x5aa8d) != 0 ||
-                      state == 0x23b7e || state == 0x23ba8; // frozen world during Pause
+  // Some flight transition handlers clear in_flight while they continue to
+  // display freshly captured 3D frames. Testing only that flag makes the
+  // widescreen sides blink black even though the centre still shows world.
+  const bool recent_scene = m.frame_count() >= cur->frame &&
+                            m.frame_count() - cur->frame <= 16;
+  const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
+                      state == 0x23b7e || state == 0x23ba8; // frozen Pause world
+  const bool paused = pause_screen_active();
   const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
   for (int y = 0; y < 200; ++y) {
@@ -1003,18 +1009,37 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
+        // The native UI will draw the Pause heading at output resolution.
+        // Erase only its old 320x200 title rectangle; sample the surrounding
+        // panel fill so its copper/palette fades remain exactly original.
+        if (paused && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
+          const uint32_t bg = rgb[y * W + 120];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
         const uint8_t li = idx[y * W + x];
         const size_t ci = size_t(ly < 0 ? 0 : ly) * W + size_t(x);
-        if (L && li % 16 == L->snap[ci] && !L->unexplained[ci]) {
+        // A scanline can temporarily point at a not-yet-completed Amiga
+        // back buffer during a 3D redraw. It has no matching Layer; taking
+        // that buffer as 2D foreground causes the whole centre row to flash
+        // black while the GL widescreen sides remain stable. Genuine HUD
+        // writes remain identifiable where a completed Layer does match.
+        // In Pause the bitplanes contain the frozen game's real 2D panel
+        // and gauges, not a half-drawn 3D back buffer. Keep them visible.
+        const bool missing_3d_row = flight && !paused && y < cur->rows && !L;
+        if (missing_3d_row ||
+            (L && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
           // The screen may point to the preceding Amiga 3D buffer. Its
           // contents are temporally different from the new GL side bands;
           // blending the sides against an old centre creates a flickering
           // join. Both sides and centre must use *one* GL scene. Unexplained
           // screen-space 2D drawing and the cockpit remain on top below.
-          const uint8_t* src = &scene_pixels[size_t(ly * S + yy) * size_t(stride) +
+          const int render_y = missing_3d_row ? y : ly;
+          const uint8_t* src = &scene_pixels[size_t(render_y * S + yy) * size_t(stride) +
                                              size_t(left + x * S)];
           for (int xx = 0; xx < S; ++xx)
-            dst[left + x * S + xx] = pal[size_t(y) * 32 + ((src[xx] & 15) | (li & 16))];
+            dst[left + x * S + xx] = pal[size_t(y) * 32 +
+                                             ((src[xx] & 15) | (missing_3d_row ? 0 : li & 16))];
         } else {
           const uint32_t colour = rgb[y * W + x];
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
@@ -1038,8 +1063,11 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   // must project the world behind the entire uncockpitted side area.
   out.scene_rows = 200;
   const uint32_t state = native::rd32(0x2a6d4);
-  const bool flight = native::rd8(0x5aa8d) != 0 ||
+  const bool recent_scene = m.frame_count() >= cur->frame &&
+                            m.frame_count() - cur->frame <= 16;
+  const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
                       state == 0x23b7e || state == 0x23ba8;
+  const bool paused = pause_screen_active();
   const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
@@ -1072,9 +1100,19 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
-      if (scene && li % 16 == L->snap[ci] && !L->unexplained[ci]) {
+      if (paused && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
+        const uint32_t bg = rgb[y * W + 120];
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
+      const bool missing_3d_row = flight && !paused && y < cur->rows && !scene;
+      if (missing_3d_row ||
+          (scene && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
         p[0] = p[1] = p[2] = 0;
-        p[3] = (li & 16) ? 16 : 0;
+        p[3] = !missing_3d_row && (li & 16) ? 16 : 0;
       } else {
         const uint32_t c = rgb[y * W + x];
         p[0] = uint8_t(c >> 16);
@@ -1085,6 +1123,11 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
     }
   }
   return true;
+}
+
+bool pause_screen_active() {
+  const uint32_t state = native::rd32(0x2a6d4);
+  return state == 0x23b7e || state == 0x23ba8;
 }
 
 }  // namespace remaster

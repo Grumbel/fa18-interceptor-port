@@ -274,9 +274,9 @@ precision highp float;
 precision mediump float;
 #endif
 #endif
-uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud;
+uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud, u_pause;
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
-uniform float u_side, u_scale, u_hud_visible;
+uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
 varying vec2 v_uv;
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
@@ -317,6 +317,13 @@ void main() {
   if (u_hud_visible > 0.5 && x < 320.0) {
     vec4 hud = texture2D(u_hud, vec2(v_uv.x * u_dimensions.x / 320.0, v_uv.y));
     base_colour = mix(base_colour, hud.rgb, hud.a);
+  }
+  // Unlike the performance overlay, flight UI stays centred on the original
+  // 4:3 view, even when widescreen adds scenery to either side.
+  if (u_pause_visible > 0.5 && centre_x >= 0.0 && centre_x < 320.0) {
+    vec4 ui = texture2D(u_pause, vec2((centre_x + fract(v_uv.x * u_dimensions.x)) / 320.0,
+                                       v_uv.y));
+    base_colour = mix(base_colour, ui.rgb, ui.a);
   }
   gl_FragColor = vec4(base_colour, 1.0);
 }
@@ -364,7 +371,7 @@ struct State {
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
-  GLuint hud_tex = 0;
+  GLuint hud_tex = 0, pause_tex = 0;
   bool present_failed = false;
   int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
@@ -1164,7 +1171,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
 
 bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
                  int drawable_w, int drawable_h,
-                 const uint8_t* hud_rgba, bool hud_visible) {
+                 const uint8_t* hud_rgba, bool hud_visible,
+                 const uint8_t* pause_rgba, bool pause_visible) {
   if (!active() || S <= 0 || side < 0 || layer.scene_rows <= 0 ||
       layer.overlay.size() != size_t(320 * 200 * 4) ||
       layer.palette.size() != size_t(32 * 200 * 4) ||
@@ -1234,6 +1242,10 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data());
   if (hud_rgba) bind_texture(st.hud_tex, 4, 960, 720, hud_rgba);
   if (hud_visible && !st.hud_tex) return false;
+  // The vector Pause lettering is immutable: retain its own GPU texture
+  // across frames, and re-upload only if the GL context was recreated.
+  if (pause_rgba && !st.pause_tex) bind_texture(st.pause_tex, 5, 960, 720, pause_rgba);
+  if (pause_visible && !st.pause_tex) return false;
 
   gl.Viewport(0, 0, drawable_w, drawable_h);
   gl.ColorMask(1, 1, 1, 1);
@@ -1253,6 +1265,8 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_rows"), 3);
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_hud"), 4);
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_hud_visible"), hud_visible ? 1.f : 0.f);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_pause"), 5);
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_pause_visible"), pause_visible ? 1.f : 0.f);
   gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_dimensions"), float(wide),
                float(layer.scene_rows));
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_side"), float(side));
