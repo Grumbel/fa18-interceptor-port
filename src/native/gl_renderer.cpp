@@ -266,6 +266,9 @@ struct State {
   std::vector<Prim> prims;
   std::vector<float> previous_verts;
   std::vector<Prim> previous_prims;
+  uint64_t matched_serial = 0;
+  std::vector<int> matched_previous_first; // one previous vertex offset per current primitive, or -1
+  size_t matched_count = 0, matched_reordered = 0;
   Camera camera, previous_camera;
   // terrain: triangulated water, absolute world coordinates
   struct WaterTri { double x[3], z[3]; int32_t min_alt; };
@@ -623,9 +626,109 @@ Camera capture_camera() {
 
 bool same_primitive(const Prim& a, const Prim& b) {
   return a.mode == b.mode && a.count == b.count && a.sequence == b.sequence &&
-         a.object == b.object && a.mesh == b.mesh && a.stream == b.stream &&
+         a.mesh == b.mesh && a.stream == b.stream &&
          a.flat == b.flat && a.ops.set == b.ops.set && a.ops.clr == b.ops.clr &&
          a.ops.xr == b.ops.xr && a.ops.copy == b.ops.copy;
+}
+
+struct ObjectCentre {
+  int ordinal = -1;
+  uint32_t mesh = 0, stream = 0;
+  bool flat = false;
+  double sum[3]{};
+  double count = 0;
+};
+
+std::vector<ObjectCentre> object_centres(const std::vector<Prim>& prims,
+                                        const std::vector<float>& verts) {
+  std::vector<ObjectCentre> objects;
+  for (const Prim& p : prims) {
+    if (objects.empty() || objects.back().ordinal != p.object) {
+      ObjectCentre o;
+      o.ordinal = p.object;
+      o.mesh = p.mesh;
+      o.stream = p.stream;
+      o.flat = p.flat;
+      objects.push_back(o);
+    }
+    ObjectCentre& o = objects.back();
+    const size_t begin = size_t(p.first) * 3;
+    const size_t end = begin + size_t(p.count) * 3;
+    if (end > verts.size()) continue;
+    for (size_t i = begin; i < end; i += 3) {
+      for (int c = 0; c < 3; ++c) o.sum[c] += double(verts[i + size_t(c)]);
+      o.count += 1;
+    }
+  }
+  for (ObjectCentre& o : objects)
+    if (o.count > 0) for (double& x : o.sum) x /= o.count;
+  return objects;
+}
+
+// The original sorts its draw list by depth; an aircraft, runway marking or
+// building can therefore change *ordinal* between otherwise identical 3D
+// captures. Match whole object instances before matching their primitives.
+// For repeated copies of one mesh, prefer the closest view-space centre and
+// consume each previous instance at most once (no one-to-many morphing).
+void build_primitive_matches() {
+  st.matched_serial = st.serial;
+  st.matched_previous_first.assign(st.prims.size(), -1);
+  st.matched_count = st.matched_reordered = 0;
+  const auto current_objects = object_centres(st.prims, st.verts);
+  const auto old_objects = object_centres(st.previous_prims, st.previous_verts);
+  struct Candidate { double distance; int delta, now, old; };
+  std::vector<Candidate> candidates;
+  for (size_t i = 0; i < current_objects.size(); ++i) {
+    const ObjectCentre& a = current_objects[i];
+    for (size_t j = 0; j < old_objects.size(); ++j) {
+      const ObjectCentre& b = old_objects[j];
+      if (a.mesh != b.mesh || a.stream != b.stream || a.flat != b.flat ||
+          a.count == 0 || b.count == 0) continue;
+      double dist = 0;
+      for (int c = 0; c < 3; ++c) {
+        const double d = a.sum[c] - b.sum[c];
+        dist += d * d;
+      }
+      candidates.push_back({dist, std::abs(a.ordinal - b.ordinal), int(i), int(j)});
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+    if (a.distance != b.distance) return a.distance < b.distance;
+    return a.delta < b.delta;
+  });
+  std::vector<int> object_map(st.object + 1, -1);
+  std::vector<bool> used_old(old_objects.size(), false);
+  for (const Candidate& c : candidates) {
+    const int ordinal = current_objects[size_t(c.now)].ordinal;
+    if (object_map[size_t(ordinal)] >= 0 || used_old[size_t(c.old)]) continue;
+    object_map[size_t(ordinal)] = old_objects[size_t(c.old)].ordinal;
+    used_old[size_t(c.old)] = true;
+  }
+  auto key = [](int object, int sequence) {
+    return (uint64_t(uint32_t(object)) << 32) | uint32_t(sequence);
+  };
+  std::unordered_map<uint64_t, const Prim*> old_prims;
+  old_prims.reserve(st.previous_prims.size());
+  for (const Prim& p : st.previous_prims) old_prims.emplace(key(p.object, p.sequence), &p);
+  for (size_t i = 0; i < st.prims.size(); ++i) {
+    const Prim& p = st.prims[i];
+    if (p.object < 0 || size_t(p.object) >= object_map.size()) continue;
+    const int old_object = object_map[size_t(p.object)];
+    if (old_object < 0) continue;
+    auto it = old_prims.find(key(old_object, p.sequence));
+    if (it == old_prims.end() || !same_primitive(p, *it->second)) continue;
+    const Prim& old = *it->second;
+    const size_t n = size_t(p.count) * 3;
+    if (size_t(p.first) * 3 + n > st.verts.size() ||
+        size_t(old.first) * 3 + n > st.previous_verts.size()) continue;
+    st.matched_previous_first[i] = old.first;
+    ++st.matched_count;
+    if (old_object != p.object) ++st.matched_reordered;
+  }
+  if (std::getenv("FA18_GL_MATCH_DEBUG") && st.serial % 20 == 0)
+    std::fprintf(stderr, "gl: match serial %llu current %zu previous %zu matched %zu reordered %zu\n",
+                 (unsigned long long)st.serial, st.prims.size(), st.previous_prims.size(),
+                 st.matched_count, st.matched_reordered);
 }
 
 bool interpolation_available() { return active() && st.has_frame && st.has_previous; }
@@ -657,28 +760,18 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   Camera cam = st.camera;
   if (interpolate) {
     interpolated = st.verts;
-    // LOD/clipping can add or remove individual primitives. Match stable
-    // mesh/object/primitive identities, and leave unmatched ones at their
-    // current positions instead of invalidating the entire scene blend.
-    // Index once: a linear search per primitive is quadratic for the larger
-    // runway/terrain scenes and would cost more than the extra GL redraw.
-    auto key = [](const Prim& p) {
-      return (uint64_t(uint32_t(p.object)) << 32) | uint32_t(p.sequence);
-    };
-    std::unordered_map<uint64_t, const Prim*> previous;
-    previous.reserve(st.previous_prims.size());
-    for (const Prim& p : st.previous_prims) previous.emplace(key(p), &p);
-    for (const Prim& p : st.prims) {
-      const auto it = previous.find(key(p));
-      if (it == previous.end() || !same_primitive(p, *it->second)) continue;
-      const Prim* prev = it->second;
+    // Cache the correspondence for the entire capture; high-FPS redraws
+    // only need to blend the vertex arrays, not re-match the object list.
+    if (st.matched_serial != st.serial) build_primitive_matches();
+    for (size_t j = 0; j < st.prims.size(); ++j) {
+      const Prim& p = st.prims[j];
+      const int old_first = st.matched_previous_first[j];
+      if (old_first < 0) continue;
       const size_t n = size_t(p.count) * 3;
-      if ((size_t(p.first) * 3 + n) > st.verts.size() ||
-          (size_t(prev->first) * 3 + n) > st.previous_verts.size()) continue;
       for (size_t i = 0; i < n; ++i) {
         const size_t at = size_t(p.first) * 3 + i;
-        interpolated[at] = st.previous_verts[size_t(prev->first) * 3 + i] +
-                           alpha * (st.verts[at] - st.previous_verts[size_t(prev->first) * 3 + i]);
+        interpolated[at] = st.previous_verts[size_t(old_first) * 3 + i] +
+                           alpha * (st.verts[at] - st.previous_verts[size_t(old_first) * 3 + i]);
       }
       ++matched;
     }

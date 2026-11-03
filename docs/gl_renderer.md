@@ -24,10 +24,14 @@ between the original 60 Hz emulated VBL ticks. The original game continues
 to simulate physics and render its own low-resolution view at its existing
 pace; the host re-renders only cached GL primitives, with no additional 68000
 execution. Two consecutive 3D captures provide view-space vertex positions
-and the camera pose. Primitives are matched by their original object, mesh,
-stream and per-object primitive sequence; compatible vertices move linearly
-from the older to the newer capture, while primitives whose LOD, clipping or
-topology has changed retain their newest position. Ground and water use the
+and the camera pose. The game's depth-sorted draw list can change object
+order from one capture to the next. Object instances are paired by mesh,
+stream and nearest view-space centre, with each old instance used only once;
+within each pair, primitive sequences and drawing operations must agree.
+These pairings are cached once per capture, not rebuilt every presentation.
+Compatible vertices move linearly from the older to the newer capture;
+primitives whose LOD, clipping or topology has changed retain their newest
+position. Ground and water use the
 interpolated camera. The renderer measures the *actual* interval between 3D
 captures (often four VBLs, about 15 Hz) to advance the blend smoothly, with
 one capture interval of visual latency. Large gaps reset history to prevent
@@ -38,10 +42,18 @@ physics still advance only at their original rates; interpolation applies
 only to geometrically matched 3D primitives and camera movement. Additional
 redraws are skipped when the host falls too far behind its 60 Hz deadline.
 For inspection, `FA18_GL_INTERP_DEBUG=1` reports interpolation and extra
-presentation counts. `tests/check_gl_scene.sh` asserts pixel-exact 4:3
+presentation counts, while `FA18_GL_MATCH_DEBUG=1` shows matched primitives,
+including those recovered across draw-list reorderings.
+`tests/check_gl_scene.sh` asserts pixel-exact 4:3
 centre preservation in addition to interpreter/native/recompiler parity;
-`tests/check_gl_interpolation.sh` verifies extra blended presentations and
-identical emulated RAM at 60 and 120 Hz.
+`tests/check_gl_interpolation.sh` verifies extra blended presentations,
+identical emulated RAM at 60 and 120 Hz, and equal 120 Hz screenshots in
+interpreter, recompiled and native execution.
+`tests/data/interpolation_motion.txt` is a separate accelerated free-flight
+replay for visual inspection: at frame 4655 (241 knots), its 60 and 120 Hz
+OpenGL screenshots differ in 3,778 output pixels on the tested offscreen
+Mesa renderer, demonstrating actual scene motion rather than just extra
+identical presentations.
 
 ## Pipeline
 

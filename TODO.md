@@ -29,9 +29,12 @@ Verified with scripted runs (`--script`):
       sprite use seen so far)
 - [ ] CIA timers/serial not emulated (not used by the game)
 - [ ] Optional: crossfeed for the hard-panned Amiga stereo, CRT-ish scaling
-- [ ] Optional: >15 fps: the simulation steps per frame (no dt), so only
-      render-side interpolation (camera reprojection in the GL renderer)
-      can help; analysis in docs/frame_timing.md
+- [x] Optional: >15 fps rendering: `--render-fps 120|180|240` interpolates
+      consecutive 3D captures while the original simulation stays fixed.
+      Object matching handles depth-sort reordering, and widescreen extends
+      the GL world beyond the original 4:3 viewport; see docs/gl_renderer.md.
+      The HUD is still 2D/original cadence and a capture interval of latency
+      remains (analysis in docs/frame_timing.md).
 - [x] Text pacing (`--text-pace`): menu texts and flight messages at stock
       A500 pace (docs/frame_timing.md)
 - [x] Framebuffer origin at the game's display window ($2A81, was $2C81:
