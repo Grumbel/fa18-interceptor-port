@@ -274,9 +274,9 @@ precision highp float;
 precision mediump float;
 #endif
 #endif
-uniform sampler2D u_scene, u_overlay, u_palette, u_rows;
+uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud;
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
-uniform float u_side, u_scale;
+uniform float u_side, u_scale, u_hud_visible;
 varying vec2 v_uv;
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
@@ -284,23 +284,41 @@ void main() {
   float centre_x = x - u_side;
   vec4 row = texture2D(u_rows, vec2(0.5, (y + 0.5) / 200.0));
   float ehb = 0.0;
+  vec3 base_colour;
   if (centre_x >= 0.0 && centre_x < 320.0) {
     vec4 overlay = texture2D(u_overlay,
       vec2((centre_x + 0.5) / 320.0, (y + 0.5) / 200.0));
-    if (overlay.a > 0.5) { gl_FragColor = vec4(overlay.rgb, 1.0); return; }
-    ehb = overlay.a > 0.03 ? 16.0 : 0.0;
+    if (overlay.a > 0.5) { base_colour = overlay.rgb; }
+    else {
+      ehb = overlay.a > 0.03 ? 16.0 : 0.0;
+      if (row.g < 0.5) base_colour = vec3(0.0);
+      else {
+        float scene_y = (floor(row.r * 255.0 + 0.5) + fract(v_uv.y * 200.0)) * u_scale;
+        float tex_y = 1.0 - scene_y / (u_dimensions.y * u_scale);
+        float idx = floor(texture2D(u_scene, vec2(v_uv.x, tex_y)).r * 15.0 + 0.5);
+        base_colour = texture2D(u_palette,
+          vec2((idx + ehb + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+      }
+    }
   } else {
     ehb = (centre_x < 0.0 ? row.b : row.a) > 0.5 ? 16.0 : 0.0;
+    if (row.g < 0.5) base_colour = vec3(0.0);
+    else {
+      float scene_y = (floor(row.r * 255.0 + 0.5) + fract(v_uv.y * 200.0)) * u_scale;
+      float tex_y = 1.0 - scene_y / (u_dimensions.y * u_scale);
+      float idx = floor(texture2D(u_scene, vec2(v_uv.x, tex_y)).r * 15.0 + 0.5);
+      base_colour = texture2D(u_palette,
+        vec2((idx + ehb + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+    }
   }
-  if (row.g < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-  // Scene texture is rendered in GL bottom-first order; row/overlay data
-  // uploaded from CPU top-first begins at GL texture coordinate V=0.
-  float scene_y = (floor(row.r * 255.0 + 0.5) + fract(v_uv.y * 200.0)) * u_scale;
-  float tex_y = 1.0 - scene_y / (u_dimensions.y * u_scale);
-  float idx = floor(texture2D(u_scene, vec2(v_uv.x, tex_y)).r * 15.0 + 0.5);
-  vec3 colour = texture2D(u_palette,
-    vec2((idx + ehb + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
-  gl_FragColor = vec4(colour, 1.0);
+  // 960x720 native-resolution HUD, anchored to the *left viewport edge*,
+  // rather than to the original 320-column 3D centre. The CPU path uses
+  // exactly the same coordinate transform.
+  if (u_hud_visible > 0.5 && x < 320.0) {
+    vec4 hud = texture2D(u_hud, vec2(v_uv.x * u_dimensions.x / 320.0, v_uv.y));
+    base_colour = mix(base_colour, hud.rgb, hud.a);
+  }
+  gl_FragColor = vec4(base_colour, 1.0);
 }
 )";
 
@@ -346,6 +364,7 @@ struct State {
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
+  GLuint hud_tex = 0;
   bool present_failed = false;
   int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
@@ -633,6 +652,23 @@ void scene_begin() {
   st.object = -1;
   st.verts.clear();
   st.prims.clear();
+}
+
+void cancel_capture() {
+  if (!st.capturing) return;
+  st.capturing = false;
+  // scene_begin moved the completed frame aside to make room for a new
+  // capture. A pause/menu transition can skip the matching scene_end;
+  // restore the last complete geometry instead of treating a half-scene
+  // (or no geometry at all) as the next presentation frame.
+  if (!st.has_frame && st.has_previous) {
+    st.verts = std::move(st.previous_verts);
+    st.prims = std::move(st.previous_prims);
+    st.camera = st.previous_camera;
+    st.has_frame = true;
+    st.has_previous = false;
+    st.matched_serial = 0;
+  }
 }
 
 void begin_object(uint32_t mesh, uint32_t stream, bool distant) {
@@ -1127,7 +1163,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
 }
 
 bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
-                 int drawable_w, int drawable_h) {
+                 int drawable_w, int drawable_h,
+                 const uint8_t* hud_rgba, bool hud_visible) {
   if (!active() || S <= 0 || side < 0 || layer.scene_rows <= 0 ||
       layer.overlay.size() != size_t(320 * 200 * 4) ||
       layer.palette.size() != size_t(32 * 200 * 4) ||
@@ -1195,6 +1232,8 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   bind_texture(st.overlay_tex, 1, 320, 200, layer.overlay.data());
   bind_texture(st.palette_tex, 2, 32, 200, layer.palette.data());
   bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data());
+  if (hud_rgba) bind_texture(st.hud_tex, 4, 960, 720, hud_rgba);
+  if (hud_visible && !st.hud_tex) return false;
 
   gl.Viewport(0, 0, drawable_w, drawable_h);
   gl.ColorMask(1, 1, 1, 1);
@@ -1212,6 +1251,8 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_overlay"), 1);
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_palette"), 2);
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_rows"), 3);
+  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_hud"), 4);
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_hud_visible"), hud_visible ? 1.f : 0.f);
   gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_dimensions"), float(wide),
                float(layer.scene_rows));
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_side"), float(side));

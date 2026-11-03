@@ -87,9 +87,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   visible OpenGL window instead of `glReadPixels` + CPU compositing + SDL
   texture upload. Its fragment shader composites separately uploaded 2D
   fallback, scanline palettes and double-buffered row mapping; it still
-  relies on the original 2D drawing for the cockpit and HUD. Menus, stats
-  and screenshots fall back to SDL, and the original 3D rasterizer is not
-  yet bypassed. Use `tests/check_gl_direct.sh` for parity validation.
+  relies on the original 2D drawing for the cockpit and HUD. Menus and
+  screenshots fall back to SDL; the stats and `--fps` overlays render in
+  the GPU compositor itself, anchored at the widescreen left edge. The
+  original 3D rasterizer is not yet bypassed. Use `tests/check_gl_direct.sh`
+  for parity validation.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame
@@ -102,6 +104,9 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   attitude, weapons, damage), flight-log counters and the scenario
   records (`src/stats_overlay.cpp`); read-only. With it on, script `shot
   F` also writes `F.stats.ppm` with the overlay.
+- `--fps` (debug menu "Graphics > FPS counter", script `fps on|off`):
+  measured window presentations per second, independent of the selected
+  60/120/180/240 Hz target. The first second reads zero while accumulating.
 - Debug menu: gamepad Back button (keyboard: Insert) pauses and opens
   Graphics (3D resolution, widescreen, render FPS, detail and stats),
   Controls (analog steering and keyboard/controller help), Extras (Mesh

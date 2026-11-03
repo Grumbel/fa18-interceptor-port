@@ -1,0 +1,9 @@
+# Launch the free flight and open the original pause panel.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3540 key p

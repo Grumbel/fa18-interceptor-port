@@ -139,12 +139,15 @@ All off by default; the original behaviour is untouched.
   unchanged in the centre. `--render-fps 120` (also 180 or 240) redraws
   interpolated OpenGL geometry between game frames without increasing the
   game's physics tick rate; HUD and unconverted 2D elements still update at
-  their original frequency. These options have no effect on non-GL scenes.
+  their original frequency. Widescreen now extends the scene down beside the
+  cockpit; the centre retains the original cockpit artwork. These options
+  have no effect on non-GL scenes.
 - `--gl-direct` (experimental; equivalent to `FA18_GL_DIRECT=1`): present
   OpenGL directly to the game window, compositing palette/scanline colours
   and the original 2D cockpit/HUD layer on the GPU. Avoids expensive GPU
   scene readback and the full-frame SDL texture upload on normal frames;
-  the SDL path remains for menus, statistics and screenshots. For testing,
+  stats and the measured `--fps` counter are themselves composited by GL;
+  the SDL path remains for menus and screenshots. For testing,
   `FA18_GL_DIRECT_COMPARE=1` checks the visible frame's logical pixel
   centres against the CPU compositor (and intentionally reads pixels back).
   See `tests/check_gl_direct.sh` and `docs/gl_renderer_roadmap.md`. The old
@@ -162,9 +165,13 @@ All off by default; the original behaviour is untouched.
 - `--text-pace`: menu texts, briefings and cockpit messages at the pace of
   a stock A500 (they otherwise run several times faster; the game itself
   is not slowed down, see docs/frame_timing.md).
+- `--stats`: show flight/object diagnostics at the actual top-left corner
+  of the viewport, including in widescreen. `--fps`: show measured window
+  presentation FPS (which can differ from the 120/180/240 Hz target).
 - **Back** (keyboard: Insert) opens the debug menu. **Graphics >** contains
   3D resolution (original/software/OpenGL), widescreen, render FPS
-  (60/120/180/240, only effective in OpenGL), full detail and stats overlay.
+  (60/120/180/240, only effective in OpenGL), full detail, stats overlay,
+  and FPS counter.
   **Controls >** contains analog-stick steering and the controller/keyboard
   reference; **Extras >** contains Mesh Viewer and text pacing. The main
   menu retains Resume, Save/Load states, Send ESC and Quit. Press Esc/B to

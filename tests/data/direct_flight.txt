@@ -9,4 +9,6 @@
 3000 key 1
 3550 fast off
 3575 stats on
+3577 fps on
+3593 fps off
 3595 stats off

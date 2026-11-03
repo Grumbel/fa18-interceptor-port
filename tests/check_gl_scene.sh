@@ -68,4 +68,15 @@ cmp "$tmp/gl-interpreter.ppm" "$tmp/gl-rgba4.ppm"
 python3 "$repo/tests/compare_ppm_center.py" \
   "$tmp/gl-centered.ppm" "$tmp/gl-widescreen.ppm" 8
 
+# Pause interrupts game_frame before a matching 3D scene_end. Its old
+# 320x200 fallback used to silently bypass the widescreen compositor.
+"$bin" --native off --gl 2 --widescreen --render-fps 120 --det-timing --fast \
+  --frames 3580 --script "$repo/tests/data/pause_gl.txt" \
+  --screenshot 3570 "$tmp/gl-paused.ppm" "$adf" >"$tmp/paused.log" 2>&1
+read -r pause_width pause_height < <(sed -n '2p' "$tmp/gl-paused.ppm")
+if [ "$pause_width" -le 640 ] || [ "$pause_height" -ne 400 ]; then
+  echo "FAIL: paused GL scene fell back to 320x200 (got ${pause_width}x${pause_height})" >&2
+  exit 1
+fi
+
 echo 'PASS: GL interpreter/native/recompiled agree, GL differs from software, RGBA4 == RGBA8'

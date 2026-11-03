@@ -105,7 +105,7 @@ before committing. Note limitations explicitly rather than masking them.
   GPU-to-GPU to a scene texture and combine it with a 320x200 original 2D
   overlay, a 32x200 scanline palette, and a 1x200 scene-row map using a
   fullscreen shader. Normal presentations call no `glReadPixels` or
-  `SDL_UpdateTexture`. The original SDL compositor handles menus, stats and
+  `SDL_UpdateTexture`. The original SDL compositor handles menus and
   screenshots; GPU display therefore remains experimental pending real-GPU
   testing and cockpit parity. The Amiga 3D rasterizer still executes for
   emulated-RAM fidelity. `FA18_GL_DIRECT_COMPARE=1` deliberately enables a
@@ -115,6 +115,25 @@ before committing. Note limitations explicitly rather than masking them.
   llvmpipe: legacy path observed 176.6/168.5 presents/s (63/73 missed extra
   deadlines), direct path 226.0/241.0 presents/s (15/0 missed deadlines).
   These figures are not a substitute for prolonged real-GPU testing.
+- [x] Project the widescreen 3D sides through all 200 source scanlines,
+  including below the original cockpit's shorter 3D viewport, with the
+  final scene palette reused beyond that cutoff. The original 320-column
+  cockpit stays composited in front. CPU and GPU compositors use the same
+  scanline and palette policy. Direct-mode side pixels have parity coverage.
+- [x] Anchor the stats panel to the widened viewport's actual top-left,
+  expose a measured `--fps` readout in Graphics, and composite both overlays
+  using a native 960x720 RGBA texture in direct GL (uploaded only on game
+  ticks, not each interpolated presentation). The debug replay verifies
+  that toggling stats no longer falls back to the SDL compositor.
+- [x] Preserve the last completed 3D scene when Pause/menu enters a game
+  frame without a matching scene-end capture; avoid presenting the unfinished
+  geometry as a blank frame. The *original* Pause lettering and instrument
+  graphics are still sourced from 320x200 bitplanes pending native 2D work.
+- [ ] Add a native text/UI capture path for the Pause screen and cockpit
+  overlays, preserving palette/copper fades without keeping their original
+  pixelated bitplanes as the presentation source.
+- [ ] Reproduce and eliminate residual widescreen seam flicker across
+  consecutive real-time frames (not only CPU/GPU parity within one frame).
 - [ ] Remove the intermediate GPU-to-GPU FBO copy by using a scene colour
   texture attachment; investigate a GLES2-safe RGBA4 path.
 - [ ] Make the compositor independent of the original HUD bitplanes;

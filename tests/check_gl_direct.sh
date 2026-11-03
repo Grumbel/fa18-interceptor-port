@@ -34,6 +34,10 @@ for mode in centred wide rgba4; do
     echo "FAIL: $mode GPU/CPU pixel-centre parity not established" >&2
     exit 1
   fi
+  if ! grep -q 'gl: native GPU HUD frame .* stats=1 fps=1' "$tmp/$mode.log"; then
+    echo "FAIL: $mode stats/FPS overlay fell back from native GL composition" >&2
+    exit 1
+  fi
   if grep -Eq 'gl: direct parity frame .* different [1-9][0-9]*/' "$tmp/$mode.log"; then
     echo "FAIL: $mode differs from the CPU compositor" >&2
     grep 'gl: direct parity frame' "$tmp/$mode.log" >&2

@@ -46,6 +46,9 @@ void set_enabled(bool on);  // switch between OpenGL and the software layer
 void set_deferred_scene_readback(bool on);
 bool deferred_scene_readback();
 void finish_capture();
+// Keep the last completed 3D frame when the game leaves flight mid-frame
+// (notably the Pause screen) without calling scene_end().
+void cancel_capture();
 
 // Plane operation of a primitive (see hires.cpp PlaneOps).
 struct Ops {
@@ -71,7 +74,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha = 1
 // original 2D elements using tiny GL textures. No scene glReadPixels or
 // SDL_UpdateTexture; the host swaps the window after a successful call.
 bool present_gpu(const remaster::GpuLayers& layers, int side, int S, float alpha,
-                 int drawable_w, int drawable_h);
+                 int drawable_w, int drawable_h,
+                 const uint8_t* hud_rgba = nullptr, bool hud_visible = false);
 // Debug/test-only: read the visible GL back buffer before swapping. Never
 // called by the ordinary presentation path.
 bool read_gpu_window(std::vector<uint8_t>& rgba, int w, int h);

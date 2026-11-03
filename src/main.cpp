@@ -143,6 +143,7 @@ public:
   uint64_t extra_gl_missed = 0;
   uint32_t present_report_ms = 0;
   int present_report_count = 0;
+  float observed_fps = 0.f;
   int last_gl_tick = 0, gl_interval_ticks = 4;
   bool quit = false;
   uint64_t next_frame = 0;
@@ -165,9 +166,12 @@ public:
   // Debug overlay with game world statistics (stats_overlay.cpp), drawn at
   // 3x the logical size so the text stays readable.
   bool stats_on = false;
+  bool fps_on = false;
   static constexpr int STATS_W = amiga::FB_W * 3, STATS_H = amiga::FB_H * 6 / 5 * 3;
   SDL_Texture* stats_tex = nullptr;
   std::vector<uint32_t> stats_buf;
+  std::vector<uint8_t> hud_rgba;
+  int hud_frame = -1;
   std::vector<uint32_t> view_buf;
   remaster::GpuLayers gpu_layers;
   int gpu_layers_frame = -1;
@@ -699,7 +703,7 @@ public:
     auto item_count = [&] {
       switch (page) {
         case Page::Main: return 8;
-        case Page::Graphics: return 6;
+        case Page::Graphics: return 7;
         case Page::Controls: return 3;
         case Page::Extras: return 3;
       }
@@ -839,6 +843,7 @@ public:
           case 3: change_render_fps(dir); break;
           case 4: machine->full_detail = !machine->full_detail; break;
           case 5: stats_on = !stats_on; break;
+          case 6: fps_on = !fps_on; break;
         }
       } else if (page == Page::Controls) {
         switch (item) {
@@ -977,7 +982,8 @@ public:
                    std::string("Widescreen: ") + (widescreen ? "on" : "off"),
                    "Render FPS: " + std::to_string(render_fps) + " (OpenGL)",
                    std::string("Full detail: ") + (machine->full_detail ? "on" : "off"),
-                   std::string("Stats overlay: ") + (stats_on ? "on" : "off")};
+                   std::string("Stats overlay: ") + (stats_on ? "on" : "off"),
+                   std::string("FPS counter: ") + (fps_on ? "on" : "off")};
           break;
         case Page::Controls:
           heading = "CONTROLS";
@@ -1105,7 +1111,7 @@ public:
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
-    if (stats_on) draw_stats(logical_w);
+    if (stats_on || fps_on) draw_stats(logical_w);
     SDL_RenderPresent(ren);
     report_presentation();
   }
@@ -1115,17 +1121,18 @@ public:
     if (fast) {
       present_report_ms = 0;
       present_report_count = 0;
+      observed_fps = 0.f;
       extra_gl_missed = 0;
-    } else if (render_fps > 60 && glr::active() &&
-               std::getenv("FA18_GL_PRESENT_DEBUG")) {
+    } else {
       ++present_report_count;
       const uint32_t now = SDL_GetTicks();
       if (!present_report_ms) present_report_ms = now;
       const uint32_t elapsed = now - present_report_ms;
       if (elapsed >= 1000) {
-        fprintf(stderr, "gl: observed %.1f presents/s (target %d), missed %llu extra deadlines\n",
-                double(present_report_count) * 1000.0 / double(elapsed), render_fps,
-                (unsigned long long)extra_gl_missed);
+        observed_fps = float(double(present_report_count) * 1000.0 / double(elapsed));
+        if (render_fps > 60 && glr::active() && std::getenv("FA18_GL_PRESENT_DEBUG"))
+          fprintf(stderr, "gl: observed %.1f presents/s (target %d), missed %llu extra deadlines\n",
+                  observed_fps, render_fps, (unsigned long long)extra_gl_missed);
         present_report_count = 0;
         extra_gl_missed = 0;
         present_report_ms = now;
@@ -1139,7 +1146,26 @@ public:
     }
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
-    if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh))
+    const bool show_hud = stats_on || fps_on;
+    const uint8_t* new_hud = nullptr;
+    if (show_hud && hud_frame != frame_no) {
+      prepare_hud();
+      hud_rgba.resize(stats_buf.size() * 4);
+      for (size_t i = 0; i < stats_buf.size(); ++i) {
+        const uint32_t argb = stats_buf[i];
+        hud_rgba[i * 4 + 0] = uint8_t(argb >> 16);
+        hud_rgba[i * 4 + 1] = uint8_t(argb >> 8);
+        hud_rgba[i * 4 + 2] = uint8_t(argb);
+        hud_rgba[i * 4 + 3] = uint8_t(argb >> 24);
+      }
+      hud_frame = frame_no;
+      new_hud = hud_rgba.data();
+      if (std::getenv("FA18_GL_DIRECT_DEBUG"))
+        fprintf(stderr, "gl: native GPU HUD frame %d stats=%d fps=%d\n",
+                frame_no, int(stats_on), int(fps_on));
+    }
+    if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh,
+                          new_hud, show_hud))
       return false;
     if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
       // Diagnostic only: compare the GPU-owned window against the existing
@@ -1216,7 +1242,7 @@ public:
     int vw = w, vh = h, logical_w = amiga::FB_W;
     // Keep SDL compositing for screenshots/stats and for contexts that cannot
     // present directly. GPU mode is opt-in while cockpit parity is checked.
-    const bool try_gpu = direct_gl && gl_video && !fast && !stats_on &&
+    const bool try_gpu = direct_gl && gl_video && !fast &&
                          frame_no != screenshot_frame && pending_shot.empty();
     const bool gpu_presented = try_gpu && display_gpu(side, phase(0.f));
     if (!gpu_presented && gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
@@ -1322,6 +1348,8 @@ public:
         else machine->request_load_state(path);
       } else if (e.cmd == "stats") {  // stats on | stats off
         stats_on = !e.args.empty() && e.args[0] == "on";
+      } else if (e.cmd == "fps") {  // fps on | fps off
+        fps_on = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "textpace") {  // textpace on | textpace off
         machine->text_pace = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "fast") {  // fast on | fast off (timing tests)
@@ -1376,17 +1404,23 @@ public:
 
   std::string pending_shot;
 
-  // Render the statistics into stats_buf (transparent except for a dimmed
-  // panel behind the text) and blend it over the game picture.
-  void draw_stats(int logical_w) {
+  // Produce one native-resolution HUD image shared by the SDL and GL paths.
+  // Its origin is the *window* top-left, not the old centred 4:3 viewport.
+  void prepare_hud() {
     stats_buf.assign(size_t(STATS_W) * STATS_H, 0);
-    const auto lines = stats_overlay::build(*machine);
-    if (lines.empty()) return;
+    const auto lines = stats_on ? stats_overlay::build(*machine) :
+                                   std::vector<stats_overlay::Line>{};
+    if (lines.empty() && !fps_on) return;
     const int lh = font6x10::H, pad = 4;
     size_t cols = 0;
     for (const auto& l : lines) cols = std::max(cols, l.text.size());
+    char fps_label[64] = {};
+    if (fps_on) {
+      std::snprintf(fps_label, sizeof(fps_label), "FPS: %.1f", observed_fps);
+      cols = std::max(cols, std::strlen(fps_label));
+    }
     const int pw = std::min(STATS_W, int(cols) * font6x10::W + 2 * pad);
-    const int ph = std::min(STATS_H, int(lines.size()) * lh + 2 * pad);
+    const int ph = std::min(STATS_H, int(lines.size() + int(fps_on)) * lh + 2 * pad);
     for (int y = 0; y < ph; ++y)
       for (int x = 0; x < pw; ++x) stats_buf[size_t(y) * STATS_W + size_t(x)] = 0xA0000000u;
     int y = pad;
@@ -1394,6 +1428,11 @@ public:
       draw_text(stats_buf, STATS_W, STATS_H, pad, y, l.text, 1, l.color);
       y += lh;
     }
+    if (fps_on) draw_text(stats_buf, STATS_W, STATS_H, pad, y, fps_label, 1, 0xFF60FF60u);
+  }
+
+  void draw_stats(int /*logical_w*/) {
+    prepare_hud();
     if (!stats_tex) {
       stats_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                                     STATS_W, STATS_H);
@@ -1401,17 +1440,14 @@ public:
       SDL_SetTextureBlendMode(stats_tex, SDL_BLENDMODE_BLEND);
     }
     SDL_UpdateTexture(stats_tex, nullptr, stats_buf.data(), STATS_W * 4);
-    // Keep this panel at its original 320x240 logical dimensions instead
-    // of stretching its texture to fill a widened OpenGL viewport. Anchor
-    // it to the left of the original 4:3 image in the central region.
-    SDL_Rect dst{(logical_w - amiga::FB_W) / 2, 0,
-                 amiga::FB_W, amiga::FB_H * 6 / 5};
+    // On widescreen, the origin stays at the actual left edge, not at the
+    // boundary where the old 4:3 pixels begin.
+    SDL_Rect dst{0, 0, amiga::FB_W, amiga::FB_H * 6 / 5};
     SDL_RenderCopy(ren, stats_tex, nullptr, &dst);
   }
 
   // Script "shot" with the overlay on: write what the player actually sees.
-  // The panel occupies the central 320-column region at the game's own
-  // resolution; widened extensions stay intact in the screenshot too.
+  // HUD occupies the leftmost 320 columns even on a widened screenshot.
   void save_stats_screenshot(const uint32_t* fb, const std::string& path) {
     FILE* f = fopen(path.c_str(), "wb");
     if (!f || stats_buf.empty()) {
@@ -1420,7 +1456,7 @@ public:
     }
     fprintf(f, "P6\n%d %d\n255\n", tex_w, tex_h);
     const int centre_w = std::min(tex_w, amiga::FB_W * std::max(1, machine->hires_scale));
-    const int left = (tex_w - centre_w) / 2;
+    const int left = 0;
     for (int y = 0; y < tex_h; ++y)
       for (int x = 0; x < tex_w; ++x) {
         const uint32_t g = fb[size_t(y) * size_t(tex_w) + size_t(x)];
@@ -1506,6 +1542,7 @@ void usage() {
           "  --full-detail    debug: nearest level of detail for every object\n"
           "  --text-pace      remaster: menu texts and flight messages at stock A500 pace\n"
           "  --stats          debug: overlay with game world statistics\n"
+          "  --fps            show the observed (rather than target) presentation FPS\n"
           "  --protection     keep the original codewheel check\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
@@ -1586,7 +1623,7 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
-  bool full_detail = false, stats = false, text_pace = false, widescreen = false;
+  bool full_detail = false, stats = false, fps = false, text_pace = false, widescreen = false;
   bool gl_direct = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
@@ -1611,6 +1648,7 @@ int main(int argc, char** argv) {
     else if (a == "--full-detail") full_detail = true;
     else if (a == "--text-pace") text_pace = true;
     else if (a == "--stats") stats = true;
+    else if (a == "--fps") fps = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
     else if (a == "--gl-direct") gl_direct = true;
@@ -1802,6 +1840,7 @@ int main(int argc, char** argv) {
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
+  host.fps_on = fps;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
   if (gl_scale > 0 && !init_gl(host.direct_gl ? host.win : nullptr))
