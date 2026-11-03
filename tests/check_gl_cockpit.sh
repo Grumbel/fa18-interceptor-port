@@ -13,16 +13,20 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 adf=$1
 bin=${2:-"$repo/build/fa18"}
 tmp=$(mktemp -d)
-trap 'rm -f "$tmp"/*.ppm "$tmp"/*.log; rmdir "$tmp"' EXIT
+trap 'rm -f "$tmp"/*.ppm "$tmp"/*.log "$tmp"/*.bin; rmdir "$tmp"' EXIT
 export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
 
-for mode in flight pause; do
+for mode in flight pause dynamic; do
   if [ "$mode" = flight ]; then
     frame=4000
     args=(--frames 4010 --script "$repo/tests/scenarios/free1.txt")
-  else
+  elif [ "$mode" = pause ]; then
     frame=3570
     args=(--frames 3580 --script "$repo/tests/data/pause_gl.txt")
+  else
+    frame=3960
+    args=(--frames 3970 --script "$repo/tests/data/cockpit_dynamic.txt"
+          --ram-dump 3960 "$tmp/dynamic-ram.bin")
   fi
   common=(--native off --interpret --det-timing --fast --gl 3 --widescreen
           --render-fps 120 "${args[@]}")
@@ -49,9 +53,9 @@ for mode in flight pause; do
     echo 'FAIL: native fuel digits were not drawn from the player record' >&2
     exit 1
   fi
-  if [ "$mode" = flight ] &&
-     ! grep -q 'cockpit: native altitude/airspeed glyphs' "$tmp/$mode-native.log"; then
-    echo 'FAIL: native altitude/airspeed glyphs were not composed' >&2
+  if [ "$mode" != pause ] &&
+     ! grep -q 'cockpit: native flight and ECM LCD glyphs' "$tmp/$mode-native.log"; then
+    echo 'FAIL: native cockpit numeric glyphs were not composed' >&2
     exit 1
   fi
   if [ "$mode" = flight ]; then
@@ -65,6 +69,29 @@ for mode in flight pause; do
       echo 'FAIL: native fuel LCD did not latch a changed fuel value' >&2
       exit 1
     fi
+  fi
+  if [ "$mode" = dynamic ]; then
+    for coordinate in 'x=240 y=175' 'x=242 y=184' 'x=144 y=184'; do
+      if ! grep -q "cockpit: instrument glyph frame=.* $coordinate " "$tmp/$mode-native.log"; then
+        echo "FAIL: missing native cockpit glyph at $coordinate" >&2
+        exit 1
+      fi
+    done
+    for coordinate in 'x=295 y=180' 'x=292 y=188'; do
+      if ! grep -q "cockpit: ECM glyph frame=.* $coordinate " "$tmp/$mode-native.log"; then
+        echo "FAIL: missing native ECM glyph at $coordinate" >&2
+        exit 1
+      fi
+    done
+    python3 - "$tmp/dynamic-ram.bin" <<'PY'
+from pathlib import Path
+import sys
+ram = Path(sys.argv[1]).read_bytes()
+player = 0x5b47c + int.from_bytes(ram[0x5abd6:0x5abd8], 'big')
+speed = int.from_bytes(ram[player+108:player+110], 'big')
+if ram[player+43] == 0 or speed == 0:
+    sys.exit('FAIL: dynamic cockpit replay did not reach nonzero throttle and speed')
+PY
   fi
 done
 
@@ -80,9 +107,9 @@ if [ "$(grep -c 'cockpit: observed fuel display buffer' "$tmp/recompiled-fuel.lo
   echo 'FAIL: recompiled fuel LCD bypassed the native redraw hook' >&2
   exit 1
 fi
-if ! grep -q 'cockpit: right glyph frame=' "$tmp/recompiled-fuel.log"; then
-  echo 'FAIL: recompiled right-hand digits bypassed the native font-writer hook' >&2
+if ! grep -q 'cockpit: instrument glyph frame=' "$tmp/recompiled-fuel.log"; then
+  echo 'FAIL: recompiled cockpit digits bypassed the native font-writer hook' >&2
   exit 1
 fi
 
-echo 'PASS: native ILBM cockpit, fuel LCD and right-hand glyphs are pixel-exact during flight and Pause'
+echo 'PASS: native ILBM cockpit and all seven numeric LCD fields match during flight, dynamic speed and Pause'

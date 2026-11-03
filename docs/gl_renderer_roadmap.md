@@ -193,10 +193,19 @@ before committing. Note limitations explicitly rather than masking them.
   and live copper colours; untouched/unseen pixels retain the old layer.
   `$47476` is a recompiled-code hook boundary. Verify with
   `tests/check_gl_cockpit.sh` and `FA18_COCKPIT_READOUTS_NATIVE=0`.
-- [ ] Extend native glyph capture to the throttle/Mach fields below the
-  airspeed readout and the two rightmost purple numerical displays. Recover
-  their exact foreground/background indices and redraw lifetimes from the
-  same original font writers, and add nonzero-speed pixel-parity scenarios.
+- [x] Extend font-writer capture to the throttle/Mach row (240..250,175..179),
+  the left and right auxiliary rows (144..154 and 242..250,184..188), and
+  the two far-right ECM numbers (292..307,180..184 and 188..192). The three
+  lower green rows also use `$47476` and live pen 4/0. The ECM glyphs use
+  `$4744e` in bitplanes 0 and 2 (the same writer as the fuel LCD but a
+  different destination), producing black pen 0 text on purple pen 5. The
+  font data and write destinations recover every glyph shape/position,
+  retaining distinct masks for each Amiga screen buffer. Legacy bitplane
+  pixels are never sampled for any of these seven fields. A new scripted
+  F10-throttle replay (`tests/data/cockpit_dynamic.txt`) reaches airspeed
+  2391 in the player record; its VBL 3960 cockpit is pixel-exact versus
+  the original, as is the stationary VBL 3490 cockpit. The Pause state
+  remains a separate parity case in `tests/check_gl_cockpit.sh`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

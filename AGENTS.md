@@ -106,14 +106,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the instrument writer instead of skipping this PC hook.
   `FA18_COCKPIT_FUEL_NATIVE=0` disables this native instrument alone;
   `FA18_COCKPIT_FUEL_DEBUG=1` traces it.
-  The altitude and airspeed LCD digits on the right-hand instrument use
-  the game's resident 3x5 glyph table, not the fuel writer. The original
-  alternate font blitter branch `$47476` supplies each glyph and its
-  destination; native code reconstructs only the numeric fields from the
-  font bytes, latching the pixels separately for each screen buffer. It
-  never samples the original bitplane glyph pixels. Keep `$47476` in
-  `tools/recomp_hooks.txt`. `FA18_COCKPIT_READOUTS_NATIVE=0` disables
-  these native glyphs and `FA18_COCKPIT_TEXT_DEBUG=1` traces their capture.
+  Seven cockpit readouts are also reconstructed from the game's resident
+  3x5 font, tracking the two Amiga screen buffers independently. The green
+  altitude, airspeed, throttle/Mach, miles and magnification fields use
+  font blitter `$47476` (pen 4 on 0). The two far-right ECM numbers use
+  `$4744e` to clear bits in planes 0 and 2 (black pen 0 on purple pen 5).
+  Neither branch reads original bitplane glyph pixels. Keep both writer
+  addresses in `tools/recomp_hooks.txt`; `FA18_COCKPIT_READOUTS_NATIVE=0`
+  disables the glyph layers, and `FA18_COCKPIT_TEXT_DEBUG=1` traces them.
+  `tests/data/cockpit_dynamic.txt` exercises the new fields with F10
+  throttle and nonzero airspeed, checked by `tests/check_gl_cockpit.sh`.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame
@@ -185,6 +187,11 @@ deterministic timing and compares memory hashes every 50 frames, then runs
 checks that `--interpret` gives the same memory as the recompiled code
 (`FA18_SKIP_INTERP=1` skips that step). Never commit on a failure; never
 commit with a routine disabled "for now" without saying so in TODO.md.
+`run_scenarios.sh` checks that each replay reaches its scripted `quit`,
+retrying bounded incomplete runs. It writes completion-verified SHA-256
+digests for the entire RAM-hash stream and screenshot, which
+`compare_runs.sh` uses to avoid transiently truncated logs in the shared
+workspace. This compares the same full histories, not merely a prefix.
 
 - Translate from the assembly of the *patched* program (`tools/disasm.py`
   and `tools/loadseg.py` apply the codewheel bypass and the delay() trap

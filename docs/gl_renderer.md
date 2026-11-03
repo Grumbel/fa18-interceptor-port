@@ -265,6 +265,19 @@ skip PC hooks. Set
 latches. The original code still executes to supply the refresh event; the
 next step is an independent native instrument scheduler and further gauges.
 
+Seven additional numeric fields are now synthesized from the original
+resident 3×5 font without sampling their displayed bitmap pixels. The
+original `$47476` branch supplies the five green flight/auxiliary fields
+at y=158, 166, 175 and 184 (pen 4 ink on pen 0 background). The same
+`$4744e` writer used by fuel draws both far-right ECM coordinates at y=180
+and 188, but into bitplanes 0 and 2: their font-shaped ink is black pen 0
+over purple pen 5. The source font pointer, original write destination and
+horizontal shift reconstruct each 3×5 glyph exactly. Each screen buffer
+retains its own captured mask until displayed, and the compositor reads the
+live copper palette for every row. `FA18_COCKPIT_READOUTS_NATIVE=0` disables
+only this font-derived layer. `tests/check_gl_cockpit.sh` compares flight,
+Pause and an F10-throttle replay with a nonzero speed against the original.
+
 ## Open points
 
 

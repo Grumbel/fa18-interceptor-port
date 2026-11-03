@@ -24,10 +24,11 @@ struct FuelDigits {
   }
 };
 
-// Two right-hand LCD number fields in the original 320x200 cockpit. The
-// surrounding FT/KTS labels remain part of the native inst5 image.
+// Seven 3x5 numeric fields in the original 320x200 cockpit: five green
+// flight/auxiliary readouts and two black-on-purple ECM numbers. The mask
+// spans all three clusters but leaves uncaptured pixels untouched.
 struct FlightReadouts {
-  static constexpr int X = 240, Y = 158, W = 26, H = 13;
+  static constexpr int X = 144, Y = 158, W = 164, H = 35;
   std::array<uint32_t, W * H> rgba{};
   std::array<uint8_t, W * H> valid{};
   bool active = false;
