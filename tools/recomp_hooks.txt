@@ -4,6 +4,7 @@
 # These are hook boundaries, not seeds or native-function replacements.
 02112c
 02126e  # observed return from the $2fc14 scene routine
+0256d2  # analog input interception before reading record+40/+41/+42
 02fc14
 031e4a
 032dda

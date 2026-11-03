@@ -55,6 +55,12 @@ void note_point(const double p[3], int kind, int radius, const Ops& o);
 
 // Render the frame into a hi-res layer of palette indices (w x h, top row
 // first, h = rows * S).  Returns false when nothing was rendered.
-bool render_layer(std::vector<uint8_t>& px, int w, int h, int S);
+// A wider `w` extends the horizontal field of view while preserving the
+// original central 320*S pixels. `alpha` blends previous/current captured
+// view-space geometry and ground camera without advancing game simulation.
+bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha = 1.f);
+bool interpolation_available();
+uint64_t capture_serial();         // advances only when the game draws a new 3D scene
+int capture_interval_vblanks();    // observed spacing between game scenes
 
 }  // namespace glr

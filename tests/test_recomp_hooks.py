@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class RecompHooksTest(unittest.TestCase):
     def test_hires_hooks_dispatch_in_recompiled_mode(self):
         source = (ROOT / "src/native/hires.cpp").read_text()
+        controls = (ROOT / "src/native/controls.cpp").read_text()
         static_hooks = {
             int(addr, 16)
-            for addr in re.findall(r"m\.add_pc_hook\(0x([0-9a-fA-F]+),", source)
+            for addr in re.findall(r"m\.add_pc_hook\(0x([0-9a-fA-F]+),", source + controls)
         }
         hooks_file = (ROOT / "tools/recomp_hooks.txt").read_text()
         recomp_hooks = {
@@ -22,7 +23,7 @@ class RecompHooksTest(unittest.TestCase):
             if line.split("#", 1)[0].strip()
         }
         # $2126e is the dynamic hook installed for the original scene's
-        # observed return address; all other hires hooks are static.
+        # observed return address; all other hires/analog hooks are static.
         self.assertEqual(recomp_hooks, static_hooks | {0x2126E})
 
 

@@ -923,4 +923,68 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   return true;
 }
 
+bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
+                  float alpha, bool refresh_center) {
+  if (!glr::active() || !cur || !cur->done || m.hires_scale <= 0 || side < 0)
+    return false;
+  const int S = m.hires_scale;
+  const int wide = W + side * 2, stride = wide * S, left = side * S;
+  // The GL projection keeps the original 320-column image in the centre.
+  // Re-rendering from the two cached captures is independent of simulation.
+  static std::vector<uint8_t> scene_pixels;
+  if (!glr::render_layer(scene_pixels, stride, cur->rows * S, S, alpha)) return false;
+  const uint32_t* rgb = m.frame_rgb();
+  const uint8_t* idx = m.frame_idx();
+  const uint32_t* key = m.frame_row_key();
+  const uint32_t* pal = m.frame_row_pal();
+  if (!rgb || !idx || !key || !pal) return false;
+  out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
+  for (int y = 0; y < 200; ++y) {
+    const Layer* L = nullptr;
+    int ly = -1;
+    for (auto& l : layers) {
+      if (!l.done || key[y] < l.base) continue;
+      uint32_t d = key[y] - l.base;
+      if (d % 40) continue;
+      int row = int(d / 40);
+      if (row < l.rows) { L = &l; ly = row; break; }
+    }
+    for (int yy = 0; yy < S; ++yy) {
+      uint32_t* dst = &out[size_t(y * S + yy) * size_t(stride)];
+      // The display may still point at a previous completed 3D layer
+      // (Amiga double buffering) while `cur` holds the newest capture.
+      // Use the current GL projection for its side bands whenever the
+      // scanline belongs to a 3D layer; the original centre remains exact.
+      if (L && ly >= 0 && ly < cur->rows) {
+        const uint8_t* scene_row = &scene_pixels[size_t(ly * S + yy) * size_t(stride)];
+        const uint8_t left_bit = idx[y * W] & 16;
+        const uint8_t right_bit = idx[y * W + W - 1] & 16;
+        for (int x = 0; x < left; ++x)
+          dst[x] = pal[size_t(y) * 32 + ((scene_row[x] & 15) | left_bit)];
+        for (int x = left + W * S; x < stride; ++x)
+          dst[x] = pal[size_t(y) * 32 + ((scene_row[x] & 15) | right_bit)];
+      }
+      for (int x = 0; x < W; ++x) {
+        const uint8_t li = idx[y * W + x];
+        const size_t ci = size_t(ly < 0 ? 0 : ly) * W + size_t(x);
+        if (L && li % 16 == L->snap[ci] && !L->unexplained[ci]) {
+          // The visible Amiga buffer often holds the preceding captured
+          // scene. For smooth 120+ Hz output replace its explained 3D pixels
+          // with the blended current GL scene as well as widening the sides.
+          // With widening alone, keep the old layer for pixel-exact 4:3.
+          const uint8_t* src = (L == cur || (refresh_center && ly < cur->rows))
+            ? &scene_pixels[size_t(ly * S + yy) * size_t(stride) + size_t(left + x * S)]
+            : &L->px[size_t(ly * S + yy) * size_t(W * S) + size_t(x * S)];
+          for (int xx = 0; xx < S; ++xx)
+            dst[left + x * S + xx] = pal[size_t(y) * 32 + ((src[xx] & 15) | (li & 16))];
+        } else {
+          const uint32_t colour = rgb[y * W + x];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace remaster

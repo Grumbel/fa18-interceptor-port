@@ -9,7 +9,9 @@
 // +32 handling flags, +38 / +102 / +106 / +108 / +110 state words, +40/+41/
 // +42 raw stick (pitch, roll, rudder) bytes, +86 / +88 / +90 elevator,
 // aileron and rudder deflections (words).
+#include <algorithm>
 #include <cmath>
+#include "native/controls.hpp"
 #include "native/globals.hpp"
 #include "native/orig.hpp"
 #include "native/vars.hpp"
@@ -25,7 +27,28 @@ inline int16_t W(uint32_t a) { return int16_t(rd16(a)); }
 inline void SW(uint32_t a, int32_t v) { wr16(a, uint32_t(v) & 0xFFFF); }
 inline int32_t ext(int16_t v) { return v; }
 inline uint32_t u(int32_t v) { return uint32_t(v); }
+// The original $256d2 reads record+40, followed by +41 and +42.  Intercept
+// immediately before those reads, after the game has selected its record;
+// writing the input here preserves all original response curves and limits.
+void apply_analog_stick(uint32_t rec) {
+  if (!mach().analog_enabled || !mach().analog_active) return;
+  auto axis = [](float v, int lim) {
+    return uint8_t(int8_t(std::lround(std::clamp(v, -1.f, 1.f) * float(lim))));
+  };
+  wr8(rec + 40, axis(-mach().analog_y, 20));  // pitch
+  wr8(rec + 42, axis(mach().analog_x, 60));   // horizontal (bank/turn)
+}
 }  // namespace
+
+void install_control_hooks(amiga::Machine& m) {
+  // The C++ translation of $25584 bypasses internal 68000 PCs; it calls the
+  // same injection helper below.  The original interpreter and recompiler
+  // take this hook at $256d2, with a0 holding the current aircraft record.
+  m.add_pc_hook(0x256d2, [] {
+    if (int16_t(w_5acac) == 0 && (w_5abc4 & 0x40))
+      apply_analog_stick(cpu().a[0]);
+  });
+}
 
 // $25b82: pull the deflection word at `p` towards zero: by value>>shift if
 // large, else one unit (note: 0 becomes -1 like the original).
@@ -163,12 +186,11 @@ static void process_control_input() {
       }
     }
     rec = R();
-    // Remaster: analog stick replaces the ramped digital deflections of the
-    // player (same ranges as the ramp at $2e128: pitch +-20, rudder +-60).
+    // Equivalent to the original-bytecode hook at $256d2 (after a0=R(),
+    // before its reads of the player stick bytes). The rest of the original
+    // handling, including response curves, is unchanged.
     if (idx == 0 && mach().analog_enabled && mach().analog_active) {
-      auto ax = [](float v, int lim) { return int8_t(std::lround(v * float(lim))); };
-      wr8(rec + 40, uint8_t(ax(-mach().analog_y, 20)));   // up = positive
-      wr8(rec + 42, uint8_t(ax(mach().analog_x, 60)));    // right = positive (bits $04)
+      apply_analog_stick(rec);
     }
     int16_t k24 = int8_t(rd8(rec + 40));
     int16_t k26 = int8_t(rd8(rec + 41));

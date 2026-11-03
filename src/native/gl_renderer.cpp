@@ -26,6 +26,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_map>
+#include <utility>
 
 namespace glr {
 
@@ -98,6 +100,7 @@ struct GL {
   void (*UseProgram)(GLuint);
   GLint (*GetUniformLocation)(GLuint, const GLchar*);
   void (*Uniform4f)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+  void (*Uniform1f)(GLint, GLfloat);
   void (*UniformMatrix3fv)(GLint, GLsizei, GLboolean, const GLfloat*);
   void (*GenBuffers)(GLsizei, GLuint*);
   void (*BindBuffer)(GLenum, GLuint);
@@ -153,6 +156,7 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.UseProgram, "glUseProgram", m);
   load(p, gl.GetUniformLocation, "glGetUniformLocation", m);
   load(p, gl.Uniform4f, "glUniform4f", m);
+  load(p, gl.Uniform1f, "glUniform1f", m);
   load(p, gl.UniformMatrix3fv, "glUniformMatrix3fv", m);
   load(p, gl.GenBuffers, "glGenBuffers", m);
   load(p, gl.BindBuffer, "glBindBuffer", m);
@@ -186,12 +190,13 @@ precision highp float;
 attribute vec3 a_pos;
 uniform mat3 u_view;
 uniform vec4 u_param;
+uniform float u_xscale;
 void main() {
   vec3 v = u_view * a_pos;
   float rows = u_param.x;
   float zlin = v.z - 128.0;
   float zlog = (log2(max(v.z, 1.0e-6)) * (2.0 / 40.0) - 1.0 - u_param.w) * v.z;
-  gl_Position = vec4(-0.003125 * v.z - v.x,
+  gl_Position = vec4((-0.003125 * v.z - v.x) * u_xscale,
                      (1.0 - 179.0 / rows) * v.z + (180.0 / rows) * v.y,
                      mix(zlin, zlog, u_param.z), v.z);
   gl_PointSize = u_param.y;
@@ -231,6 +236,15 @@ struct Prim {
   float size = 1;     // points: size in low-res pixels
   float bias = 0;     // depth bias (later primitives of an object win)
   bool flat = false;
+  int object = -1;
+  int sequence = 0;
+  uint32_t mesh = 0, stream = 0;
+};
+
+struct Camera {
+  float view[9]{};
+  double x = 0, z = 0, ground_y = 0;
+  int32_t alt = 0;
 };
 
 struct State {
@@ -238,14 +252,21 @@ struct State {
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   int fb_w = 0, fb_h = 0;
-  GLint u_view = -1, u_param = -1, u_colour = -1;
+  GLint u_view = -1, u_param = -1, u_colour = -1, u_xscale = -1;
   // current frame
   bool capturing = false;
+  bool has_frame = false, has_previous = false;
+  uint64_t serial = 0, capture_tick = 0;
+  int interval_vblanks = 4;
   int object = -1;          // index of the current object, -1 = none yet
+  uint32_t mesh = 0, stream = 0;
   bool distant = false, flat = false;
   int prims_in_object = 0;
   std::vector<float> verts; // view space, world units
   std::vector<Prim> prims;
+  std::vector<float> previous_verts;
+  std::vector<Prim> previous_prims;
+  Camera camera, previous_camera;
   // terrain: triangulated water, absolute world coordinates
   struct WaterTri { double x[3], z[3]; int32_t min_alt; };
   std::vector<WaterTri> water;
@@ -347,7 +368,11 @@ Prim& add_prim(GLenum mode, const Ops& o) {
   p.first = GLint(st.verts.size() / 3);
   p.ops = o;
   p.flat = st.flat;
-  p.bias = float(st.prims_in_object++) * 2e-6f;
+  p.object = st.object;
+  p.mesh = st.mesh;
+  p.stream = st.stream;
+  p.sequence = st.prims_in_object++;
+  p.bias = float(p.sequence) * 2e-6f;
   st.prims.push_back(p);
   return st.prims.back();
 }
@@ -459,6 +484,7 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.u_view = gl.GetUniformLocation(st.prog, "u_view");
   st.u_param = gl.GetUniformLocation(st.prog, "u_param");
   st.u_colour = gl.GetUniformLocation(st.prog, "u_colour");
+  st.u_xscale = gl.GetUniformLocation(st.prog, "u_xscale");
   gl.GenBuffers(1, &st.vbo);
   build_terrain();
   st.debug = std::getenv("FA18_GL_DEBUG") != nullptr;
@@ -475,6 +501,15 @@ void set_enabled(bool on) { st.enabled = on; }
 
 void scene_begin() {
   if (!active()) return;
+  if (st.has_frame) {
+    st.previous_verts = std::move(st.verts);
+    st.previous_prims = std::move(st.prims);
+    st.previous_camera = st.camera;
+    st.has_previous = true;
+  } else {
+    st.has_previous = false;
+  }
+  st.has_frame = false;
   st.capturing = true;
   st.object = -1;
   st.verts.clear();
@@ -482,9 +517,10 @@ void scene_begin() {
 }
 
 void begin_object(uint32_t mesh, uint32_t stream, bool distant) {
-  (void)stream;
   if (!active() || !st.capturing) return;
   ++st.object;
+  st.mesh = mesh;
+  st.stream = stream;
   st.prims_in_object = 0;
   st.distant = distant;
   // flat models (header +7 bit 1, not articulated) and the distant ground
@@ -574,15 +610,104 @@ void note_point(const double q[3], int kind, int radius, const Ops& o) {
   p.count = 1;
 }
 
-bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
-  if (!active() || !st.capturing) return false;
-  st.capturing = false;
+Camera capture_camera() {
+  Camera c;
+  for (int i = 0; i < 9; ++i) c.view[i] = float(int16_t(rd16(0x5aed0 + 2u * uint32_t(i)))) / 256.f;
+  c.x = double(int32_t(rd16(0x5ac44)) << 22) - double(int32_t(rd32(0x5ad5a)));
+  c.z = double(int32_t(rd16(0x5ac46)) << 22) - double(int32_t(rd32(0x5ad62)));
+  c.ground_y = double(int32_t(rd32(0x5ad5e)));
+  c.alt = terrain::scaled_altitude(int32_t(rd32(0x5ad70)), rd8(0x5aad5),
+                                    int16_t(rd16(0x5ad3a)));
+  return c;
+}
+
+bool same_primitive(const Prim& a, const Prim& b) {
+  return a.mode == b.mode && a.count == b.count && a.sequence == b.sequence &&
+         a.object == b.object && a.mesh == b.mesh && a.stream == b.stream &&
+         a.flat == b.flat && a.ops.set == b.ops.set && a.ops.clr == b.ops.clr &&
+         a.ops.xr == b.ops.xr && a.ops.copy == b.ops.copy;
+}
+
+bool interpolation_available() { return active() && st.has_frame && st.has_previous; }
+uint64_t capture_serial() { return st.serial; }
+int capture_interval_vblanks() { return st.interval_vblanks; }
+
+bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
+  if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
+  const bool first_render = st.capturing;
+  if (first_render) {
+    st.capturing = false;
+    st.camera = capture_camera();
+    st.has_frame = true;
+    const uint64_t tick = native::mach().frame_count();
+    if (st.serial > 0 && tick > st.capture_tick) {
+      const uint64_t elapsed = tick - st.capture_tick;
+      if (elapsed <= 12) st.interval_vblanks = int(elapsed);
+      else st.has_previous = false;  // menu/pause: don't interpolate across a cut
+    }
+    st.capture_tick = tick;
+    ++st.serial;
+    ++st.frames;
+  }
+  alpha = std::clamp(alpha, 0.f, 1.f);
+  const bool interpolate = st.has_previous && alpha < 1.f;
+  size_t matched = 0;
+  const std::vector<float>* verts = &st.verts;
+  std::vector<float> interpolated;
+  Camera cam = st.camera;
+  if (interpolate) {
+    interpolated = st.verts;
+    // LOD/clipping can add or remove individual primitives. Match stable
+    // mesh/object/primitive identities, and leave unmatched ones at their
+    // current positions instead of invalidating the entire scene blend.
+    // Index once: a linear search per primitive is quadratic for the larger
+    // runway/terrain scenes and would cost more than the extra GL redraw.
+    auto key = [](const Prim& p) {
+      return (uint64_t(uint32_t(p.object)) << 32) | uint32_t(p.sequence);
+    };
+    std::unordered_map<uint64_t, const Prim*> previous;
+    previous.reserve(st.previous_prims.size());
+    for (const Prim& p : st.previous_prims) previous.emplace(key(p), &p);
+    for (const Prim& p : st.prims) {
+      const auto it = previous.find(key(p));
+      if (it == previous.end() || !same_primitive(p, *it->second)) continue;
+      const Prim* prev = it->second;
+      const size_t n = size_t(p.count) * 3;
+      if ((size_t(p.first) * 3 + n) > st.verts.size() ||
+          (size_t(prev->first) * 3 + n) > st.previous_verts.size()) continue;
+      for (size_t i = 0; i < n; ++i) {
+        const size_t at = size_t(p.first) * 3 + i;
+        interpolated[at] = st.previous_verts[size_t(prev->first) * 3 + i] +
+                           alpha * (st.verts[at] - st.previous_verts[size_t(prev->first) * 3 + i]);
+      }
+      ++matched;
+    }
+    verts = &interpolated;
+    for (int i = 0; i < 9; ++i)
+      cam.view[i] = st.previous_camera.view[i] + alpha * (st.camera.view[i] - st.previous_camera.view[i]);
+    cam.x = st.previous_camera.x + alpha * (st.camera.x - st.previous_camera.x);
+    cam.z = st.previous_camera.z + alpha * (st.camera.z - st.previous_camera.z);
+    cam.ground_y = st.previous_camera.ground_y + alpha * (st.camera.ground_y - st.previous_camera.ground_y);
+  }
+  if (!first_render && std::getenv("FA18_GL_INTERP_DEBUG")) {
+    static uint64_t redraws = 0, blended = 0, matched_total = 0;
+    ++redraws;
+    if (interpolate) ++blended;
+    matched_total += matched;
+    if (redraws % 120 == 0)
+      std::fprintf(stderr, "gl: redraws %llu interpolated %llu matched-prims %llu alpha %.2f interval %d\n",
+                   (unsigned long long)redraws, (unsigned long long)blended,
+                   (unsigned long long)matched_total, alpha, st.interval_vblanks);
+  }
   st.make_current();
   if (!ensure_fbo(w, h)) return false;
   const float rows = float(h / S);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
+  // A wider FBO must reveal more of the world, not stretch the central view.
+  // With w=320*S this is exactly 1.0 and preserves the original projection.
+  gl.Uniform1f(st.u_xscale, float(320 * S) / float(w));
 #ifndef FA18_OPENGLES2
   gl.Enable(GL_PROGRAM_POINT_SIZE);  // desktop GL; GLES always uses gl_PointSize
 #endif
@@ -595,33 +720,26 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   gl.DepthMask(0);
 
   // ---- ground: land plane and water in world space ----
-  float view[9];
-  for (int i = 0; i < 9; ++i) view[i] = float(int16_t(rd16(0x5aed0 + 2u * uint32_t(i)))) / 256.f;
-  // camera = cell origin - $5ad5a (the frame of the object positions)
-  const double cam_x = double(int32_t(rd16(0x5ac44)) << 22) - double(int32_t(rd32(0x5ad5a)));
-  const double cam_z = double(int32_t(rd16(0x5ac46)) << 22) - double(int32_t(rd32(0x5ad62)));
-  const double ground_y = double(int32_t(rd32(0x5ad5e)));
-  const int32_t alt = terrain::scaled_altitude(int32_t(rd32(0x5ad70)), rd8(0x5aad5),
-                                               int16_t(rd16(0x5ad3a)));
+  // Camera = cell origin - $5ad5a (the frame of the object positions).
   std::vector<float>& g = st.ground;
   g.clear();
   const double R = std::ldexp(1.0, 31);
   const double quad[6][2] = {{-R, -R}, {R, -R}, {R, R}, {-R, -R}, {R, R}, {-R, R}};
   for (auto& q : quad) {
     g.push_back(float(q[0]));
-    g.push_back(float(ground_y));
+    g.push_back(float(cam.ground_y));
     g.push_back(float(q[1]));
   }
   for (const State::WaterTri& t : st.water) {
-    if (t.min_alt > alt && !native::mach().full_detail) continue;
+    if (t.min_alt > cam.alt && !native::mach().full_detail) continue;
     for (int i = 0; i < 3; ++i) {
-      g.push_back(float(t.x[i] - cam_x));
-      g.push_back(float(ground_y));
-      g.push_back(float(t.z[i] - cam_z));
+      g.push_back(float(t.x[i] - cam.x));
+      g.push_back(float(cam.ground_y));
+      g.push_back(float(t.z[i] - cam.z));
     }
   }
   upload(g);
-  set_view(view);
+  set_view(cam.view);
   set_param(rows, 1, 0, 0);
   // stencil bit 0 = water: the water tiles set it, flat patches whose
   // operation turns land into water and back (plane 1 inverted) toggle it
@@ -638,13 +756,13 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   bool any_toggle = false;
   for (const Prim& p : st.prims) any_toggle |= toggles(p);
   if (any_toggle) {
-    upload(st.verts);
+    upload(*verts);
     set_view(ident);
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_INVERT);
     for (const Prim& p : st.prims)
       if (toggles(p)) gl.DrawArrays(p.mode, p.first, p.count);
     upload(g);
-    set_view(view);
+    set_view(cam.view);
   }
   gl.ColorMask(1, 0, 0, 0);
   stencil_class(0);
@@ -655,7 +773,7 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
 
   // ---- flat objects: their colour on land / water ----
-  upload(st.verts);
+  upload(*verts);
   set_view(ident);
   auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
   for (const Prim& p : st.prims) {
@@ -702,7 +820,7 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S) {
     for (int x = 0; x < w; ++x) dst[x] = palette::decode(src[x * 4]);
   }
   gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (st.debug && (++st.frames % 100) == 0)
+  if (st.debug && first_render && (st.frames % 100) == 0)
     std::fprintf(stderr, "gl: frame %llu objects %d prims %zu\n", (unsigned long long)st.frames,
                  st.object + 1, st.prims.size());
   return true;

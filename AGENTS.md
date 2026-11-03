@@ -48,9 +48,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
 ## Remaster options (off by default; original behaviour untouched)
 - Enhancements are runtime options, never part of the translated routines'
   default path, so the gate always runs the original behaviour.
-- `--analog` (also in the debug menu): gamepad left stick drives pitch/rudder
-  deflection analog (hook in `process_control_input`, controls.cpp);
-  scripted runs ignore real pads; script command `analog <x> <y>|off`.
+- `--analog` (also in the debug menu): gamepad left stick drives pitch and
+  horizontal steering analog. Both the native `process_control_input` and
+  original 68000 PC hook `$256d2` call the same helper in `controls.cpp`
+  immediately before the original reads of the player control bytes.
+  Scripted runs ignore real pads; script command `analog <x> <y>|off`.
 - `--hires N` (N=2..8): the 3D view is re-rendered at N times resolution
   from the original view-space polygons/lines (`src/native/hires.cpp`);
   the original rasteriser keeps running, so game state is identical.
@@ -72,6 +74,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   composition; flat colours only (GL 2.1 or GLES 2, `FA18_GLES=1`).
   Falls back to `--hires` without GL; headless runs need
   `SDL_VIDEODRIVER=offscreen`.
+  `--widescreen` widens the world projection while keeping the original
+  image pixel-exact in the centre. `--render-fps 120|180|240` presents
+  interpolated cached geometry between 60 Hz game frames; the original
+  simulation and non-3D overlays are not accelerated. A delayed capture
+  phase allows interpolation even if original 3D redraws occur at 15 Hz.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

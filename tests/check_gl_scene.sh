@@ -52,4 +52,9 @@ FA18_GL_FORCE_RGBA4=1 "$bin" --native off --gl 3 "${args[@]}" \
   --screenshot 4000 "$tmp/gl-rgba4.ppm" "$adf" >"$tmp/rgba4.log" 2>&1
 cmp "$tmp/gl-interpreter.ppm" "$tmp/gl-rgba4.ppm"
 
+"$bin" --native off --gl 3 --widescreen "${args[@]}" \
+  --screenshot 4000 "$tmp/gl-widescreen.ppm" "$adf" >"$tmp/widescreen.log" 2>&1
+python3 "$repo/tests/compare_ppm_center.py" \
+  "$tmp/gl-interpreter.ppm" "$tmp/gl-widescreen.ppm"
+
 echo 'PASS: GL interpreter/native/recompiled agree, GL differs from software, RGBA4 == RGBA8'

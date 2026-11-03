@@ -7,6 +7,42 @@ Code: `src/native/gl_renderer.{hpp,cpp}`; host side `init_gl()` in
 falls back to the software hi-res renderer (`--hires N`); headless tests
 work with `SDL_VIDEODRIVER=offscreen`.
 
+## Widescreen and higher presentation rate
+
+`--gl 3 --widescreen` starts at 16:9 and extends the visible 3D world left
+and right as the SDL window aspect ratio changes. The vertex shader scales
+its X clip coordinate by `320*N / framebuffer_width`: no central stretch or
+change of the original camera's horizontal field of view. `compose_view`
+reuses the original 320-column compositor for the centre of the image
+(cockpit, palette effects and unexplained 2D drawing) and puts new rendered
+world pixels in the side bands. At frame 4000 of the free1 replay, a cropped
+central 960x600 region of the wide 1284x600 screenshot matches the original
+4:3 GL render pixel for pixel. Menus retain their original logical aspect.
+
+`--render-fps 120` (or 180/240) optionally adds extra OpenGL presentations
+between the original 60 Hz emulated VBL ticks. The original game continues
+to simulate physics and render its own low-resolution view at its existing
+pace; the host re-renders only cached GL primitives, with no additional 68000
+execution. Two consecutive 3D captures provide view-space vertex positions
+and the camera pose. Primitives are matched by their original object, mesh,
+stream and per-object primitive sequence; compatible vertices move linearly
+from the older to the newer capture, while primitives whose LOD, clipping or
+topology has changed retain their newest position. Ground and water use the
+interpolated camera. The renderer measures the *actual* interval between 3D
+captures (often four VBLs, about 15 Hz) to advance the blend smoothly, with
+one capture interval of visual latency. Large gaps reset history to prevent
+blending across menus or scene cuts.
+
+The HUD, 2D overlays, explosions not captured as geometry, and the original
+physics still advance only at their original rates; interpolation applies
+only to geometrically matched 3D primitives and camera movement. Additional
+redraws are skipped when the host falls too far behind its 60 Hz deadline.
+For inspection, `FA18_GL_INTERP_DEBUG=1` reports interpolation and extra
+presentation counts. `tests/check_gl_scene.sh` asserts pixel-exact 4:3
+centre preservation in addition to interpreter/native/recompiler parity;
+`tests/check_gl_interpolation.sh` verifies extra blended presentations and
+identical emulated RAM at 60 and 120 Hz.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

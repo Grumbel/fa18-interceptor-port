@@ -133,6 +133,13 @@ All off by default; the original behaviour is untouched.
 
 - `--hires N`: render the 3D view at N times resolution (HUD and cockpit
   stay low-res).
+- `--gl N`: draw the captured 3D scene with OpenGL at N times resolution.
+  `--widescreen` extends the world beyond the original 4:3 view (initially
+  16:9, adjusts to window resizing), leaving the original scene and HUD
+  unchanged in the centre. `--render-fps 120` (also 180 or 240) redraws
+  interpolated OpenGL geometry between game frames without increasing the
+  game's physics tick rate; HUD and unconverted 2D elements still update at
+  their original frequency. These options have no effect on non-GL scenes.
 - `FA18_SCENE_RENDER=<N>`: software hi-res path from the captured
   `SceneFrame` — depth-sorts all prims (fills, polys, lines, points),
   rasterizes them at N× into the 3D view, then pastes only HUD/cockpit
@@ -140,7 +147,9 @@ All off by default; the original behaviour is untouched.
   geometry (not papered over by the original low-res 3D).  Observation
   only.  Implies scene capture.  `--hires` takes priority if both are set.
 - `--analog`: left stick flies analog (dead zone, proportional pitch and
-  rudder) instead of the thresholded digital directions.
+  horizontal steering) instead of the thresholded digital directions.
+  Input is inserted at the original code's aircraft-control record reads
+  in native, recompiled and interpreted execution alike.
 - `--text-pace`: menu texts, briefings and cockpit messages at the pace of
   a stock A500 (they otherwise run several times faster; the game itself
   is not slowed down, see docs/frame_timing.md).

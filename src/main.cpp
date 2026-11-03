@@ -2,7 +2,9 @@
 #include "amiga/machine.hpp"
 #include "control_help.hpp"
 #include "font6x10.hpp"
+#include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
+#include "native/remaster.hpp"
 #include "native/mesh_viewer.hpp"
 #include "frontend_hotkeys.hpp"
 #include "graphics_toggle.hpp"
@@ -133,6 +135,11 @@ public:
   SDL_GameController* pad = nullptr;
   bool mouse_grab = false;
   bool fast = false;
+  bool widescreen = false;
+  int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
+  uint64_t last_gl_serial = 0;
+  uint64_t extra_gl_presented = 0;
+  int last_gl_tick = 0, gl_interval_ticks = 4;
   bool quit = false;
   uint64_t next_frame = 0;
   int screenshot_frame = -1;
@@ -157,6 +164,7 @@ public:
   static constexpr int STATS_W = amiga::FB_W * 3, STATS_H = amiga::FB_H * 6 / 5 * 3;
   SDL_Texture* stats_tex = nullptr;
   std::vector<uint32_t> stats_buf;
+  std::vector<uint32_t> view_buf;
 
   bool init(int scale) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -168,8 +176,8 @@ public:
     SDL_SetHint(SDL_HINT_EMSCRIPTEN_ASYNCIFY, "1");
     SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#canvas");
 #endif
-    const int win_w = amiga::FB_W * scale;
     const int win_h = amiga::FB_H * scale * 6 / 5;
+    const int win_w = widescreen ? win_h * 16 / 9 : amiga::FB_W * scale;
     win = SDL_CreateWindow("F/A-18 Interceptor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!win) return false;
@@ -487,6 +495,7 @@ public:
   }
 
   void run_mesh_viewer_standalone(const uint32_t* /*bg*/, int w, int h) {
+    SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
       std::vector<uint32_t> cv(size_t(w) * size_t(h));
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
       if (exe.empty()) {
@@ -640,6 +649,7 @@ public:
   }
 
   void run_menu(const uint32_t* bg, int w, int h) {
+    SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
     menu_request = false;
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
     int sel = 0;
@@ -970,17 +980,16 @@ public:
 
   void frame(const uint32_t* fb) override { present(fb, amiga::FB_W, amiga::FB_H); }
   void frame_hires(const uint32_t* fb, int w, int h) override { present(fb, w, h); }
-  void present(const uint32_t* fb, int w, int h) {
-    ++frame_no;
-    {
-      std::string m = machine->take_state_message();
-      if (!m.empty()) menu_status = m;
-    }
-    if (mesh_viewer_request && script.empty()) {
-      mesh_viewer_request = false;
-      run_mesh_viewer_standalone(fb, w, h);
-    }
-    if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
+  int side_columns() const {
+    if (!widescreen) return 0;
+    int dw = 0, dh = 0;
+    if (SDL_GetRendererOutputSize(ren, &dw, &dh) != 0 || dh <= 0) return 0;
+    const int required = int(std::ceil(double(amiga::FB_H * 6 / 5) * dw / dh));
+    // Equal left/right extension keeps every original screen coordinate fixed.
+    return std::clamp((required - amiga::FB_W + 1) / 2, 0, 320);
+  }
+  void display_frame(const uint32_t* fb, int w, int h, int logical_w) {
+    SDL_RenderSetLogicalSize(ren, logical_w, amiga::FB_H * 6 / 5);
     if (w != tex_w || h != tex_h) {
       SDL_DestroyTexture(tex);
       tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
@@ -993,22 +1002,86 @@ public:
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     if (stats_on) draw_stats();
     SDL_RenderPresent(ren);
-    if (frame_no == screenshot_frame) save_screenshot(fb);
+  }
+  void present(const uint32_t* fb, int w, int h) {
+    ++frame_no;
+    {
+      std::string m = machine->take_state_message();
+      if (!m.empty()) menu_status = m;
+    }
+    if (mesh_viewer_request && script.empty()) {
+      mesh_viewer_request = false;
+      run_mesh_viewer_standalone(fb, w, h);
+    }
+    if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
+    const bool gl_video = glr::active() && machine->hires_scale > 0 &&
+                          (widescreen || render_fps > 60);
+    const int side = gl_video ? side_columns() : 0;
+    if (gl_video && glr::capture_serial() != last_gl_serial) {
+      last_gl_serial = glr::capture_serial();
+      last_gl_tick = frame_no;
+      gl_interval_ticks = std::max(1, glr::capture_interval_vblanks());
+    }
+    // The game's actual 3D redraw rate can be 7-15 Hz despite 60 Hz VBLs.
+    // Hold one scene behind and advance the interpolation phase across the
+    // measured number of VBLs between successive geometry captures.
+    auto phase = [&](float subframe) {
+      if (render_fps <= 60 || !glr::interpolation_available()) return 1.f;
+      return std::clamp((float(frame_no - last_gl_tick) + subframe) /
+                        float(gl_interval_ticks), 0.f, 1.f);
+    };
+    const uint32_t* video = fb;
+    int vw = w, vh = h, logical_w = amiga::FB_W;
+    if (gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
+                                           render_fps > 60)) {
+      video = view_buf.data();
+      vw = (amiga::FB_W + 2 * side) * machine->hires_scale;
+      vh = amiga::FB_H * machine->hires_scale;
+      logical_w = amiga::FB_W + 2 * side;
+    }
+    display_frame(video, vw, vh, logical_w);
+    if (frame_no == screenshot_frame) save_screenshot(video);
     if (!pending_shot.empty()) {
       std::swap(pending_shot, screenshot_path);
-      save_screenshot(fb);
-      if (stats_on) save_stats_screenshot(fb, screenshot_path + ".stats.ppm");
+      save_screenshot(video);
+      if (stats_on) save_stats_screenshot(video, screenshot_path + ".stats.ppm");
       std::swap(pending_shot, screenshot_path);
       pending_shot.clear();
     }
     if (quit_after >= 0 && frame_no >= quit_after) quit = true;
     handle_events();
     if (quit) throw amiga::QuitRequested{};
-    // Pace to 60 Hz unless fast-forwarding.
+    // One game/physics tick per 1/60 s. Extra GL redraws use only cached
+    // geometry, interpolated between the two most recent simulated frames.
     uint64_t freq = SDL_GetPerformanceFrequency();
+    const uint64_t tick_start = next_frame;
     next_frame += freq / 60;
     uint64_t now = SDL_GetPerformanceCounter();
     if (fast || int64_t(next_frame - now) < -int64_t(freq / 10)) next_frame = now;
+    if (!fast && gl_video && render_fps > 60 && video == view_buf.data()) {
+      const int samples = render_fps / 60;
+      for (int i = 1; i < samples; ++i) {
+        const uint64_t target = tick_start + (freq / 60) * uint64_t(i) / uint64_t(samples);
+        while (int64_t(target - SDL_GetPerformanceCounter()) > int64_t(freq / 500)) {
+#if defined(__EMSCRIPTEN__)
+          emscripten_sleep(1);
+#else
+          SDL_Delay(1);
+#endif
+        }
+        if (SDL_GetPerformanceCounter() > target + freq / 120) continue;
+        if (!remaster::compose_view(*machine, view_buf, side,
+                                    phase(float(i) / samples), true)) break;
+        display_frame(view_buf.data(), vw, vh, logical_w);
+        ++extra_gl_presented;
+        if (std::getenv("FA18_GL_INTERP_DEBUG") &&
+            (extra_gl_presented == 1 || extra_gl_presented % 60 == 0))
+          fprintf(stderr, "gl: extra presentation %llu at VBL %d\n",
+                  (unsigned long long)extra_gl_presented, frame_no);
+        handle_events();
+        if (quit) throw amiga::QuitRequested{};
+      }
+    }
     // Signed arithmetic: the counter may pass next_frame between reads.
     while (!fast) {
       int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
@@ -1056,6 +1129,8 @@ public:
         stats_on = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "textpace") {  // textpace on | textpace off
         machine->text_pace = !e.args.empty() && e.args[0] == "on";
+      } else if (e.cmd == "fast") {  // fast on | fast off (timing tests)
+        fast = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "detail") {  // detail full | detail normal
         machine->full_detail = !e.args.empty() && e.args[0] == "full";
       } else if (e.cmd == "analog") {  // analog <x> <y> | analog off  (needs --analog)
@@ -1216,6 +1291,8 @@ void usage() {
           "  --fast           run unthrottled\n"
           "  --hires N        remaster: render the 3D view at N times resolution\n"
           "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
+          "  --widescreen     extend OpenGL view horizontally (16:9 window; resizable)\n"
+          "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (physics stays 60)\n"
           "  --analog         remaster: analog flight stick (left stick)\n"
           "  --full-detail    debug: nearest level of detail for every object\n"
           "  --text-pace      remaster: menu texts and flight messages at stock A500 pace\n"
@@ -1298,7 +1375,8 @@ int main(int argc, char** argv) {
   int scale = 3;
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
-  bool full_detail = false, stats = false, text_pace = false;
+  bool full_detail = false, stats = false, text_pace = false, widescreen = false;
+  int render_fps = 60;
   int hires = 0, gl_scale = 0;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
@@ -1323,6 +1401,8 @@ int main(int argc, char** argv) {
     else if (a == "--stats") stats = true;
     else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
     else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
+    else if (a == "--widescreen") widescreen = true;
+    else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
     else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
     else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
@@ -1342,6 +1422,10 @@ int main(int argc, char** argv) {
     else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
     else data_dir = a;
+  }
+  if (render_fps < 60 || render_fps > 240 || render_fps % 60) {
+    fprintf(stderr, "--render-fps must be 60, 120, 180 or 240\n");
+    return 2;
   }
   if (data_dir.empty()) {
     namespace fs = std::filesystem;
@@ -1448,6 +1532,7 @@ int main(int argc, char** argv) {
                         : native_mode == "verify" ? amiga::Machine::NativeMode::Verify
                                                   : amiga::Machine::NativeMode::On;
   if (!machine.boot(data_dir)) return 1;
+  native::install_control_hooks(machine);
   if (!mesh_dump_dir.empty()) {
     std::filesystem::create_directories(mesh_dump_dir);
     std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");
@@ -1499,6 +1584,8 @@ int main(int argc, char** argv) {
   host.screenshot_path = shot_path;
   host.quit_after = quit_after;
   host.fast = fast;
+  host.widescreen = widescreen;
+  host.render_fps = render_fps;
   host.stats_on = stats;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
