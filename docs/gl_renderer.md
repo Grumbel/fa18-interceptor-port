@@ -241,6 +241,20 @@ capture instrument writes directly and make the interface independent of
 that classification. Afterwards, the original bitmap artwork can be
 replaced with higher-resolution or fully 3D cockpit parts.
 
+The first **dynamic** instrument is also reproduced natively:
+`src/native/cockpit_instruments.cpp` reads player fuel from record +114,
+formats the five-digit LCD at screen coordinates (104,183)–(122,187), and
+generates its original 3×5 numeric font. This is drawn by the CPU composer or
+uploaded in the direct-GPU foreground, rather than copied from the emulated
+LCD pixels. The ILBM glyph ink/background indices are 16/24; the live LCD
+uses their lower four bits, 0/8. To retain exact game-frame presentation
+timing, the native digits replace the original ones only when the displayed
+LCD still agrees with the current player value. Set
+`FA18_COCKPIT_FUEL_NATIVE=0` to disable just this new instrument; use
+`FA18_COCKPIT_FUEL_DEBUG=1` to log successful substitutions and cases where
+the original redraw has not caught up. Matching the original LCD update
+cadence without framebuffer checks is still outstanding.
+
 ## Open points
 
 

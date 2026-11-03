@@ -163,6 +163,14 @@ before committing. Note limitations explicitly rather than masking them.
   Widescreen GL flight and Pause screenshots are pixel-exact against the
   previous compositor. `FA18_COCKPIT_NATIVE=0` supplies the deterministic
   legacy oracle for `tests/check_gl_cockpit.sh`.
+- [x] Reproduce the first dynamic instrument from game state: the fuel LCD
+  (`player +114 >>8`) at (104,183), using a code-defined 3x5 digit font
+  equivalent to the ILBM's `21000` placeholder and the live copper pen
+  colours 0/8. The original screen is only used as a timing/parity oracle:
+  if its currently displayed digits lag the game value, keep that redraw;
+  otherwise composite the generated LCD. In flight, the native five-digit
+  renderer activates and produces an identical screenshot. See
+  `FA18_COCKPIT_FUEL_NATIVE=0` and `FA18_COCKPIT_FUEL_DEBUG=1`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

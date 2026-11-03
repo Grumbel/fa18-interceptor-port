@@ -29,7 +29,7 @@ for mode in flight pause; do
   FA18_COCKPIT_NATIVE=0 "$bin" "${common[@]}" \
     --screenshot "$frame" "$tmp/$mode-original.ppm" "$adf" \
     >"$tmp/$mode-original.log" 2>&1
-  FA18_COCKPIT_DEBUG=1 "$bin" "${common[@]}" \
+  FA18_COCKPIT_DEBUG=1 FA18_COCKPIT_FUEL_DEBUG=1 "$bin" "${common[@]}" \
     --screenshot "$frame" "$tmp/$mode-native.ppm" "$adf" \
     >"$tmp/$mode-native.log" 2>&1
   cmp "$tmp/$mode-original.ppm" "$tmp/$mode-native.ppm"
@@ -43,6 +43,11 @@ for mode in flight pause; do
     echo "FAIL: $mode did not actually compose a native cockpit layer" >&2
     exit 1
   fi
+  if [ "$mode" = flight ] &&
+     ! grep -q 'cockpit: native fuel LCD [0-9]\{5\}' "$tmp/$mode-native.log"; then
+    echo 'FAIL: native fuel digits were not drawn from the player record' >&2
+    exit 1
+  fi
 done
 
-echo 'PASS: original ILBM cockpit composition is pixel-exact during flight and Pause'
+echo 'PASS: native ILBM cockpit and dynamic fuel LCD are pixel-exact during flight and Pause'

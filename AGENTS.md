@@ -97,6 +97,10 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   still use the Amiga screen as a dynamic overlay. Set
   `FA18_COCKPIT_NATIVE=0` to compare the prior compositing path, and run
   `tests/check_gl_cockpit.sh` to verify flight and Pause pixel parity.
+  The five-digit fuel LCD is generated from the player's native fuel value,
+  with the original digit pixels used only to preserve HUD redraw timing.
+  `FA18_COCKPIT_FUEL_NATIVE=0` disables this native instrument alone;
+  `FA18_COCKPIT_FUEL_DEBUG=1` traces it.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

@@ -15,6 +15,7 @@
 #include "amiga/machine.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/cockpit_assets.hpp"
+#include "native/cockpit_instruments.hpp"
 #include "native/remaster.hpp"
 #include "native/runtime.hpp"
 #include "native/scene_frame.hpp"
@@ -907,6 +908,9 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   const uint32_t* key = m.frame_row_key();
   const uint32_t* pal = m.frame_row_pal();
   if (!idx || !key) return false;
+  const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
+  const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), idx, rgb, pal, cockpit_enabled);
   if (getenv("FA18_HIRES_KEYS") && m.frame_count() % 400 == 0) {
     std::fprintf(stderr, "[hires] frame %llu key0=%06x key50=%06x key100=%06x layers:", (unsigned long long)m.frame_count(), key[0], key[50], key[100]);
     for (auto& l : layers) std::fprintf(stderr, " %06x(rows=%d done=%d)", l.base, l.rows, l.done);
@@ -928,6 +932,11 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* o = &out[size_t(y * S + yy) * size_t(Wp)];
       for (int x = 0; x < W; ++x) {
+        if (fuel.contains(x, y)) {
+          const uint32_t colour = fuel.pixel(x, y);
+          for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
+          continue;
+        }
         uint32_t c = rgb[y * W + x];
         if (L) {
           uint8_t li = idx[y * W + x];
@@ -975,6 +984,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   // bitplane-backed path without changing any emulated code or game state.
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, idx, rgb, pal, cockpit_enabled);
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
@@ -1026,6 +1036,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         const uint8_t li = idx[y * W + x];
+        if (fuel.contains(x, y)) {
+          const uint32_t colour = fuel.pixel(x, y);
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+          continue;
+        }
         const size_t cp = size_t(y) * W + x;
         const bool index_matches = li == cockpit.index[cp];
         const bool colour_matches = (rgb[cp] & 0xFFFFFFu) == (cockpit.rgb[cp] & 0xFFFFFFu);
@@ -1092,6 +1107,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const CockpitAtlas& cockpit = cockpit_atlas(m);
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
+  const FuelDigits fuel = prepare_fuel_digits(m, cockpit, idx, rgb, pal, cockpit_enabled);
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.
@@ -1140,6 +1156,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[0] = uint8_t(bg >> 16);
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
+      if (fuel.contains(x, y)) {
+        const uint32_t c = fuel.pixel(x, y);
+        p[0] = uint8_t(c >> 16);
+        p[1] = uint8_t(c >> 8);
+        p[2] = uint8_t(c);
         p[3] = 255;
         continue;
       }
