@@ -1,0 +1,2 @@
+1 menu
+4 quit

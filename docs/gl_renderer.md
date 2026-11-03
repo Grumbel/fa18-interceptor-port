@@ -80,6 +80,13 @@ timings are *not* from a real GPU and do not isolate all CPU costs. They
 show why GL batching alone cannot remove the remaining cost of the
 original rasteriser, CPU composition and SDL texture upload.
 
+For widescreen or >60 Hz playback, a newly captured GL scene is now
+finalised without first drawing/readback at the original width. The visible
+presentation is the first GL rendering pass for that capture. This removes
+one redundant readback every scene but **does not** remove the synchronous
+readback and CPU-to-SDL upload on each presented frame. The host Graphics
+submenu can switch 3D mode, widescreen, target FPS, detail and stats live.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

@@ -20,7 +20,7 @@ args=(--gl 1 --widescreen --det-timing --fast
       --frames 3710 --script "$repo/tests/data/interpolation_flight.txt")
 "$bin" "${args[@]}" --native off --interpret --render-fps 60 --ram-dump 3700 "$tmp/60.bin" \
   "$adf" >"$tmp/60.log" 2>&1
-FA18_GL_INTERP_DEBUG=1 FA18_GL_MATCH_DEBUG=1 FA18_GL_PRESENT_DEBUG=1 \
+FA18_GL_INTERP_DEBUG=1 FA18_GL_MATCH_DEBUG=1 FA18_GL_PRESENT_DEBUG=1 FA18_GL_PROFILE=1 \
   "$bin" "${args[@]}" \
   --native off --interpret --render-fps 120 --ram-dump 3700 "$tmp/120.bin" \
   --screenshot 3690 "$tmp/interpreter.ppm" "$adf" >"$tmp/120.log" 2>&1
@@ -31,6 +31,10 @@ if ! grep -q 'gl: extra presentation' "$tmp/120.log"; then
 fi
 if ! grep -Eq 'gl: observed [0-9]+\.[0-9]+ presents/s' "$tmp/120.log"; then
   echo 'FAIL: presentation-rate instrumentation produced no real-time sample' >&2
+  exit 1
+fi
+if ! grep -q 'gl: profile capture' "$tmp/120.log"; then
+  echo 'FAIL: deferred scene captures were not profiled at presentation' >&2
   exit 1
 fi
 if ! grep -Eq 'gl: redraws [0-9]+ interpolated [1-9][0-9]* matched-prims [1-9][0-9]*' "$tmp/120.log"; then

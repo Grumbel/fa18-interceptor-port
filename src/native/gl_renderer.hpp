@@ -39,6 +39,13 @@ bool ready();               // initialised
 bool active();              // initialised and enabled
 void set_enabled(bool on);  // switch between OpenGL and the software layer
 
+// When the SDL host presents from compose_view() (widescreen or >60 Hz),
+// scene_end only finalises the captured scene; the output-size GL render
+// occurs at presentation. Avoid a redundant 320*S readback per capture.
+void set_deferred_scene_readback(bool on);
+bool deferred_scene_readback();
+void finish_capture();
+
 // Plane operation of a primitive (see hires.cpp PlaneOps).
 struct Ops {
   uint8_t set = 0, clr = 0, xr = 0;

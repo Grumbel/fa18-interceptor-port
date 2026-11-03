@@ -153,8 +153,14 @@ All off by default; the original behaviour is untouched.
 - `--text-pace`: menu texts, briefings and cockpit messages at the pace of
   a stock A500 (they otherwise run several times faster; the game itself
   is not slowed down, see docs/frame_timing.md).
-- **Back** (keyboard: Insert) opens the debug menu: 3D resolution, analog
-  stick, text pacing, save/load state browsers and a way to send ESC to the game.
+- **Back** (keyboard: Insert) opens the debug menu. **Graphics >** contains
+  3D resolution (original/software/OpenGL), widescreen, render FPS
+  (60/120/180/240, only effective in OpenGL), full detail and stats overlay.
+  **Controls >** contains analog-stick steering and the controller/keyboard
+  reference; **Extras >** contains Mesh Viewer and text pacing. The main
+  menu retains Resume, Save/Load states, Send ESC and Quit. Press Esc/B to
+  leave a submenu without closing the menu; H/Y opens the control reference
+  directly from any page. Widescreen and render rate can be changed live.
   **Save states >** lists existing saves to overwrite (requires confirmation),
   plus **New Save** for a fresh, uniquely named file. **Load states >** lists
   all compatible `.sav` files, including the old `stateN.sav` slots. The lists

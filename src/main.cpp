@@ -655,7 +655,10 @@ public:
     SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
     menu_request = false;
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
+    enum class Page { Main, Graphics, Controls, Extras };
+    Page page = Page::Main;
     int sel = 0;
+    int main_sel = 0;
     bool help_open = false;
     int help_page = 0;
     enum class Browser { Closed, Save, Load };
@@ -686,9 +689,69 @@ public:
     // from the executable on the ADF.
     auto run_mesh_viewer = [&] { run_mesh_viewer_standalone(bg, w, h); };
 
-    const int NITEMS = 11;
-    static_assert(8 + 16 + NITEMS * 12 + 3 + 13 + font6x10::H <= 200,
+    constexpr int MAX_ITEMS = 8;
+    static_assert(8 + 16 + MAX_ITEMS * 12 + 3 + 13 + font6x10::H <= 200,
                   "debug menu must fit at the original 320x200 resolution");
+    auto item_count = [&] {
+      switch (page) {
+        case Page::Main: return 8;
+        case Page::Graphics: return 6;
+        case Page::Controls: return 3;
+        case Page::Extras: return 3;
+      }
+      return 0;
+    };
+    auto enter_page = [&](Page p) {
+      if (page == Page::Main) main_sel = sel;
+      page = p;
+      sel = 0;
+    };
+    auto back_page = [&] {
+      if (page == Page::Main) return false;
+      page = Page::Main;
+      sel = main_sel;
+      return true;
+    };
+    auto set_widescreen = [&] {
+      widescreen = !widescreen;
+      glr::set_deferred_scene_readback(widescreen || render_fps > 60);
+      // When entering widescreen from the regular window, make the extra
+      // columns visible immediately. In fullscreen the display owns the size.
+      if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP)) {
+        int ww = 0, wh = 0;
+        SDL_GetWindowSize(win, &ww, &wh);
+        if (wh > 0)
+          SDL_SetWindowSize(win, widescreen ? wh * 16 / 9 : wh * 4 / 3, wh);
+      }
+    };
+    auto change_render_fps = [&](int delta) {
+      constexpr int choices[] = {60, 120, 180, 240};
+      int i = 0;
+      while (i < 3 && choices[i] != render_fps) ++i;
+      render_fps = choices[(i + (delta < 0 ? 3 : 1)) % 4];
+      glr::set_deferred_scene_readback(widescreen || render_fps > 60);
+    };
+    // Integration tests can inject the same SDL key events that a person
+    // uses to navigate the menu; screenshots then verify the resulting page.
+    if (const char* keys = getenv("FA18_MENU_NAV"); keys && getenv("FA18_MENU_SHOT")) {
+      std::istringstream steps(keys);
+      std::string key;
+      while (steps >> key) {
+        SDL_Scancode sc = SDL_SCANCODE_UNKNOWN;
+        if (key == "up") sc = SDL_SCANCODE_UP;
+        else if (key == "down") sc = SDL_SCANCODE_DOWN;
+        else if (key == "left") sc = SDL_SCANCODE_LEFT;
+        else if (key == "right") sc = SDL_SCANCODE_RIGHT;
+        else if (key == "enter") sc = SDL_SCANCODE_RETURN;
+        else if (key == "esc") sc = SDL_SCANCODE_ESCAPE;
+        if (sc != SDL_SCANCODE_UNKNOWN) {
+          SDL_Event e{};
+          e.type = SDL_KEYDOWN;
+          e.key.keysym.scancode = sc;
+          SDL_PushEvent(&e);
+        }
+      }
+    }
     auto enter_browser = [&](Browser b) {
       browser = b;
       saves = savestate_browser::list(machine->save_dir);
@@ -728,9 +791,23 @@ public:
         }
         return;
       }
-      switch (item) {
-        case 0: if (dir == 0) open = false; break;
-        case 1: {
+      if (page == Page::Main) {
+        // Right opens child pages; Left never accidentally resumes/exits.
+        if (dir < 0 || (dir > 0 && (item == 0 || item >= 6))) return;
+        switch (item) {
+          case 0: open = false; break;
+          case 1: enter_page(Page::Graphics); break;
+          case 2: enter_page(Page::Controls); break;
+          case 3: enter_browser(Browser::Save); break;
+          case 4: enter_browser(Browser::Load); break;
+          case 5: enter_page(Page::Extras); break;
+          case 6: pad_tap(0x45); open = false; break;
+          case 7: quit = true; open = false; break;
+        }
+      } else if (page == Page::Graphics) {
+        switch (item) {
+          case 0: if (dir <= 0) back_page(); break;
+          case 1: {
           // original, 2x-4x software, 2x-4x OpenGL (when a context is available).
           // WebAssembly: OpenGL modes are omitted — a second WebGL context aborts.
 #if defined(__EMSCRIPTEN__)
@@ -752,22 +829,24 @@ public:
           }
           set_graphics_mode(order[idx][0], order[idx][1] != 0);
           break;
+          }
+          case 2: set_widescreen(); break;
+          case 3: change_render_fps(dir); break;
+          case 4: machine->full_detail = !machine->full_detail; break;
+          case 5: stats_on = !stats_on; break;
         }
-        case 2: machine->analog_enabled = !machine->analog_enabled; break;
-        case 3: machine->full_detail = !machine->full_detail; break;
-        case 4: machine->text_pace = !machine->text_pace; break;
-        case 5: stats_on = !stats_on; break;
-        case 6: if (dir == 0) enter_browser(Browser::Save); break;
-        case 7: if (dir == 0) enter_browser(Browser::Load); break;
-        case 8:
-          if (dir == 0) run_mesh_viewer();
-          break;
-        case 9:
-          if (dir == 0) { pad_tap(0x45); open = false; }  // Esc to the game
-          break;
-        case 10:
-          if (dir == 0) { quit = true; open = false; }
-          break;
+      } else if (page == Page::Controls) {
+        switch (item) {
+          case 0: if (dir <= 0) back_page(); break;
+          case 1: machine->analog_enabled = !machine->analog_enabled; break;
+          case 2: if (dir >= 0) help_open = true; break;
+        }
+      } else if (page == Page::Extras) {
+        switch (item) {
+          case 0: if (dir <= 0) back_page(); break;
+          case 1: if (dir == 0) run_mesh_viewer(); break;
+          case 2: machine->text_pace = !machine->text_pace; break;
+        }
       }
     };
     while (open && !quit) {
@@ -793,11 +872,11 @@ public:
             switch (e.key.keysym.scancode) {
               case SDL_SCANCODE_UP:
                 if (browser != Browser::Closed) browse_move(-1);
-                else sel = (sel + NITEMS - 1) % NITEMS;
+                else sel = (sel + item_count() - 1) % item_count();
                 break;
               case SDL_SCANCODE_DOWN:
                 if (browser != Browser::Closed) browse_move(+1);
-                else sel = (sel + 1) % NITEMS;
+                else sel = (sel + 1) % item_count();
                 break;
               case SDL_SCANCODE_PAGEUP: if (browser != Browser::Closed) browse_move(-browse_rows); break;
               case SDL_SCANCODE_PAGEDOWN: if (browser != Browser::Closed) browse_move(+browse_rows); break;
@@ -812,7 +891,7 @@ public:
               case SDL_SCANCODE_INSERT:
                 if (confirm_overwrite) confirm_overwrite = false;
                 else if (browser != Browser::Closed) browser = Browser::Closed;
-                else open = false;
+                else if (!back_page()) open = false;
                 break;
               default: break;
             }
@@ -835,11 +914,11 @@ public:
             switch (e.cbutton.button) {
               case SDL_CONTROLLER_BUTTON_DPAD_UP:
                 if (browser != Browser::Closed) browse_move(-1);
-                else sel = (sel + NITEMS - 1) % NITEMS;
+                else sel = (sel + item_count() - 1) % item_count();
                 break;
               case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                 if (browser != Browser::Closed) browse_move(+1);
-                else sel = (sel + 1) % NITEMS;
+                else sel = (sel + 1) % item_count();
                 break;
               case SDL_CONTROLLER_BUTTON_DPAD_LEFT: activate(sel, -1); break;
               case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: activate(sel, +1); break;
@@ -850,7 +929,7 @@ public:
               case SDL_CONTROLLER_BUTTON_START:
                 if (confirm_overwrite) confirm_overwrite = false;
                 else if (browser != Browser::Closed) browser = Browser::Closed;
-                else open = false;
+                else if (!back_page()) open = false;
                 break;
               default: break;
             }
@@ -863,12 +942,12 @@ public:
         int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
         if (ly < -16000) {
           if (browser != Browser::Closed) browse_move(-1);
-          else sel = (sel + NITEMS - 1) % NITEMS;
+          else sel = (sel + item_count() - 1) % item_count();
           axis_cd = 8;
         }
         else if (ly > 16000) {
           if (browser != Browser::Closed) browse_move(+1);
-          else sel = (sel + 1) % NITEMS;
+          else sel = (sel + 1) % item_count();
           axis_cd = 8;
         }
         else if (lx < -16000) { activate(sel, -1); axis_cd = 8; }
@@ -880,19 +959,32 @@ public:
         uint32_t c = bg[i];
         cv[i] = ((c >> 1) & 0x7F7F7F) | 0xFF000000u;
       }
-      const std::string items[NITEMS] = {
-          "Resume",
-          "3D resolution:  " + hires_label(),
-          std::string("Analog stick:   ") + (machine->analog_enabled ? "on" : "off"),
-          std::string("Full detail:    ") + (machine->full_detail ? "on" : "off"),
-          std::string("Text pacing:    ") + (machine->text_pace ? "on" : "off"),
-          std::string("Stats overlay:  ") + (stats_on ? "on" : "off"),
-          "Save states >",
-          "Load states >",
-          "Mesh viewer",
-          "Send ESC to game",
-          "Quit",
-      };
+      std::vector<std::string> items;
+      const char* heading = "DEBUG MENU";
+      switch (page) {
+        case Page::Main:
+          items = {"Resume", "Graphics >", "Controls >", "Save states >",
+                   "Load states >", "Extras >", "Send ESC to game", "Quit"};
+          break;
+        case Page::Graphics:
+          heading = "GRAPHICS";
+          items = {"Back", "3D resolution: " + hires_label(),
+                   std::string("Widescreen: ") + (widescreen ? "on" : "off"),
+                   "Render FPS: " + std::to_string(render_fps) + " (OpenGL)",
+                   std::string("Full detail: ") + (machine->full_detail ? "on" : "off"),
+                   std::string("Stats overlay: ") + (stats_on ? "on" : "off")};
+          break;
+        case Page::Controls:
+          heading = "CONTROLS";
+          items = {"Back", std::string("Analog stick: ") +
+                             (machine->analog_enabled ? "on" : "off"), "Controller help >"};
+          break;
+        case Page::Extras:
+          heading = "EXTRAS";
+          items = {"Back", "Mesh viewer", std::string("Text pacing: ") +
+                                             (machine->text_pace ? "on" : "off")};
+          break;
+      }
       int px = 8 * sc, py = 8 * sc;
       if (help_open) {
         for (size_t i = 0; i < control_help::pages[size_t(help_page)].size(); ++i) {
@@ -932,9 +1024,14 @@ public:
           menu_text(px, 190 * sc, "Up/Down browse   L/R page", 0xFF80A0FFu);
         }
       } else {
-        menu_text(px, py, "DEBUG MENU", 0xFFFFD040u);
+        menu_text(px, py, heading, 0xFFFFD040u);
         py += 16 * sc;
-        for (int i = 0; i < NITEMS; ++i) {
+        if (getenv("FA18_MENU_TRACE") && getenv("FA18_MENU_SHOT")) {
+          fprintf(stderr, "menu: %s", heading);
+          for (const auto& line : items) fprintf(stderr, " | %s", line.c_str());
+          fprintf(stderr, "\n");
+        }
+        for (int i = 0; i < int(items.size()); ++i) {
           std::string line = (i == sel ? "> " : "  ") + items[size_t(i)];
           menu_text(px, py, line, i == sel ? 0xFFFFFFFFu : 0xFFB0B0B0u);
           py += 12 * sc;
@@ -1626,6 +1723,7 @@ int main(int argc, char** argv) {
   host.fast = fast;
   host.widescreen = widescreen;
   host.render_fps = render_fps;
+  glr::set_deferred_scene_readback(widescreen || render_fps > 60);
   host.stats_on = stats;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;

@@ -57,6 +57,13 @@ Verified with scripted runs (`--script`):
 - [x] OpenGL renderer of the 3D view (`--gl N`, docs/gl_renderer.md)
 - [x] GL renderer: debug-menu entries; flat colours + stencil land/water
       map, runs on GL 2.1 and GLES 2 (`FA18_GLES=1` forces GLES)
+- [x] Debug-menu hierarchy: Graphics (mode/widescreen/FPS/detail/stats),
+      Controls (analog/help), Extras (Mesh Viewer/text pacing), plus
+      existing unlimited Save/Load browsers.
+- [x] Defer duplicate GL readback at scene-end for widescreen/high-FPS
+      presentation, with on-demand capture materialisation on mode switch.
+- [ ] Visible GL compositor: stop synchronous readback and CPU/SDL re-upload
+      on every presented frame; progressively replace cockpit/HUD fallbacks.
 - [x] World: new mission objects (`newspawn`, native `$3cf0e`)
 - [ ] Readable decompilation: the C parts (hunk 0, hunk 64, C runtime) can
       be hand-decompiled into C++ and swapped in function by function (the

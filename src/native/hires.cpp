@@ -57,6 +57,7 @@ struct Layer {
   std::vector<uint8_t> unexplained;  // changed by the original, not by us
   uint64_t frame = 0;
   bool done = false;
+  bool gl_cached = false;
   int prims = 0;                // primitives drawn so far this frame
 };
 
@@ -737,6 +738,7 @@ static void do_begin() {
   L->rows = std::min(200, int(rd16(0x5ac7c)) + 1);
   L->frame = m.frame_count();
   L->done = false;
+  L->gl_cached = false;
   L->prims = 0;
   init_from_bitmap(*L);
   cur = L;
@@ -757,7 +759,11 @@ void scene_end() {
   // OpenGL renderer: replaces the re-rasterised layer; the coverage of the
   // original's 3D primitives above still decides where 2D drawing done
   // during the scene (target markers) shows through.
-  if (glr::active()) glr::render_layer(cur->px, W * cur->S, cur->rows * cur->S, cur->S);
+  if (glr::active()) {
+    glr::finish_capture();
+    if (!glr::deferred_scene_readback())
+      cur->gl_cached = glr::render_layer(cur->px, W * cur->S, cur->rows * cur->S, cur->S);
+  }
   cur->done = true;
   if (getenv("FA18_HIRES_STATS")) {
     int u = 0, ch = 0, ex = 0;
@@ -872,6 +878,12 @@ void install(amiga::Machine& m) {
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   const int S = m.hires_scale;
   if (S <= 0) return false;
+  // A window/mode switch can leave a deferred GL capture that was never
+  // read back. Materialise the current scene on demand when returning to
+  // the regular (non-widescreen, 60 Hz) composer; older buffers fall back
+  // to original pixels until they receive a fresh GL capture.
+  if (glr::active() && cur && cur->done && !cur->gl_cached)
+    cur->gl_cached = glr::render_layer(cur->px, W * S, cur->rows * S, S);
   const int Wp = W * S, Hp = 200 * S;
   out.resize(size_t(Wp) * size_t(Hp));
   const uint32_t* rgb = m.frame_rgb();
@@ -896,6 +908,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
       int row = int(d / 40);
       if (row < l.rows) { L = &l; ly = row; break; }
     }
+    if (L && glr::active() && !L->gl_cached) L = nullptr;
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* o = &out[size_t(y * S + yy) * size_t(Wp)];
       for (int x = 0; x < W; ++x) {

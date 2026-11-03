@@ -266,6 +266,7 @@ struct Camera {
 
 struct State {
   bool ready = false, enabled = true;
+  bool deferred_scene_readback = false;
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   int fb_w = 0, fb_h = 0;
@@ -275,6 +276,7 @@ struct State {
   bool capturing = false;
   bool has_frame = false, has_previous = false;
   uint64_t serial = 0, capture_tick = 0;
+  uint64_t last_rendered_serial = 0;
   int interval_vblanks = 4;
   int object = -1;          // index of the current object, -1 = none yet
   uint32_t mesh = 0, stream = 0;
@@ -534,6 +536,8 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
 bool ready() { return st.ready; }
 bool active() { return st.ready && st.enabled; }
 void set_enabled(bool on) { st.enabled = on; }
+void set_deferred_scene_readback(bool on) { st.deferred_scene_readback = on; }
+bool deferred_scene_readback() { return st.deferred_scene_readback; }
 
 void scene_begin() {
   if (!active()) return;
@@ -770,23 +774,29 @@ bool interpolation_available() { return active() && st.has_frame && st.has_previ
 uint64_t capture_serial() { return st.serial; }
 int capture_interval_vblanks() { return st.interval_vblanks; }
 
+void finish_capture() {
+  if (!active() || !st.capturing) return;
+  st.capturing = false;
+  st.camera = capture_camera();
+  st.has_frame = true;
+  const uint64_t tick = native::mach().frame_count();
+  if (st.serial > 0 && tick > st.capture_tick) {
+    const uint64_t elapsed = tick - st.capture_tick;
+    if (elapsed <= 12) st.interval_vblanks = int(elapsed);
+    else st.has_previous = false;  // menu/pause: don't interpolate across a cut
+  }
+  st.capture_tick = tick;
+  ++st.serial;
+  ++st.frames;
+}
+
 bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
-  const bool first_render = st.capturing;
-  if (first_render) {
-    st.capturing = false;
-    st.camera = capture_camera();
-    st.has_frame = true;
-    const uint64_t tick = native::mach().frame_count();
-    if (st.serial > 0 && tick > st.capture_tick) {
-      const uint64_t elapsed = tick - st.capture_tick;
-      if (elapsed <= 12) st.interval_vblanks = int(elapsed);
-      else st.has_previous = false;  // menu/pause: don't interpolate across a cut
-    }
-    st.capture_tick = tick;
-    ++st.serial;
-    ++st.frames;
-  }
+  finish_capture();
+  // A capture may be finalised at scene_end without rendering (deferred
+  // widescreen/high-FPS path). Log/profile the first *render* of a capture,
+  // not only a render that happened to finalise it.
+  const bool first_render = st.serial != st.last_rendered_serial;
   alpha = std::clamp(alpha, 0.f, 1.f);
   const bool interpolate = st.has_previous && alpha < 1.f;
   size_t matched = 0;
@@ -1025,6 +1035,7 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   if (st.debug && first_render && (st.frames % 100) == 0)
     std::fprintf(stderr, "gl: frame %llu objects %d prims %zu\n", (unsigned long long)st.frames,
                  st.object + 1, st.prims.size());
+  st.last_rendered_serial = st.serial;
   return true;
 }
 

@@ -96,9 +96,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   attitude, weapons, damage), flight-log counters and the scenario
   records (`src/stats_overlay.cpp`); read-only. With it on, script `shot
   F` also writes `F.stats.ppm` with the overlay.
-- Debug menu: gamepad Back button (keyboard: Insert) pauses and offers
-  3D resolution (original/2x/3x/4x), analog stick, **Save states >** and
-  **Load states >** browsers (unlimited `.sav` files in `<save dir>`). New
+- Debug menu: gamepad Back button (keyboard: Insert) pauses and opens
+  Graphics (3D resolution, widescreen, render FPS, detail and stats),
+  Controls (analog steering and keyboard/controller help), Extras (Mesh
+  Viewer and text pacing), **Save states >** and **Load states >**
+  browsers (unlimited `.sav` files in `<save dir>`). New
   saves get unique names; old `stateN.sav` files remain compatible. Entries
   describe the saved RAM (mission, cell, altitude, speed, kills/targets),
   and overwrites ask for confirmation. Save states are applied at the

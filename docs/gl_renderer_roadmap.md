@@ -92,6 +92,14 @@ before committing. Note limitations explicitly rather than masking them.
   and `pix/frnt5` (288x12). The images are original cockpit/instrument art,
   not the dynamic needle/text/radar layers. Extracted files are never
   added to git.
+- [x] Defer the redundant 320x200-scale GL readback at scene-end when
+  widescreen or high refresh will immediately redraw at output dimensions.
+  A mode switch back to normal 60 Hz materialises the current capture on
+  demand; an incomplete older double buffer uses original pixels until
+  refreshed. This avoids one GL draw/readback per captured scene, **not**
+  the remaining per-presentation readback or SDL texture upload.
+- [x] Move host options into Graphics, Controls, and Extras menus. Widescreen
+  and 60/120/180/240 render FPS are selectable at runtime.
 - [ ] Eliminate synchronous readback and SDL upload in interactive GL mode.
 - [ ] Make the compositor independent of the original HUD bitplanes;
   reconcile cockpit instruments and dynamic overlays as first-class layers.
