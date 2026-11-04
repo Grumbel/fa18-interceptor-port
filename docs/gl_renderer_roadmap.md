@@ -111,9 +111,9 @@ before committing. Note limitations explicitly rather than masking them.
   GPU-to-GPU to a scene texture and combine it with a 320x200 original 2D
   overlay, a 32x200 scanline palette, and a 1x200 scene-row map using a
   fullscreen shader. Normal presentations call no `glReadPixels` or
-  `SDL_UpdateTexture`. The original SDL compositor handles menus and
-  screenshots; GPU display therefore remains experimental pending real-GPU
-  testing and cockpit parity. The Amiga 3D rasterizer still executes for
+  `SDL_UpdateTexture`. At this initial stage the SDL compositor still handled
+  menus and screenshots (menus were migrated below); GPU display remains
+  experimental pending real-GPU testing. The Amiga 3D rasterizer still executes for
   emulated-RAM fidelity. `FA18_GL_DIRECT_COMPARE=1` deliberately enables a
   readback *for diagnostics* and samples every logical pixel centre against
   the CPU compositor; `tests/check_gl_direct.sh` gates 4:3/widescreen parity.
@@ -121,6 +121,16 @@ before committing. Note limitations explicitly rather than masking them.
   llvmpipe: legacy path observed 176.6/168.5 presents/s (63/73 missed extra
   deadlines), direct path 226.0/241.0 presents/s (15/0 missed deadlines).
   These figures are not a substitute for prolonged real-GPU testing.
+- [x] Present the remaining 2D-only screens on the *same visible GL
+  swapchain*: pre-flight/gameplay transitions, native debug menu, mesh
+  viewer and Original renderer mode now upload an RGBA bitmap through a
+  small nearest-neighbour shader. The separate window-anchored stats/FPS
+  layer stays on the GPU. The SDL window renderer remains for deterministic
+  `--fast`, screenshot and GL-failure fallbacks only. This retires routine
+  mixed SDL/GL swaps, **not** the old Amiga 3D rasterisation writes, whose
+  gameplay read dependencies still need to be checked before bypassing.
+  `tests/check_gl_bitmap_present.sh` checks pre-flight and runtime-mode
+  change pixel parity, plus GPU overlay setup.
 - [x] Project the widescreen 3D sides through all 200 source scanlines,
   including below the original cockpit's shorter 3D viewport, with the
   final scene palette reused beyond that cutoff. The original 320-column

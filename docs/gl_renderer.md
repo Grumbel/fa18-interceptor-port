@@ -4,6 +4,14 @@
 normally sends its output through the CPU compositor and SDL renderer.
 `--gl-direct` selects the visible-window GPU compositor for the same scene,
 including native HUD/cockpit layers; it is not a separate 3D renderer.
+On title screens, debug menus, screen transitions, the mesh viewer, and
+after switching the 3D renderer to Original at runtime, a small GPU bitmap
+presenter displays the remaining source image on the *same* visible GL
+context. Stats/FPS remain an independent top-left GPU texture. The visible
+window does not routinely alternate between SDL and OpenGL swaps;
+`--fast`, screenshots and GL failures still use the SDL compatibility path.
+`FA18_GL_BITMAP_COMPARE=1` checks every source pixel centre on this route,
+and `FA18_GL_BITMAP_DEBUG=1` logs bitmap presentations and GL errors.
 For convenience `--gl-direct` alone starts 3× OpenGL. Use
 `--gl 4 --gl-direct --widescreen --render-fps 120` for the current enhanced
 path at 4×. Without `--gl-direct`, choosing "4x OpenGL" in the Graphics

@@ -152,6 +152,7 @@ selected at startup because the visible window needs an OpenGL context.
 | `--hires 4` | 4× software rasterizer | SDL |
 | `--gl 4` | 4× OpenGL scene | CPU compositing, then SDL |
 | `--gl 4 --gl-direct` | same 4× OpenGL scene | direct GPU composition |
+| Original selected in Graphics after `--gl-direct` | Amiga 320×200 | GPU bitmap presentation |
 
 - `--hires N`: render the 3D view at N times resolution (HUD and cockpit
   stay low-res).
@@ -169,7 +170,9 @@ selected at startup because the visible window needs an OpenGL context.
   and the original 2D cockpit/HUD layer on the GPU. Avoids expensive GPU
   scene readback and the full-frame SDL texture upload on normal frames;
   stats and the measured `--fps` counter are themselves composited by GL;
-  the SDL path remains for menus and screenshots. For testing,
+  title/menu/mesh-viewer and other non-3D screens now use a native GPU
+  bitmap presenter on the same window, rather than an SDL window swap.
+  The SDL path remains for screenshots, `--fast` and GL failures. For testing,
   `FA18_GL_DIRECT_COMPARE=1` checks the visible frame's logical pixel
   centres against the CPU compositor (and intentionally reads pixels back).
   It implies `--gl 3` when no renderer was specified; combining it with
