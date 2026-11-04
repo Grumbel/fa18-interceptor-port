@@ -261,10 +261,16 @@ before committing. Note limitations explicitly rather than masking them.
   *intermediate* step: values/visibility still come from the current Amiga
   framebuffer while their vector shapes are native. The CPU and direct-GL
   presenters share the decoded stroke masks and live gray ink colour; both
-  erase the original glyph pixels before rendering. The remaining `KT`,
-  `FT`, `G` labels and other text remain original. Opt out with
+  erase the original glyph pixels before rendering. Opt out with
   `FA18_HUD_DIGITS_NATIVE=0`; use `tests/check_gl_hud_digits.sh` for the
   flight/Pause changed-region and antialiasing checks.
+- [x] Add the five flight unit letters `KT`, `FT`, `G` as native
+  antialiased CPU/GL strokes, conditioned on complete source 3x5 letter
+  stencils and each letter's current grayscale pen. These use the same
+  frame-visibility check as the digits. Unknown/partial glyphs retain the
+  original pixels. Test the exact shapes and rejections without the ADF in
+  `gl_hud_glyph_test`, and bound live flight/Pause pixel changes with
+  `check_gl_hud_digits.sh`. `FA18_HUD_LABELS_NATIVE=0` disables only labels.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

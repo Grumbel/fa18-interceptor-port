@@ -119,8 +119,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   Eight flight HUD numbers have a separate native antialiased stroke pass.
   Their 3x5 source glyphs are recognised from the active display only while
   the original HUD frame is visible, so other views and unfinished redraws
-  retain their original pixels. `FA18_HUD_DIGITS_NATIVE=0` restores the old
-  font; `FA18_HUD_DIGITS_DEBUG=1` prints accepted cells. Run
+  retain their original pixels. Five unit labels (`KT`, `FT`, `G`) are also
+  recognised as exact 3x5 glyphs before native stroke replacement.
+  `FA18_HUD_DIGITS_NATIVE=0` restores all the old HUD glyphs;
+  `FA18_HUD_LABELS_NATIVE=0` disables only the labels.
+  `FA18_HUD_DIGITS_DEBUG=1` prints accepted cells. Run
   `tests/check_gl_hud_digits.sh` when changing the flight HUD compositor.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):

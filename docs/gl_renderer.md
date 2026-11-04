@@ -303,11 +303,21 @@ The native layer erases the matching old glyph pixels and paints the number
 as antialiased seven-segment strokes in aspect-corrected 960x720 coordinates;
 the digit `1` is a centre stem and `9` omits its bottom bar, matching the
 source font. Unrecognised/intermediate/faded frames keep original pixels.
-The CPU and GL-presenter paths use the same masks and live grayscale pen,
-with no extra GL texture uploads; `FA18_HUD_DIGITS_NATIVE=0` disables the
-replacement. Text labels and the rest of the Pause interface still use the
-original bitplanes. This visual bridge is not yet a replacement for the
-underlying game HUD formatter. `tests/check_gl_hud_digits.sh` bounds it.
+The five fixed unit letters also have native stroked shapes: `KT` at
+(102,91)/(106,91), `FT` at (222,91)/(226,91), and `G` at (108,121).
+Their exact original 3x5 stencils (K=5/5/6/5/5, T=7/2/2/2/2,
+F=7/4/7/4/4, G=3/4/5/5/3) and their own live gray pen colours are
+checked before replacing anything. A partially drawn or faded label
+keeps its original bitmap instead of acquiring premature native ink.
+The CPU and GL-presenter paths use the same visibility flags, digit masks
+and individual label colours without extra GL texture uploads.
+`FA18_HUD_DIGITS_NATIVE=0` disables the numeric and letter replacements;
+`FA18_HUD_LABELS_NATIVE=0` disables only letters. Remaining text and the
+rest of the Pause interface still use original bitplanes. This visual
+bridge is not yet a replacement for the underlying game HUD formatter.
+`tests/gl_hud_glyph.cpp` checks both pattern families and rejection of
+partial/incorrect-colour glyphs without game data;
+`tests/check_gl_hud_digits.sh` checks the flight/Pause regions with an ADF.
 
 ## Open points
 
