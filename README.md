@@ -131,6 +131,28 @@ centre entry):
 
 All off by default; the original behaviour is untouched.
 
+To run the current native OpenGL scene **and** the direct GPU compositor:
+
+```sh
+fa18 --gl 4 --gl-direct --widescreen --render-fps 120 /path/to/original.adf
+```
+
+`--gl-direct` alone now selects 3× OpenGL as a convenient default. The
+`--hires` software renderer and `--gl` OpenGL renderer are mutually
+exclusive; the command prints the active 3D renderer and presentation
+backend at startup (`graphics: ...`). The menu's **3D renderer** setting
+changes scene rendering, not how the final window is presented. The
+**GL output** status at the bottom of Graphics identifies either the
+SDL/CPU compositor or direct GPU output. Direct presentation must be
+selected at startup because the visible window needs an OpenGL context.
+
+| Renderer setting | 3D view | Presentation |
+|---|---|---|
+| Original | Amiga 320×200 | SDL |
+| `--hires 4` | 4× software rasterizer | SDL |
+| `--gl 4` | 4× OpenGL scene | CPU compositing, then SDL |
+| `--gl 4 --gl-direct` | same 4× OpenGL scene | direct GPU composition |
+
 - `--hires N`: render the 3D view at N times resolution (HUD and cockpit
   stay low-res).
 - `--gl N`: draw the captured 3D scene with OpenGL at N times resolution.
@@ -142,7 +164,7 @@ All off by default; the original behaviour is untouched.
   their original frequency. Widescreen now extends the scene down beside the
   cockpit; the centre retains the original cockpit artwork. These options
   have no effect on non-GL scenes.
-- `--gl-direct` (experimental; equivalent to `FA18_GL_DIRECT=1`): present
+- `--gl-direct` (experimental; also `FA18_GL_DIRECT=1`): present
   OpenGL directly to the game window, compositing palette/scanline colours
   and the original 2D cockpit/HUD layer on the GPU. Avoids expensive GPU
   scene readback and the full-frame SDL texture upload on normal frames;
@@ -150,7 +172,13 @@ All off by default; the original behaviour is untouched.
   the SDL path remains for menus and screenshots. For testing,
   `FA18_GL_DIRECT_COMPARE=1` checks the visible frame's logical pixel
   centres against the CPU compositor (and intentionally reads pixels back).
-  See `tests/check_gl_direct.sh` and `docs/gl_renderer_roadmap.md`. The old
+  It implies `--gl 3` when no renderer was specified; combining it with
+  `--hires` is an error. `--widescreen` and `--render-fps` require OpenGL.
+  For interactive direct presentation, avoid the testing-only `--fast` mode.
+  When a new 3D scene is still being drawn, widescreen holds the preceding
+  complete scene instead of exposing the half-written Amiga back buffer.
+  See `tests/check_gl_direct.sh`, `tests/check_gl_widescreen_stability.sh`,
+  and `docs/gl_renderer_roadmap.md`. The old
   3D rasterizer still executes in the emulated game for now.
 - `FA18_SCENE_RENDER=<N>`: software hi-res path from the captured
   `SceneFrame` — depth-sorts all prims (fills, polys, lines, points),
@@ -169,7 +197,7 @@ All off by default; the original behaviour is untouched.
   of the viewport, including in widescreen. `--fps`: show measured window
   presentation FPS (which can differ from the 120/180/240 Hz target).
 - **Back** (keyboard: Insert) opens the debug menu. **Graphics >** contains
-  3D resolution (original/software/OpenGL), widescreen, render FPS
+  3D renderer and scale (original/software/OpenGL), widescreen, render FPS
   (60/120/180/240, only effective in OpenGL), full detail, stats overlay,
   and FPS counter.
   **Controls >** contains analog-stick steering and the controller/keyboard

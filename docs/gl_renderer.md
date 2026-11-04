@@ -1,4 +1,24 @@
-# OpenGL renderer (`--gl N`)
+# OpenGL renderer (`--gl N`, `--gl-direct`)
+
+`--gl N` chooses the OpenGL **3D scene renderer** at N× resolution, but
+normally sends its output through the CPU compositor and SDL renderer.
+`--gl-direct` selects the visible-window GPU compositor for the same scene,
+including native HUD/cockpit layers; it is not a separate 3D renderer.
+For convenience `--gl-direct` alone starts 3× OpenGL. Use
+`--gl 4 --gl-direct --widescreen --render-fps 120` for the current enhanced
+path at 4×. Without `--gl-direct`, choosing "4x OpenGL" in the Graphics
+menu still uses the same scene renderer, but the SDL/CPU presenter.
+The menu shows GL output as a read-only startup setting: an SDL window
+created without an OpenGL context cannot switch to direct GPU presentation
+at runtime. The active path is logged on startup as `graphics: ...`.
+
+Widescreen presentation holds the most recent *completed* 3D capture while
+the Amiga draws into another buffer. The CPU and GPU compositors both retain
+that completed layer, and rendering an interpolated frame never prematurely
+finishes a partial capture. This avoids exposing a blank back buffer between
+3D redraws. `FA18_GL_PRESENT_DEBUG=1` reports any fallback to the original
+framebuffer; `tests/check_gl_widescreen_stability.sh` checks consecutive
+presentations from a scripted flight.
 
 `./build/fa18 --gl N <adf>` renders the 3D view with OpenGL at N times
 the resolution (N = 1..8), with a depth buffer and a real ground plane.
