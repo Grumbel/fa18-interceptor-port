@@ -285,10 +285,33 @@ uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
 uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
+uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
+uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
 varying vec2 v_uv;
 float dist_segment(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
   return length(p - (a + d * clamp(dot(p-a,d)/dot(d,d), 0.0, 1.0)));
+}
+float digit_bit(float mask, float bit) { return mod(floor(mask / bit), 2.0); }
+float digit_coverage(vec2 p, vec2 xy, float mask) {
+  if (mask < 0.5) return 0.0;
+  float l = (xy.x + 0.5) * 3.0, r = (xy.x + 2.5) * 3.0;
+  float mx = (xy.x + 1.5) * 3.0;
+  float t = (xy.y + 0.5) * 3.6, m = (xy.y + 2.5) * 3.6;
+  float b = (xy.y + 4.5) * 3.6;
+  if (mask > 127.5) return clamp(1.9 - dist_segment(p, vec2(mx,t), vec2(mx,b)), 0.0, 1.0);
+  float d = 1e6;
+  if (digit_bit(mask, 1.0) > 0.5)  d = min(d, dist_segment(p, vec2(l,t), vec2(r,t)));
+  if (digit_bit(mask, 2.0) > 0.5)  d = min(d, dist_segment(p, vec2(r,t), vec2(r,m)));
+  if (digit_bit(mask, 4.0) > 0.5)  d = min(d, dist_segment(p, vec2(r,m), vec2(r,b)));
+  if (digit_bit(mask, 8.0) > 0.5)  d = min(d, dist_segment(p, vec2(l,b), vec2(r,b)));
+  if (digit_bit(mask, 16.0) > 0.5) d = min(d, dist_segment(p, vec2(l,m), vec2(l,b)));
+  if (digit_bit(mask, 32.0) > 0.5) d = min(d, dist_segment(p, vec2(l,t), vec2(l,m)));
+  if (digit_bit(mask, 64.0) > 0.5) d = min(d, dist_segment(p, vec2(l,m), vec2(r,m)));
+  return clamp(1.9 - d, 0.0, 1.0);
+}
+vec3 draw_digit(vec3 base, vec2 p, vec2 xy, float mask, vec3 ink) {
+  return mix(base, ink, digit_coverage(p, xy, mask));
 }
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
@@ -378,6 +401,41 @@ void main() {
     base_colour = mix(base_colour, u_frame_top.rgb, clamp(1.6 - top, 0.0, 1.0));
     base_colour = mix(base_colour, u_frame_corner.rgb,
                       clamp(1.6 - min(left, right), 0.0, 1.0));
+  }
+  // Exact source-font recognition is the value/visibility oracle, while
+  // these stroked numerals replace the blocky 320x200 glyphs at 960x720.
+  if (centre_x >= 94.0 && centre_x < 231.0 &&
+      ((y >= 52.0 && y < 59.0) || (y >= 83.0 && y < 91.0) ||
+       (y >= 120.0 && y < 128.0))) {
+    vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
+    if (y >= 52.0 && y < 59.0) {
+      if (centre_x >= 139.0 && centre_x < 145.0)
+        base_colour = draw_digit(base_colour,p,vec2(140.0,53.0),u_digits0.x,u_digit_ink0.rgb);
+      if (centre_x >= 143.0 && centre_x < 149.0)
+        base_colour = draw_digit(base_colour,p,vec2(144.0,53.0),u_digits0.y,u_digit_ink0.rgb);
+      if (centre_x >= 159.0 && centre_x < 165.0)
+        base_colour = draw_digit(base_colour,p,vec2(160.0,53.0),u_digits0.z,u_digit_ink0.rgb);
+      if (centre_x >= 163.0 && centre_x < 169.0)
+        base_colour = draw_digit(base_colour,p,vec2(164.0,53.0),u_digits0.w,u_digit_ink0.rgb);
+    } else if (y >= 83.0 && y < 91.0) {
+      if (centre_x >= 97.0 && centre_x < 103.0)
+        base_colour = draw_digit(base_colour,p,vec2(98.0,84.0),u_digits1.x,u_digit_ink1.rgb);
+      if (centre_x >= 101.0 && centre_x < 107.0)
+        base_colour = draw_digit(base_colour,p,vec2(102.0,84.0),u_digits1.y,u_digit_ink1.rgb);
+      if (centre_x >= 105.0 && centre_x < 111.0)
+        base_colour = draw_digit(base_colour,p,vec2(106.0,84.0),u_digits1.z,u_digit_ink1.rgb);
+      if (centre_x >= 217.0 && centre_x < 223.0)
+        base_colour = draw_digit(base_colour,p,vec2(218.0,84.0),u_digits1.w,u_digit_ink2.rgb);
+      if (centre_x >= 221.0 && centre_x < 227.0)
+        base_colour = draw_digit(base_colour,p,vec2(222.0,84.0),u_digits2.x,u_digit_ink2.rgb);
+      if (centre_x >= 225.0 && centre_x < 231.0)
+        base_colour = draw_digit(base_colour,p,vec2(226.0,84.0),u_digits2.y,u_digit_ink2.rgb);
+    } else {
+      if (centre_x >= 95.0 && centre_x < 101.0)
+        base_colour = draw_digit(base_colour,p,vec2(96.0,121.0),u_digits2.z,u_digit_ink3.rgb);
+      if (centre_x >= 101.0 && centre_x < 107.0)
+        base_colour = draw_digit(base_colour,p,vec2(102.0,121.0),u_digits2.w,u_digit_ink3.rgb);
+    }
   }
   gl_FragColor = vec4(base_colour, 1.0);
 }
@@ -1439,6 +1497,22 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
                float((hud_state.frame_rail_rgb >> 8) & 255) / 255.f,
                float(hud_state.frame_rail_rgb & 255) / 255.f,
                hud_state.frame_rails ? 1.f : 0.f);
+  for (int group = 0; group < 3; ++group) {
+    const auto& m = hud_state.digit_strokes;
+    const char* name = group == 0 ? "u_digits0" :
+                       group == 1 ? "u_digits1" : "u_digits2";
+    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
+                 float(m[size_t(group * 4)]), float(m[size_t(group * 4 + 1)]),
+                 float(m[size_t(group * 4 + 2)]), float(m[size_t(group * 4 + 3)]));
+  }
+  for (int group = 0; group < 4; ++group) {
+    const uint32_t c = hud_state.digit_colours[size_t(group)];
+    const char* name = group == 0 ? "u_digit_ink0" : group == 1 ? "u_digit_ink1" :
+                       group == 2 ? "u_digit_ink2" : "u_digit_ink3";
+    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
+                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
+                 float(c & 255) / 255.f, c ? 1.f : 0.f);
+  }
   if (std::getenv("FA18_HUD_RETICLE_DEBUG")) {
     static int reports = 0;
     if (reports++ == 0)

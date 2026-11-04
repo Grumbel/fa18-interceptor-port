@@ -116,6 +116,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   disables the glyph layers, and `FA18_COCKPIT_TEXT_DEBUG=1` traces them.
   `tests/data/cockpit_dynamic.txt` exercises the new fields with F10
   throttle and nonzero airspeed, checked by `tests/check_gl_cockpit.sh`.
+  Eight flight HUD numbers have a separate native antialiased stroke pass.
+  Their 3x5 source glyphs are recognised from the active display only while
+  the original HUD frame is visible, so other views and unfinished redraws
+  retain their original pixels. `FA18_HUD_DIGITS_NATIVE=0` restores the old
+  font; `FA18_HUD_DIGITS_DEBUG=1` prints accepted cells. Run
+  `tests/check_gl_hud_digits.sh` when changing the flight HUD compositor.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame

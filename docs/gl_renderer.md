@@ -294,6 +294,21 @@ live copper palette for every row. `FA18_COCKPIT_READOUTS_NATIVE=0` disables
 only this font-derived layer. `tests/check_gl_cockpit.sh` compares flight,
 Pause and an F10-throttle replay with a nonzero speed against the original.
 
+The flight HUD's eight numeric glyphs at source positions (140,53),
+(144,53), (160,53), (164,53), (106,84), (226,84), (96,121) and (102,121)
+now have a limited native vector counterpart. Unlike the cockpit's hooked
+redraw path, these values are *recognised* from the displayed 3x5 stencil:
+only a complete match against the ten original digit patterns is accepted.
+The native layer erases the matching old glyph pixels and paints the number
+as antialiased seven-segment strokes in aspect-corrected 960x720 coordinates;
+the digit `1` is a centre stem and `9` omits its bottom bar, matching the
+source font. Unrecognised/intermediate/faded frames keep original pixels.
+The CPU and GL-presenter paths use the same masks and live grayscale pen,
+with no extra GL texture uploads; `FA18_HUD_DIGITS_NATIVE=0` disables the
+replacement. Text labels and the rest of the Pause interface still use the
+original bitplanes. This visual bridge is not yet a replacement for the
+underlying game HUD formatter. `tests/check_gl_hud_digits.sh` bounds it.
+
 ## Open points
 
 

@@ -2,6 +2,7 @@
 // a remaster feature that needs them is enabled.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -24,9 +25,22 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
 // replace its low-resolution heading with a host-rendered 2D UI layer.
 bool pause_screen_active();
 
-// Source-screen pixels are used only as a visibility/colour timing oracle
-// for independently drawn high-resolution vector UI, never as glyph shapes.
-// The reticle stays in place while the game's copper palette fades on Pause.
+// Original HUD number cells, in source-screen pixels. The old 3x5 glyphs
+// serve as a value/visibility oracle until their drawing logic is recovered.
+struct HudDigitSlot {
+  int x, y, background_x, group;
+};
+inline constexpr std::array<HudDigitSlot, 12> kHudDigitSlots{{
+    {140, 53, 135, 0}, {144, 53, 135, 0},
+    {160, 53, 156, 0}, {164, 53, 156, 0},
+    {98, 84, 94, 1}, {102, 84, 94, 1}, {106, 84, 94, 1},
+    {218, 84, 215, 2}, {222, 84, 215, 2}, {226, 84, 215, 2},
+    {96, 121, 93, 3}, {102, 121, 93, 3},
+}};
+
+// The crosshair and frame source pixels only supply visibility and live
+// colour; the digit cells additionally decode the old glyph shape into a
+// native seven-stroke digit. The reticle tracks the copper Pause fade.
 struct NativeHudState {
   bool pause_title = false;
   bool reticle = false;
@@ -36,6 +50,9 @@ struct NativeHudState {
   uint32_t frame_top_rgb = 0;
   uint32_t frame_corner_rgb = 0;
   uint32_t frame_rail_rgb = 0;
+  // 0 = no validated digit; otherwise seven-stroke mask (128 = centre 1).
+  std::array<uint8_t, kHudDigitSlots.size()> digit_strokes{};
+  std::array<uint32_t, 4> digit_colours{};
 };
 NativeHudState native_hud_state(const amiga::Machine& m);
 // The native GL presenter calls this after prepare_gpu_layers(). Keep it

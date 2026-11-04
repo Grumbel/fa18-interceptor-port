@@ -253,6 +253,18 @@ before committing. Note limitations explicitly rather than masking them.
   RGBA4 parity, direct GPU pixel-centre agreement and allocation reuse.
   Restrict the vertical frame-rail shader to the two narrow x regions rather
   than evaluating segment distances across the entire HUD window.
+- [x] Reconstruct the first eight visible flight HUD numerals as native
+  antialiased strokes (two two-digit top fields, one speed/altitude digit
+  apiece, and the G-meter pair). Validate each of the original 3x5 glyphs
+  against the resident digit patterns before replacing it; absent, fading,
+  or unfamiliar glyphs keep the original display. This is a bounded
+  *intermediate* step: values/visibility still come from the current Amiga
+  framebuffer while their vector shapes are native. The CPU and direct-GL
+  presenters share the decoded stroke masks and live gray ink colour; both
+  erase the original glyph pixels before rendering. The remaining `KT`,
+  `FT`, `G` labels and other text remain original. Opt out with
+  `FA18_HUD_DIGITS_NATIVE=0`; use `tests/check_gl_hud_digits.sh` for the
+  flight/Pause changed-region and antialiasing checks.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

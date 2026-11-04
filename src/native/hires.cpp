@@ -1046,6 +1046,95 @@ void blend_native_frame_rails(std::vector<uint32_t>& out, int side, int scale,
       }
 }
 
+// The flight HUD's small numeric cells use the same distinctive 3x5 shapes
+// as the resident instrument font, but the screen-space text writer is not
+// yet hooked. Decode only exact digit stencils, then render their strokes
+// at output resolution. This deliberately leaves non-numeric HUD text and
+// any unrecognised/intermediate redraws in the original 2D overlay.
+namespace {
+constexpr uint8_t kHudDigitRows[10][5] = {
+    {7, 5, 5, 5, 7}, {2, 2, 2, 2, 2}, {7, 1, 7, 4, 7},
+    {7, 1, 7, 1, 7}, {5, 5, 7, 1, 1}, {7, 4, 7, 1, 7},
+    {7, 4, 7, 5, 7}, {7, 1, 1, 1, 1}, {7, 5, 7, 5, 7},
+    {7, 5, 7, 1, 1},
+};
+// Strokes A,B,C,D,E,F,G (1 is a centre stem, not a right-side seven).
+constexpr uint8_t kHudStrokes[10] = {63, 128, 91, 79, 102, 109, 125, 7, 127, 103};
+
+bool hud_digit_ink(uint32_t pixel, uint32_t background) {
+  const int r = int((pixel >> 16) & 255);
+  const int g = int((pixel >> 8) & 255);
+  const int b = int(pixel & 255);
+  return r == g && g == b && r >= 24 &&
+         r > int((background >> 16) & 255) + 12 &&
+         g > int((background >> 8) & 255) + 12;
+}
+
+int decode_hud_digit(const uint32_t* rgb, const HudDigitSlot& slot, uint32_t& ink) {
+  uint8_t rows[5]{};
+  ink = 0;
+  for (int y = 0; y < 5; ++y) {
+    const uint32_t bg = rgb[(slot.y + y) * W + slot.background_x];
+    for (int x = 0; x < 3; ++x) {
+      const uint32_t colour = rgb[(slot.y + y) * W + slot.x + x];
+      if (hud_digit_ink(colour, bg)) {
+        rows[y] |= uint8_t(4 >> x);
+        if (!ink) ink = colour & 0xffffffu;
+        else if ((colour & 0xffffffu) != ink) return -1;
+      }
+    }
+  }
+  for (int digit = 0; digit < 10; ++digit)
+    if (std::equal(rows, rows + 5, kHudDigitRows[digit])) return digit;
+  return -1;
+}
+
+float hud_digit_coverage(float px, float py, const HudDigitSlot& slot, uint8_t mask) {
+  const float left = (slot.x + .5f) * 3.f, right = (slot.x + 2.5f) * 3.f;
+  const float midx = (slot.x + 1.5f) * 3.f;
+  const float top = (slot.y + .5f) * 3.6f, middle = (slot.y + 2.5f) * 3.6f;
+  const float bottom = (slot.y + 4.5f) * 3.6f;
+  if (mask == 128)
+    return 1.9f - hud_segment_distance(px, py, midx, top, midx, bottom);
+  float dist = 1e9f;
+  if (mask & 1)  dist = std::min(dist, hud_segment_distance(px, py, left, top, right, top));
+  if (mask & 2)  dist = std::min(dist, hud_segment_distance(px, py, right, top, right, middle));
+  if (mask & 4)  dist = std::min(dist, hud_segment_distance(px, py, right, middle, right, bottom));
+  if (mask & 8)  dist = std::min(dist, hud_segment_distance(px, py, left, bottom, right, bottom));
+  if (mask & 16) dist = std::min(dist, hud_segment_distance(px, py, left, middle, left, bottom));
+  if (mask & 32) dist = std::min(dist, hud_segment_distance(px, py, left, top, left, middle));
+  if (mask & 64) dist = std::min(dist, hud_segment_distance(px, py, left, middle, right, middle));
+  return 1.9f - dist;
+}
+
+void blend_native_hud_digits(std::vector<uint32_t>& out, int side, int scale,
+                             const NativeHudState& hud) {
+  const int stride = (W + side * 2) * scale;
+  for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
+    const uint8_t mask = hud.digit_strokes[i];
+    if (!mask) continue;
+    const auto& slot = kHudDigitSlots[i];
+    for (int y = (slot.y - 1) * scale; y < (slot.y + 6) * scale; ++y)
+      for (int x = (slot.x - 1) * scale; x < (slot.x + 4) * scale; ++x) {
+        const float px = (x + .5f) * 3.f / scale;
+        const float py = (y + .5f) * 3.6f / scale;
+        uint32_t& dst = out[size_t(y) * stride + size_t((side * scale) + x)];
+        blend_hud_pixel(dst, hud.digit_colours[slot.group],
+                        hud_digit_coverage(px, py, slot, mask));
+      }
+  }
+}
+
+const HudDigitSlot* hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
+  for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
+    const auto& slot = kHudDigitSlots[i];
+    if (hud.digit_strokes[i] && x >= slot.x && x < slot.x + 3 &&
+        y >= slot.y && y < slot.y + 5) return &slot;
+  }
+  return nullptr;
+}
+}  // namespace
+
 // Exact *locations* of the old 320x200 source strokes, only used to clear
 // their bitmap footprints. No source pixel supplies the vector geometry.
 bool frame_crown_source_pixel(int x, int y, const NativeHudState& hud,
@@ -1147,6 +1236,12 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
+        if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
+            slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
+          const uint32_t bg = rgb[y * W + slot->background_x];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
         // The native UI will draw the Pause heading at output resolution.
         // Erase only its old 320x200 title rectangle; sample the surrounding
         // panel fill so its copper/palette fades remain exactly original.
@@ -1248,6 +1343,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_reticle(out, side, S, hud);
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
+  blend_native_hud_digits(out, side, S, hud);
   return true;
 }
 
@@ -1313,6 +1409,15 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
+          slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
+        const uint32_t bg = rgb[y * W + slot->background_x];
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
       if (hud.pause_title && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
         const uint32_t bg = rgb[y * W + 120];
         p[0] = uint8_t(bg >> 16);
@@ -1459,6 +1564,26 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
                         (rgb[140 * W + 85] & 0xffffffu) == ink &&
                         (rgb[140 * W + 233] & 0xffffffu) == ink;
       out.frame_rail_rgb = ink;
+    }
+  }
+
+  if (out.frame_crown) {
+    const char* digits = std::getenv("FA18_HUD_DIGITS_NATIVE");
+    if (!digits || std::strcmp(digits, "0") != 0) {
+      for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
+        uint32_t ink = 0;
+        const int value = decode_hud_digit(rgb, kHudDigitSlots[i], ink);
+        if (value < 0) continue;
+        out.digit_strokes[i] = kHudStrokes[value];
+        out.digit_colours[kHudDigitSlots[i].group] = ink;
+        if (std::getenv("FA18_HUD_DIGITS_DEBUG")) {
+          static int reported = 0;
+          if (reported++ < 48)
+            std::fprintf(stderr, "HUD digit frame=%llu x=%d y=%d value=%d ink=%06x\n",
+                         (unsigned long long)m.frame_count(),
+                         kHudDigitSlots[i].x, kHudDigitSlots[i].y, value, ink);
+        }
+      }
     }
   }
 
