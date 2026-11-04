@@ -786,7 +786,7 @@ public:
     auto hires_label = [&] {
       int s = machine->hires_scale;
       return s <= 0 ? std::string("original (320x200)")
-                    : std::to_string(s) + "x" + (glr::active() ? " OpenGL" : "");
+                    : std::to_string(s) + "x " + (glr::active() ? "OpenGL" : "software");
     };
 
     // Offline model viewer: the object models of the type table, decoded
@@ -1074,7 +1074,7 @@ public:
           break;
         case Page::Graphics:
           heading = "GRAPHICS";
-          items = {"Back", "3D resolution: " + hires_label(),
+          items = {"Back", "3D renderer: " + hires_label(),
                    std::string("Widescreen: ") + (widescreen ? "on" : "off"),
                    "Render FPS: " + std::to_string(render_fps) + " (OpenGL)",
                    std::string("Full detail: ") + (machine->full_detail ? "on" : "off"),
@@ -1150,6 +1150,11 @@ public:
           menu_text(px, py, "Y/H controls help   B/Back/Esc close", 0xFF80A0FFu);
         else
           menu_text(px, py, menu_status, 0xFF60FF60u);
+        if (page == Page::Graphics)
+          menu_text(px, 153 * sc,
+                    direct_gl ? "GL output: direct GPU (startup)" :
+                                "GL output: SDL/CPU (startup)",
+                    0xFFFFD040u);
       }
       if (w != tex_w || h != tex_h) {
         SDL_DestroyTexture(tex);
@@ -1354,6 +1359,9 @@ public:
       vh = amiga::FB_H * machine->hires_scale;
       logical_w = amiga::FB_W + 2 * side;
     }
+    if (gl_video && !gpu_presented && video != view_buf.data() &&
+        std::getenv("FA18_GL_PRESENT_DEBUG"))
+      fprintf(stderr, "gl: frame %d fell back to the original framebuffer\n", frame_no);
     if (!gpu_presented) display_frame(video, vw, vh, logical_w);
     if (frame_no == screenshot_frame) save_screenshot(video);
     if (!pending_shot.empty()) {
@@ -1626,38 +1634,53 @@ void usage() {
           "  data             path to the original .adf disk image, or a\n"
           "                   directory of unpacked disk files (legacy)\n"
           "                   (default: looks for a nearby .adf or ./assets)\n"
-          "  --scale N        window scale (default 3)\n"
+          "\n"
+          "Graphics (the original renderer is the default):\n"
+          "  --hires N        software 3D upscaling (1-8x); no OpenGL\n"
+          "  --gl N           OpenGL 3D scene renderer (1-8x)\n"
+          "  --gl-direct      present the GL scene/HUD with the GPU, without readback\n"
+          "                   implies --gl 3 if no 3D renderer was specified\n"
+          "  --widescreen     extend OpenGL view horizontally (16:9; resizable)\n"
+          "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (not physics)\n"
+          "  --full-detail    nearest level of detail for every 3D object\n"
+          "  --stats          show game-world statistics\n"
+          "  --fps            show observed presentation FPS\n"
+          "  --scale N        initial window scale (default 3)\n"
+          "                   --hires and --gl are mutually exclusive\n"
+          "\n"
+          "Gameplay and data:\n"
           "  --save DIR       directory for config/pilot log\n"
           "                   (default: $XDG_DATA_HOME/fa18-interceptor)\n"
           "  --speed X        CPU speed multiplier (default 4: smooth 15 fps;\n"
           "                   1 = stock A500 speed, 6-8 fps in flight)\n"
+          "  --analog         remaster: analog flight stick (left stick)\n"
+          "  --text-pace      remaster: menu texts and flight messages at stock A500 pace\n"
+          "  --protection     keep the original codewheel check\n"
+          "  --grab           grab mouse at startup (F12 toggles)\n"
+          "  --no-grab        do not grab mouse (default)\n"
+          "  --world FILE     remaster: use an edited world file\n"
+          "\n"
+          "Diagnostics and scripted replays:\n"
           "  --verbose        log OS calls\n"
           "  --trace          trace every instruction (very slow)\n"
           "  --screenshot N FILE  save frame N as PPM\n"
           "  --frames N       quit after N frames\n"
-          "  --fast           run unthrottled\n"
-          "  --hires N        remaster: render the 3D view at N times resolution\n"
-          "  --gl N           remaster: render the 3D view with OpenGL at N times resolution\n"
-          "  --gl-direct      experimental: GPU-present OpenGL (no scene readback)\n"
-          "  --widescreen     extend OpenGL view horizontally (16:9 window; resizable)\n"
-          "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (physics stays 60)\n"
-          "  --analog         remaster: analog flight stick (left stick)\n"
-          "  --full-detail    debug: nearest level of detail for every object\n"
-          "  --text-pace      remaster: menu texts and flight messages at stock A500 pace\n"
-          "  --stats          debug: overlay with game world statistics\n"
-          "  --fps            show the observed (rather than target) presentation FPS\n"
-          "  --protection     keep the original codewheel check\n"
+          "  --fast           run unthrottled (for automated replays)\n"
           "  --wav FILE       record audio\n"
           "  --interpret      use the 68000 interpreter instead of recompiled code\n"
           "  --native MODE    on (default): use hand-translated C++ routines;\n"
           "                   off: original code only; verify: run both and compare\n"
+          "  --coverage FILE  write interpreted instruction coverage\n"
           "  --misses FILE    list program addresses that had to be interpreted\n"
           "  --script FILE    scripted input (see source)\n"
           "  --mesh-dump DIR  decode the object models, write one PPM per LOD to DIR\n"
           "  --world-dump FILE  write the world database (object maps, missions) as text\n"
-          "  --world FILE     remaster: use an edited world file (docs/world_format.md)\n"
           "  --map-dump FILE  top-down map (water, objects) of the world as PPM\n"
-          "  --grab           capture the mouse at start (off by default; F12 toggles)\n"
+          "  --det-timing     deterministic timing for replay comparisons\n"
+          "  --vbl-time       use video-blank timing\n"
+          "  --ram-hash N     log emulated RAM hashes every N frames\n"
+          "  --ram-dump N FILE  dump emulated RAM at frame N\n"
+          "\n"
           "keys: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
           "      Ctrl+F11 original/enhanced graphics toggle,\n"
           "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
@@ -1730,6 +1753,7 @@ int main(int argc, char** argv) {
   bool gl_direct = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
+  bool requested_hires = false, requested_gl = false;
   int shot_frame = -1, quit_after = -1;
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
@@ -1752,8 +1776,14 @@ int main(int argc, char** argv) {
     else if (a == "--text-pace") text_pace = true;
     else if (a == "--stats") stats = true;
     else if (a == "--fps") fps = true;
-    else if (a == "--hires" && i + 1 < argc) hires = std::atoi(argv[++i]);
-    else if (a == "--gl" && i + 1 < argc) gl_scale = hires = std::atoi(argv[++i]);
+    else if (a == "--hires" && i + 1 < argc) {
+      requested_hires = true;
+      hires = std::atoi(argv[++i]);
+    }
+    else if (a == "--gl" && i + 1 < argc) {
+      requested_gl = true;
+      gl_scale = hires = std::atoi(argv[++i]);
+    }
     else if (a == "--gl-direct") gl_direct = true;
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
@@ -1775,12 +1805,38 @@ int main(int argc, char** argv) {
     else if (a == "--grab") grab_mouse = true;
     else if (a == "--no-grab") grab_mouse = false;
     else if (a == "-h" || a == "--help") { usage(); return 0; }
+    else if (!a.empty() && a[0] == '-') {
+      fprintf(stderr, "Unknown or incomplete option: %s\n", a.c_str());
+      usage();
+      return 2;
+    }
     else data_dir = a;
+  }
+  if (const char* direct = std::getenv("FA18_GL_DIRECT");
+      direct && std::strcmp(direct, "0") != 0) gl_direct = true;
+  if (requested_hires && requested_gl) {
+    fprintf(stderr, "--hires and --gl select different 3D renderers; choose one\n");
+    return 2;
+  }
+  if (gl_direct && requested_hires) {
+    fprintf(stderr, "--gl-direct requires OpenGL; use --gl N, not --hires N\n");
+    return 2;
+  }
+  if (gl_direct && requested_gl && gl_scale <= 0) {
+    fprintf(stderr, "--gl-direct requires a positive --gl resolution\n");
+    return 2;
+  }
+  if (gl_direct && !requested_gl) {
+    // --gl-direct is a user-facing renderer choice, not merely a context
+    // creation hint. Keep the historical 3x enhanced-graphics default.
+    gl_scale = hires = 3;
   }
   if (render_fps < 60 || render_fps > 240 || render_fps % 60) {
     fprintf(stderr, "--render-fps must be 60, 120, 180 or 240\n");
     return 2;
   }
+  if (gl_scale == 0 && (widescreen || render_fps > 60))
+    fprintf(stderr, "note: widescreen and high render FPS require OpenGL (--gl N or --gl-direct)\n");
   if (data_dir.empty()) {
     namespace fs = std::filesystem;
     // Prefer an ADF in the current directory / common names, then a legacy
@@ -1939,7 +1995,7 @@ int main(int argc, char** argv) {
   host.quit_after = quit_after;
   host.fast = fast;
   host.widescreen = widescreen;
-  host.direct_gl = gl_direct || std::getenv("FA18_GL_DIRECT") != nullptr;
+  host.direct_gl = gl_direct;
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
@@ -1948,6 +2004,14 @@ int main(int argc, char** argv) {
   if (!host.init(scale)) return 1;
   if (gl_scale > 0 && !init_gl(host.direct_gl ? host.win : nullptr))
     gl_failed = true;  // software hi-res renderer
+  if (glr::active())
+    fprintf(stderr, "graphics: OpenGL 3D %dx, %s output\n", machine.hires_scale,
+            host.direct_gl ? "direct GPU" : "SDL/CPU");
+  else if (machine.hires_scale > 0)
+    fprintf(stderr, "graphics: software 3D %dx, SDL output%s\n", machine.hires_scale,
+            gl_failed ? " (OpenGL unavailable)" : "");
+  else
+    fprintf(stderr, "graphics: original 320x200, SDL output\n");
   if (grab_mouse) host.set_grab(true);
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);

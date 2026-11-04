@@ -29,7 +29,7 @@ for page in main graphics controls extras; do
   test -s "$shot"
   case "$page" in
     main) grep -q 'menu: DEBUG MENU | Resume | Graphics > | Controls > | Save states > | Load states > | Extras >' "$log" ;;
-    graphics) grep -q 'menu: GRAPHICS | Back | 3D resolution: .* | Widescreen: off | Render FPS: 60 (OpenGL) | Full detail:' "$log" ;;
+    graphics) grep -q 'menu: GRAPHICS | Back | 3D renderer: .* | Widescreen: off | Render FPS: 60 (OpenGL) | Full detail:' "$log" ;;
     controls) grep -q 'menu: CONTROLS | Back | Analog stick: off | Controller help >' "$log" ;;
     extras) grep -q 'menu: EXTRAS | Back | Mesh viewer | Text pacing: off' "$log" ;;
   esac
@@ -48,7 +48,7 @@ for step in back fps; do
   if [ "$step" = back ]; then
     grep -q 'menu: DEBUG MENU | Resume | Graphics >' "$tmp/back.log"
   else
-    grep -q 'menu: GRAPHICS | Back | 3D resolution: .* | Widescreen: off | Render FPS: 120 (OpenGL)' "$tmp/fps.log"
+    grep -q 'menu: GRAPHICS | Back | 3D renderer: .* | Widescreen: off | Render FPS: 120 (OpenGL)' "$tmp/fps.log"
   fi
 done
 echo 'PASS: debug-menu pages and navigation labels render through the host'
