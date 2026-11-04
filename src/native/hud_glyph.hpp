@@ -162,6 +162,31 @@ inline bool live_heading_ink(const uint32_t* rgb, int first_x, uint32_t& ink) {
   return true;
 }
 
+// The original reticle is a five-pixel horizontal row plus four vertical
+// points (the centre belongs to the row). These are two separate 68000
+// drawing operations. Require both parts in one redraw before enabling the
+// native vector cross, independent of the destination bitmap's 5x5 stencil.
+struct ReticleWrites {
+  uint8_t vertical_rows = 0;
+  bool horizontal = false;
+
+  void add_vertical(int y) {
+    if (y >= 71 && y <= 75)
+      vertical_rows |= uint8_t(1u << (y - 71));
+  }
+  bool complete() const { return horizontal && vertical_rows == 0x1b; }
+};
+
+inline bool live_reticle_ink(const uint32_t* rgb, uint32_t& ink) {
+  const uint32_t pixel = rgb[73 * kScreenWidth + 159] & 0xffffffu;
+  const uint32_t backdrop = rgb[73 * kScreenWidth + 165] & 0xffffffu;
+  const uint8_t r = uint8_t(pixel >> 16);
+  if (pixel == backdrop || r < 16 || pixel != uint32_t(r) * 0x010101u)
+    return false;
+  ink = pixel;
+  return true;
+}
+
 // The heading tape has five 10-column-spaced ticks, with alternating
 // 2-pixel/1-pixel heights. Its phase can move with the aircraft's heading;
 // the fixed three-pixel centre index remains at x=159. Accept only the

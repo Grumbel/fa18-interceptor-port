@@ -63,4 +63,6 @@ FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_ke
 HudFontCapture captured_hud_font(const uint32_t* row_keys);
 // -1 when the active bank has not completed a recognisable compass redraw.
 int captured_heading_phase(const uint32_t* row_keys);
+// True after both original reticle drawing operations completed in this bank.
+bool captured_reticle_ready(const uint32_t* row_keys);
 }  // namespace remaster

@@ -1739,18 +1739,33 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
 
   if (const char* opt = std::getenv("FA18_HUD_RETICLE_NATIVE");
       opt && std::strcmp(opt, "0") == 0) return out;
-  // The little 5x5 aiming cross is written after the captured 3D scene.
-  // Recognise its original stencil (not its shape source) so other views
-  // and transitions still use the original pixels. The single live colour
-  // tracks the original dimming as Pause fades in and out.
-  const uint32_t ink = rgb[73 * W + 159] & 0xffffffu;
-  const uint32_t backdrop = rgb[73 * W + 165] & 0xffffffu;
-  const uint8_t r = uint8_t(ink >> 16), g = uint8_t(ink >> 8), b = uint8_t(ink);
-  out.reticle = ink != backdrop && r >= 16 && r == g && g == b &&
-                (rgb[71 * W + 159] & 0xffffffu) == ink &&
-                (rgb[73 * W + 157] & 0xffffffu) == ink &&
-                (rgb[73 * W + 161] & 0xffffffu) == ink;
-  out.reticle_rgb = ink;
+  // The four vertical points and horizontal bar are recorded directly from
+  // the original 68000 write commands for the displayed screen bank. Only
+  // the centre pixel is needed for current visibility/copper fade; until a
+  // bank has a complete redraw, keep the prior exact bitmap recogniser.
+  const bool from_writer = captured_reticle_ready(m.frame_row_key()) &&
+      hud_font::live_reticle_ink(rgb, out.reticle_rgb);
+  if (from_writer) {
+    out.reticle = true;
+  } else {
+    const uint32_t ink = rgb[73 * W + 159] & 0xffffffu;
+    const uint32_t backdrop = rgb[73 * W + 165] & 0xffffffu;
+    const uint8_t r = uint8_t(ink >> 16), g = uint8_t(ink >> 8), b = uint8_t(ink);
+    out.reticle = ink != backdrop && r >= 16 && r == g && g == b &&
+                  (rgb[71 * W + 159] & 0xffffffu) == ink &&
+                  (rgb[73 * W + 157] & 0xffffffu) == ink &&
+                  (rgb[73 * W + 161] & 0xffffffu) == ink;
+    out.reticle_rgb = ink;
+  }
+  if (std::getenv("FA18_HUD_RETICLE_CAPTURE_DEBUG") &&
+      m.frame_count() % 400 == 0 && out.reticle) {
+    static uint64_t last_report = UINT64_MAX;
+    if (last_report != m.frame_count()) {
+      last_report = m.frame_count();
+      std::fprintf(stderr, "HUD reticle capture use frame=%llu writer=%d\n",
+                   (unsigned long long)m.frame_count(), int(from_writer));
+    }
+  }
   return out;
 }
 

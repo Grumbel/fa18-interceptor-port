@@ -20,6 +20,8 @@ constexpr uint32_t kFuelPixelWriter = 0x4744e;
 constexpr uint32_t kRightGlyphWriter = 0x47476;
 constexpr uint32_t kHudGlyphWriter = 0x47d56;
 constexpr uint32_t kHudPointWriter = 0x444c0;
+constexpr uint32_t kReticleVerticalWriter = 0x444a2;
+constexpr uint32_t kReticleHorizontalWriter = 0x44924;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
 constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
@@ -38,6 +40,12 @@ struct HeadingBank {
   int phase = -1;
 };
 
+struct ReticleBank {
+  uint64_t drawing_frame = UINT64_MAX;
+  hud_font::ReticleWrites writes{};
+  bool ready = false;
+};
+
 struct FuelBank {
   uint32_t row_key = 0;
   uint32_t value = 0;
@@ -50,6 +58,7 @@ struct FuelBank {
   std::array<CapturedGlyph, kHudDigitSlots.size()> hud_digits{};
   std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
   HeadingBank heading{};
+  ReticleBank reticle{};
 };
 
 std::array<FuelBank, 4> fuel_banks{};
@@ -304,6 +313,65 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       return;
     }
   });
+  // The reticle is drawn by two branches of the original line rasteriser:
+  // $444a2 ORs four single-bit vertical points into plane 3, and $44924
+  // writes the centre five-pixel horizontal row across two plane-3 words.
+  // Its caller context is distinct from the heading and regular 3D lines.
+  // A matching write sequence is a redraw latch for the *destination* bank.
+  auto reticle_bank = [](uint32_t plane3, uint32_t destination,
+                         uint32_t row_offset) -> bool {
+    return destination == plane3 + row_offset;
+  };
+  m.add_pc_hook(kReticleVerticalWriter, [&m, reticle_bank] {
+    if (m.cpu.a[4] != 0x4449c || m.cpu.a[5] != 0xffff252c ||
+        m.cpu.d[4] != 0x000a0001) return;
+    const uint32_t destination = m.cpu.a[0] & 0xffffff;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane3 = bank.row_key - FuelDigits::Y * kRowStride +
+                              3 * kPlaneBytes;
+      for (int y : {71, 72, 74, 75}) {
+        if (!reticle_bank(plane3, destination, uint32_t(y * kRowStride + 18)))
+          continue;
+        auto& reticle = bank.reticle;
+        if (reticle.drawing_frame != m.frame_count()) {
+          reticle.drawing_frame = m.frame_count();
+          reticle.writes = {};
+          reticle.ready = false;
+        }
+        reticle.writes.add_vertical(y);
+        reticle.ready = reticle.writes.complete();
+        return;
+      }
+    }
+  });
+  m.add_pc_hook(kReticleHorizontalWriter, [&m, reticle_bank] {
+    if (m.cpu.a[4] != 0x4449c || m.cpu.a[5] != 0xffff252c ||
+        m.cpu.d[4] != 0x000a0142) return;
+    const uint32_t destination = m.cpu.d[7] & 0xffffff;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane3 = bank.row_key - FuelDigits::Y * kRowStride +
+                              3 * kPlaneBytes;
+      if (!reticle_bank(plane3, destination, 73 * kRowStride + 19)) continue;
+      auto& reticle = bank.reticle;
+      if (reticle.drawing_frame != m.frame_count()) {
+        reticle.drawing_frame = m.frame_count();
+        reticle.writes = {};
+        reticle.ready = false;
+      }
+      reticle.writes.horizontal = true;
+      if (!reticle.ready && reticle.writes.complete() &&
+          std::getenv("FA18_HUD_RETICLE_CAPTURE_DEBUG")) {
+        static int printed = 0;
+        if (printed++ < 40)
+          std::fprintf(stderr, "HUD reticle captured frame=%llu bank=%06x\n",
+                       (unsigned long long)m.frame_count(), bank.row_key);
+      }
+      reticle.ready = reticle.writes.complete();
+      return;
+    }
+  });
 }
 
 HudFontCapture captured_hud_font(const uint32_t* row_keys) {
@@ -340,6 +408,20 @@ int captured_heading_phase(const uint32_t* row_keys) {
     return bank.heading.phase;
   }
   return -1;
+}
+
+bool captured_reticle_ready(const uint32_t* row_keys) {
+  if (const char* opt = std::getenv("FA18_HUD_RETICLE_CAPTURE");
+      opt && opt[0] == '0' && opt[1] == '\0') return false;
+  if (!row_keys) return false;
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        bank.row_key < FuelDigits::Y * kRowStride ||
+        bank.row_key - FuelDigits::Y * kRowStride != row_keys[0]) continue;
+    return bank.reticle.ready;
+  }
+  return false;
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
