@@ -206,6 +206,16 @@ before committing. Note limitations explicitly rather than masking them.
   2391 in the player record; its VBL 3960 cockpit is pixel-exact versus
   the original, as is the stationary VBL 3490 cockpit. The Pause state
   remains a separate parity case in `tests/check_gl_cockpit.sh`.
+- [x] Replace the 5x5 flight HUD aiming cross with native antialiased
+  strokes at corrected 4:3 resolution. A small original-screen stencil
+  establishes visibility and the live copper pen colour, including the
+  progressive dimming into Pause; the vector shape itself comes from code.
+  CPU composition and direct-GPU presentation draw the same strokes over
+  the cleared old pixels. `FA18_HUD_RETICLE_NATIVE=0` restores the legacy
+  bitmap, and `tests/check_gl_reticle.sh` verifies both flight and Pause.
+  The direct-GPU Pause heading is also delayed until the original title
+  actually appears, rather than flashing immediately at Pause-state entry.
+  The SDL/CPU Pause-heading path still uses the earlier state-only gate.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

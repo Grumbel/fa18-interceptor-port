@@ -69,6 +69,7 @@ bool in_scene = false;
 bool gf_begun = false;    // layer was started by game_frame
 void on_polygon();
 bool pending_3d = false;  // a 3D polygon was rendered; its $44b50 fill follows
+NativeHudState last_prepared_gpu_hud;
 // The original 68000 $2fc14 scene routine returns to these caller PCs.
 // Interpreted execution needs its own end hook; the native C++ wrapper
 // already invokes scene_end() itself.
@@ -969,6 +970,37 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   return true;
 }
 
+// Same antialiased 960x720 crosshair geometry as the visible GPU shader.
+// Its original 5x5 bitmap pixels are cleared from the 2D overlay first.
+void blend_native_reticle(std::vector<uint32_t>& out, int side, int scale,
+                          const NativeHudState& hud) {
+  if (!hud.reticle) return;
+  const int stride = (W + 2 * side) * scale;
+  auto segment_distance = [](float px, float py, float ax, float ay, float bx, float by) {
+    const float dx = bx - ax, dy = by - ay;
+    const float t = std::clamp(((px - ax) * dx + (py - ay) * dy) /
+                                 (dx * dx + dy * dy), 0.f, 1.f);
+    return std::hypot(px - ax - t * dx, py - ay - t * dy);
+  };
+  for (int y = 70 * scale; y < 77 * scale; ++y)
+    for (int x = 155 * scale; x < 162 * scale; ++x) {
+      const float px = (float(x) + .5f) * 3.f / scale;
+      const float py = (float(y) + .5f) * 3.6f / scale;
+      const float d = std::min(segment_distance(px, py, 478.5f, 257.4f, 478.5f, 271.8f),
+                               segment_distance(px, py, 472.5f, 264.6f, 484.5f, 264.6f));
+      const uint32_t a = uint32_t(std::lround(255.f * std::clamp(1.8f - d, 0.f, 1.f)));
+      if (!a) continue;
+      uint32_t& dst = out[size_t(y) * stride + size_t((side * scale) + x)];
+      uint32_t colour = 0xff000000u;
+      for (int shift = 0; shift < 24; shift += 8) {
+        const uint32_t v = ((((hud.reticle_rgb >> shift) & 255) * a) +
+                            (((dst >> shift) & 255) * (255 - a)) + 127) / 255;
+        colour |= v << shift;
+      }
+      dst = colour;
+    }
+}
+
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
   if (!glr::active() || !cur || !cur->done || m.hires_scale <= 0 || side < 0)
@@ -1003,6 +1035,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
                       state == 0x23b7e || state == 0x23ba8; // frozen Pause world
   const bool paused = pause_screen_active();
+  const NativeHudState hud = native_hud_state(m);
   const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
@@ -1039,8 +1072,16 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         // The native UI will draw the Pause heading at output resolution.
         // Erase only its old 320x200 title rectangle; sample the surrounding
         // panel fill so its copper/palette fades remain exactly original.
-        if (paused && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
+        if (hud.pause_title && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
           const uint32_t bg = rgb[y * W + 120];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
+        if (hud.reticle &&
+            ((x == 159 && y >= 71 && y <= 75) ||
+             (y == 73 && x >= 157 && x <= 161)) &&
+            (rgb[y * W + x] & 0xffffffu) == hud.reticle_rgb) {
+          const uint32_t bg = rgb[y * W + 165];
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
@@ -1107,6 +1148,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                    (unsigned long long)m.frame_count(), static_pixels, dynamic_pixels);
     }
   }
+  blend_native_reticle(out, side, S, hud);
   return true;
 }
 
@@ -1133,6 +1175,12 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
                       state == 0x23b7e || state == 0x23ba8;
   const bool paused = pause_screen_active();
+  const NativeHudState hud = native_hud_state(m);
+  last_prepared_gpu_hud = hud;
+  if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
+    std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
+                 (unsigned long long)m.frame_count(), int(hud.reticle), hud.reticle_rgb,
+                 int(hud.pause_title));
   const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
@@ -1166,8 +1214,19 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
-      if (paused && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
+      if (hud.pause_title && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
         const uint32_t bg = rgb[y * W + 120];
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
+      if (hud.reticle &&
+          ((x == 159 && y >= 71 && y <= 75) ||
+           (y == 73 && x >= 157 && x <= 161)) &&
+          (rgb[y * W + x] & 0xffffffu) == hud.reticle_rgb) {
+        const uint32_t bg = rgb[y * W + 165];
         p[0] = uint8_t(bg >> 16);
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
@@ -1234,5 +1293,42 @@ bool pause_screen_active() {
   const uint32_t state = native::rd32(0x2a6d4);
   return state == 0x23b7e || state == 0x23ba8;
 }
+
+NativeHudState native_hud_state(const amiga::Machine& m) {
+  NativeHudState out;
+  const uint32_t* rgb = m.frame_rgb();
+  if (!rgb) return out;
+
+  if (pause_screen_active()) {
+    // The original enters the Pause state a few frames before drawing its
+    // title. A state-only gate flashes the new vector title prematurely.
+    int amber_pixels = 0;
+    for (int y = 42; y <= 50; ++y)
+      for (int x = 124; x <= 201; ++x) {
+        const uint32_t c = rgb[y * W + x];
+        const int r = int((c >> 16) & 255), g = int((c >> 8) & 255);
+        if (r >= 32 && g >= 16 && r > g && g > int(c & 255)) ++amber_pixels;
+      }
+    out.pause_title = amber_pixels > 24;
+  }
+
+  if (const char* opt = std::getenv("FA18_HUD_RETICLE_NATIVE");
+      opt && std::strcmp(opt, "0") == 0) return out;
+  // The little 5x5 aiming cross is written after the captured 3D scene.
+  // Recognise its original stencil (not its shape source) so other views
+  // and transitions still use the original pixels. The single live colour
+  // tracks the original dimming as Pause fades in and out.
+  const uint32_t ink = rgb[73 * W + 159] & 0xffffffu;
+  const uint32_t backdrop = rgb[73 * W + 165] & 0xffffffu;
+  const uint8_t r = uint8_t(ink >> 16), g = uint8_t(ink >> 8), b = uint8_t(ink);
+  out.reticle = ink != backdrop && r >= 16 && r == g && g == b &&
+                (rgb[71 * W + 159] & 0xffffffu) == ink &&
+                (rgb[73 * W + 157] & 0xffffffu) == ink &&
+                (rgb[73 * W + 161] & 0xffffffu) == ink;
+  out.reticle_rgb = ink;
+  return out;
+}
+
+NativeHudState prepared_gpu_hud_state() { return last_prepared_gpu_hud; }
 
 }  // namespace remaster

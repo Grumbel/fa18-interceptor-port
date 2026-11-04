@@ -277,7 +277,12 @@ precision mediump float;
 uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud, u_pause, u_cockpit;
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
+uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 varying vec2 v_uv;
+float dist_segment(vec2 p, vec2 a, vec2 b) {
+  vec2 d = b - a;
+  return length(p - (a + d * clamp(dot(p-a,d)/dot(d,d), 0.0, 1.0)));
+}
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
   float y = min(199.0, floor(v_uv.y * 200.0));
@@ -337,6 +342,15 @@ void main() {
     vec4 ui = texture2D(u_pause, vec2((centre_x + fract(v_uv.x * u_dimensions.x)) / 320.0,
                                        v_uv.y));
     base_colour = mix(base_colour, ui.rgb, ui.a);
+  }
+  // Native 4:3-corrected antialiased crosshair, independent of original
+  // bitplane glyphs. Alpha is the geometric coverage in 960x720 space.
+  if (u_reticle.a > 0.5 && centre_x >= 155.0 && centre_x < 162.0 &&
+      y >= 70.0 && y < 77.0) {
+    vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
+    float d = min(dist_segment(p, vec2(478.5, 257.4), vec2(478.5, 271.8)),
+                  dist_segment(p, vec2(472.5, 264.6), vec2(484.5, 264.6)));
+    base_colour = mix(base_colour, u_reticle.rgb, clamp(1.8 - d, 0.0, 1.0));
   }
   gl_FragColor = vec4(base_colour, 1.0);
 }
@@ -1192,6 +1206,7 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
       layer.palette.size() != size_t(32 * 200 * 4) ||
       layer.rows.size() != size_t(200 * 4) ||
       drawable_w <= 0 || drawable_h <= 0) return false;
+  const remaster::NativeHudState hud_state = remaster::prepared_gpu_hud_state();
   st.make_current();
   if (st.present_failed) return false;
   const int wide = 320 + side * 2;
@@ -1283,7 +1298,20 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_hud"), 4);
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_hud_visible"), hud_visible ? 1.f : 0.f);
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_pause"), 5);
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_pause_visible"), pause_visible ? 1.f : 0.f);
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_pause_visible"),
+               pause_visible && hud_state.pause_title ? 1.f : 0.f);
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
+               float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
+               float((hud_state.reticle_rgb >> 8) & 255) / 255.f,
+               float(hud_state.reticle_rgb & 255) / 255.f,
+               hud_state.reticle ? 1.f : 0.f);
+  if (std::getenv("FA18_HUD_RETICLE_DEBUG")) {
+    static int reports = 0;
+    if (reports++ == 0)
+      std::fprintf(stderr, "HUD shader loc=%d reticle=%d colour=%06x\n",
+                   gl.GetUniformLocation(st.present_prog, "u_reticle"), int(hud_state.reticle),
+                   hud_state.reticle_rgb);
+  }
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_cockpit"), 6);
   gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_dimensions"), float(wide),
                float(layer.scene_rows));

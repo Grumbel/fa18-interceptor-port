@@ -24,6 +24,19 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
 // replace its low-resolution heading with a host-rendered 2D UI layer.
 bool pause_screen_active();
 
+// Source-screen pixels are used only as a visibility/colour timing oracle
+// for independently drawn high-resolution vector UI, never as glyph shapes.
+// The reticle stays in place while the game's copper palette fades on Pause.
+struct NativeHudState {
+  bool pause_title = false;
+  bool reticle = false;
+  uint32_t reticle_rgb = 0;
+};
+NativeHudState native_hud_state(const amiga::Machine& m);
+// The native GL presenter calls this after prepare_gpu_layers(). Keep it
+// outside GpuLayers so the old SDL host's POD layout stays unchanged.
+NativeHudState prepared_gpu_hud_state();
+
 // Separate the original Amiga screen-space drawing (cockpit, HUD, text and
 // otherwise unexplained pixels) from the captured 3D scene. The GL presenter
 // uses these small 320x200/32x200 textures to composite on the GPU instead
