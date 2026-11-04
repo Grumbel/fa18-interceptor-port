@@ -9,6 +9,7 @@
 #include "native/remaster.hpp"
 
 #include <array>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
 
@@ -18,6 +19,7 @@ namespace {
 constexpr uint32_t kFuelPixelWriter = 0x4744e;
 constexpr uint32_t kRightGlyphWriter = 0x47476;
 constexpr uint32_t kHudGlyphWriter = 0x47d56;
+constexpr uint32_t kHudPointWriter = 0x444c0;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
 constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
@@ -28,6 +30,12 @@ struct CapturedGlyph {
   uint8_t rows = 0;
   uint32_t source_base = 0;
   bool complete = false;
+};
+
+struct HeadingBank {
+  uint64_t drawing_frame = UINT64_MAX;
+  hud_font::HeadingMarkWrites writes{};
+  int phase = -1;
 };
 
 struct FuelBank {
@@ -41,6 +49,7 @@ struct FuelBank {
   bool right_refreshed = false;
   std::array<CapturedGlyph, kHudDigitSlots.size()> hud_digits{};
   std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
+  HeadingBank heading{};
 };
 
 std::array<FuelBank, 4> fuel_banks{};
@@ -256,6 +265,45 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       }
     }
   });
+  // The heading tape is not font text. The original $444c0 pixel writer
+  // receives a one-bit D4 mask and a bitplane-3 word in A0. The heading
+  // drawing context (A5=$5a966, pen 5) separates these points from terrain,
+  // objects and other screen-space line drawing. Require an exact set of
+  // eleven points before accepting the moving tick phase for this buffer.
+  m.add_pc_hook(kHudPointWriter, [&m] {
+    if (m.cpu.a[5] != 0x5a966 || (m.cpu.d[4] >> 16) != 5) return;
+    const uint16_t mask = uint16_t(m.cpu.d[4]);
+    if (!std::has_single_bit(mask)) return;
+    const uint32_t dst = m.cpu.a[0] & 0x00ffffff;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane3 = bank.row_key - FuelDigits::Y * kRowStride +
+                              3 * kPlaneBytes;
+      if (dst < plane3 || dst >= plane3 + kPlaneBytes) continue;
+      const uint32_t pos = dst - plane3;
+      const int y = int(pos / kRowStride);
+      const int x = int((pos % kRowStride) * 8 + 15 - std::countr_zero(mask));
+      if (!((y == 60 || y == 61) && x >= 138 && x <= 188) &&
+          !(x == 159 && y >= 63 && y <= 65)) return;
+      HeadingBank& heading = bank.heading;
+      if (heading.drawing_frame != m.frame_count()) {
+        heading.drawing_frame = m.frame_count();
+        heading.writes = {};
+        heading.phase = -1;
+      }
+      heading.writes.add(x, y);
+      const int phase = heading.writes.phase();
+      if (phase >= 0 && heading.phase < 0 &&
+          std::getenv("FA18_HUD_MARK_CAPTURE_DEBUG")) {
+        static int printed = 0;
+        if (printed++ < 40)
+          std::fprintf(stderr, "HUD heading captured frame=%llu bank=%06x first=%d\n",
+                       (unsigned long long)m.frame_count(), bank.row_key, phase);
+      }
+      heading.phase = phase;
+      return;
+    }
+  });
 }
 
 HudFontCapture captured_hud_font(const uint32_t* row_keys) {
@@ -278,6 +326,20 @@ HudFontCapture captured_hud_font(const uint32_t* row_keys) {
     break;
   }
   return out;
+}
+
+int captured_heading_phase(const uint32_t* row_keys) {
+  if (const char* opt = std::getenv("FA18_HUD_MARK_CAPTURE");
+      opt && opt[0] == '0' && opt[1] == '\0') return -1;
+  if (!row_keys) return -1;
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        bank.row_key < FuelDigits::Y * kRowStride ||
+        bank.row_key - FuelDigits::Y * kRowStride != row_keys[0]) continue;
+    return bank.heading.phase;
+  }
+  return -1;
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,

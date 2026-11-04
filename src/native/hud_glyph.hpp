@@ -116,6 +116,52 @@ inline bool decode_letter(const uint32_t* rgb, const HudLetterSlot& slot, uint32
          std::equal(rows, rows + 5, kLetterRows[glyph]);
 }
 
+// The original HUD's $444c0 one-pixel writer emits the compass tick and
+// centre-index points individually. Accumulate *write commands* for one
+// redraw, rather than looking at the completed screen bitmap. An exact
+// eleven-point set identifies its moving phase; partial/unfamiliar sets
+// have no native replacement yet.
+struct HeadingMarkWrites {
+  uint64_t row60 = 0, row61 = 0;
+  uint8_t centre = 0;
+
+  void add(int x, int y) {
+    if (x == 159 && y >= 63 && y <= 65)
+      centre |= uint8_t(1u << (y - 63));
+    else if (x >= 138 && x <= 188 && (y == 60 || y == 61)) {
+      const uint64_t bit = uint64_t(1) << (x - 128);
+      if (y == 60) row60 |= bit;
+      else row61 |= bit;
+    }
+  }
+
+  int phase() const {
+    if (centre != 7) return -1;
+    for (int start = 138; start <= 148; ++start) {
+      uint64_t expected60 = 0, expected61 = 0;
+      for (int i = 0; i < 5; ++i) {
+        const uint64_t bit = uint64_t(1) << (start + 10 * i - 128);
+        expected61 |= bit;
+        if ((i % 2) == 0) expected60 |= bit;
+      }
+      if (row60 == expected60 && row61 == expected61) return start;
+    }
+    return -1;
+  }
+};
+
+// Once the writer has supplied the phase, the original screen is needed
+// only for the currently faded palette colour and a minimal visibility
+// guard. No tick spacing or shape is inferred from these pixels.
+inline bool live_heading_ink(const uint32_t* rgb, int first_x, uint32_t& ink) {
+  if (first_x < 138 || first_x > 148) return false;
+  const uint32_t index = rgb[63 * kScreenWidth + 159] & 0xffffffu;
+  if (!glyph_ink(index, rgb[63 * kScreenWidth + 165]) ||
+      (rgb[61 * kScreenWidth + first_x] & 0xffffffu) != index) return false;
+  ink = index;
+  return true;
+}
+
 // The heading tape has five 10-column-spaced ticks, with alternating
 // 2-pixel/1-pixel heights. Its phase can move with the aircraft's heading;
 // the fixed three-pixel centre index remains at x=159. Accept only the

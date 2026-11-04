@@ -22,6 +22,7 @@
 0438b4
 04397c
 043a56
+0444c0  # per-screen-buffer heading ticks and centre index, cockpit_instruments.cpp
 044994
 044b00
 044b50

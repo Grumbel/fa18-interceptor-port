@@ -1654,8 +1654,26 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
     int captured_digits = 0, captured_letters = 0;
     const char* marks = std::getenv("FA18_HUD_HEADING_NATIVE");
     if (!marks || std::strcmp(marks, "0") != 0) {
-      out.heading_marks = hud_font::decode_heading_marks(
-          rgb, out.heading_first_x, out.heading_rgb);
+      const int captured_phase = captured_heading_phase(m.frame_row_key());
+      const bool from_writer = captured_phase >= 0 &&
+          hud_font::live_heading_ink(rgb, captured_phase, out.heading_rgb);
+      if (from_writer) {
+        out.heading_marks = true;
+        out.heading_first_x = captured_phase;
+      } else {
+        out.heading_marks = hud_font::decode_heading_marks(
+            rgb, out.heading_first_x, out.heading_rgb);
+      }
+      if (std::getenv("FA18_HUD_MARK_CAPTURE_DEBUG") &&
+          m.frame_count() % 400 == 0 && out.heading_marks) {
+        static uint64_t last_report = UINT64_MAX;
+        if (last_report != m.frame_count()) {
+          last_report = m.frame_count();
+          std::fprintf(stderr, "HUD heading capture use frame=%llu writer=%d phase=%d\n",
+                       (unsigned long long)m.frame_count(), int(from_writer),
+                       out.heading_first_x);
+        }
+      }
       if (out.heading_marks && std::getenv("FA18_HUD_DIGITS_DEBUG")) {
         static int reported = 0;
         if (reported++ < 24)

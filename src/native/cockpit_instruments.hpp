@@ -61,4 +61,6 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);
 HudFontCapture captured_hud_font(const uint32_t* row_keys);
+// -1 when the active bank has not completed a recognisable compass redraw.
+int captured_heading_phase(const uint32_t* row_keys);
 }  // namespace remaster
