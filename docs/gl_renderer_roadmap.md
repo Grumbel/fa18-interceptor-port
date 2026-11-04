@@ -224,8 +224,18 @@ before committing. Note limitations explicitly rather than masking them.
   direct GPU shader draw matching antialiased segments. Use
   `FA18_HUD_FRAME_NATIVE=0` to compare the legacy bitmap and
   `tests/check_gl_frame.sh` for the bounded-diff flight/Pause check. The
-  long black vertical frame rails still come from the bitplanes: removing
-  those safely requires reconstructing the moving scene behind them first.
+  long black vertical frame rails were left for the next migration.
+- [x] Move both **vertical HUD frame rails** into the same native vector
+  compositor. Their old one-pixel black bitplane strokes at x=85 and x=233
+  are removed only while the observed frame stencil is active. Above the
+  cockpit lip, the erased pixels reveal the actual GL scene with its
+  original double-buffered row mapping and live scanline palette; at the
+  lip itself, reconstruct the hidden surface from its neighbouring cockpit
+  pixels. Both the CPU and GPU compositors then draw black antialiased
+  strokes at 960x720 coordinates, joining the native top chamfers. Toggle
+  only these new rails with `FA18_HUD_RAILS_NATIVE=0`, or the complete
+  frame with `FA18_HUD_FRAME_NATIVE=0`. `tests/check_gl_rails.sh` covers
+  flight and faded Pause and rejects changes outside the two rail regions.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

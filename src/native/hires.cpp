@@ -1009,8 +1009,7 @@ void blend_native_reticle(std::vector<uint32_t>& out, int side, int scale,
 // The 132-pixel top rail and the two 8-pixel chamfers of the HUD window
 // were single coarse Amiga pixels. Keep their two live copper pen colours,
 // but rasterise their lines directly in 960x720 corrected coordinates.
-// The long black vertical rails are deliberately still original bitplanes;
-// those need the scene underneath to be restored before they can be replaced.
+// The rails are drawn separately after restoring their scene/cockpit backing.
 void blend_native_frame_crown(std::vector<uint32_t>& out, int side, int scale,
                               const NativeHudState& hud) {
   if (!hud.frame_crown) return;
@@ -1028,6 +1027,25 @@ void blend_native_frame_crown(std::vector<uint32_t>& out, int side, int scale,
     }
 }
 
+// Vertical edges of the same HUD window. The top uses the GL scene behind
+// the source bitmap; the last seven rows cross the foreground cockpit art.
+// This native stroke is narrow and antialiased rather than a 3x-wide block.
+void blend_native_frame_rails(std::vector<uint32_t>& out, int side, int scale,
+                              const NativeHudState& hud) {
+  if (!hud.frame_rails) return;
+  const int stride = (W + 2 * side) * scale;
+  for (int y = 45 * scale; y < 146 * scale; ++y)
+    for (int source_x : {85, 233})
+      for (int x = (source_x - 2) * scale; x < (source_x + 3) * scale; ++x) {
+        const float px = (float(x) + .5f) * 3.f / scale;
+        const float py = (float(y) + .5f) * 3.6f / scale;
+        const float d = hud_segment_distance(px, py, (source_x + .5f) * 3.f, 167.4f,
+                                              (source_x + .5f) * 3.f, 520.2f);
+        uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+        blend_hud_pixel(dst, hud.frame_rail_rgb, 1.6f - d);
+      }
+}
+
 // Exact *locations* of the old 320x200 source strokes, only used to clear
 // their bitmap footprints. No source pixel supplies the vector geometry.
 bool frame_crown_source_pixel(int x, int y, const NativeHudState& hud,
@@ -1043,6 +1061,22 @@ bool frame_crown_source_pixel(int x, int y, const NativeHudState& hud,
 uint32_t frame_crown_background(const uint32_t* rgb, int x, int y) {
   return rgb[(y == 37 ? 36 : y) * W +
              (y == 37 ? x : (x < 159 ? x - 2 : x + 2))];
+}
+
+bool frame_rail_source_pixel(int x, int y, const NativeHudState& hud, uint32_t colour) {
+  return hud.frame_rails && y >= 46 && y <= 144 && (x == 85 || x == 233) &&
+         colour == hud.frame_rail_rgb;
+}
+
+// The forward cockpit lip begins at y=138. Its artwork obscures the world,
+// so the two neighbouring original pixels are the best local continuation
+// of that surface. Above it the GL scene itself supplies the background.
+uint32_t frame_rail_cockpit_background(const uint32_t* rgb, int x, int y) {
+  const uint32_t a = rgb[y * W + x - 1], b = rgb[y * W + x + 1];
+  uint32_t c = 0xff000000u;
+  for (int shift = 0; shift < 24; shift += 8)
+    c |= ((((a >> shift) & 255u) + ((b >> shift) & 255u) + 1) / 2) << shift;
+  return c;
 }
 
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
@@ -1134,6 +1168,20 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
+        if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+          const bool scene_behind = flight && y < 138 && y < cur->rows;
+          if (scene_behind) {
+            const int scene_y = L && ly >= 0 && ly < cur->rows ? ly : y;
+            const uint8_t* src = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride) +
+                                               size_t(left + x * S)];
+            for (int xx = 0; xx < S; ++xx)
+              dst[left + x * S + xx] = pal[size_t(y) * 32 + (src[xx] & 15)];
+          } else {
+            const uint32_t bg = frame_rail_cockpit_background(rgb, x, y);
+            for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          }
+          continue;
+        }
         const uint8_t li = idx[y * W + x];
         if (fuel.contains(x, y)) {
           const uint32_t colour = fuel.pixel(x, y);
@@ -1198,6 +1246,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
     }
   }
   blend_native_reticle(out, side, S, hud);
+  blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
   return true;
 }
@@ -1289,6 +1338,20 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
         p[3] = 255;
+        continue;
+      }
+      if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+        if (flight && y < 138 && y < cur->rows) {
+          // Reveal native scene indices, using the same double-buffered row
+          // lookup as every other scene-backed pixel in the GPU presenter.
+          p[0] = p[1] = p[2] = p[3] = 0;
+        } else {
+          const uint32_t bg = frame_rail_cockpit_background(rgb, x, y);
+          p[0] = uint8_t(bg >> 16);
+          p[1] = uint8_t(bg >> 8);
+          p[2] = uint8_t(bg);
+          p[3] = 255;
+        }
         continue;
       }
       if (fuel.contains(x, y)) {
@@ -1387,6 +1450,16 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
                       (rgb[45 * W + 233] & 0xffffffu) == corner;
     out.frame_top_rgb = top;
     out.frame_corner_rgb = corner;
+    const char* rails = std::getenv("FA18_HUD_RAILS_NATIVE");
+    if (out.frame_crown && (!rails || std::strcmp(rails, "0") != 0)) {
+      const uint32_t ink = rgb[55 * W + 85] & 0xffffffu;
+      out.frame_rails = (rgb[55 * W + 233] & 0xffffffu) == ink &&
+                        (rgb[100 * W + 85] & 0xffffffu) == ink &&
+                        (rgb[100 * W + 233] & 0xffffffu) == ink &&
+                        (rgb[140 * W + 85] & 0xffffffu) == ink &&
+                        (rgb[140 * W + 233] & 0xffffffu) == ink;
+      out.frame_rail_rgb = ink;
+    }
   }
 
   if (const char* opt = std::getenv("FA18_HUD_RETICLE_NATIVE");

@@ -278,7 +278,7 @@ uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud, u_pause, u_cockp
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
 uniform vec4 u_reticle;  // live source-screen RGB, then visibility
-uniform vec4 u_frame_top, u_frame_corner; // two original live copper pen colours
+uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 varying vec2 v_uv;
 float dist_segment(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
@@ -352,6 +352,14 @@ void main() {
     float d = min(dist_segment(p, vec2(478.5, 257.4), vec2(478.5, 271.8)),
                   dist_segment(p, vec2(472.5, 264.6), vec2(484.5, 264.6)));
     base_colour = mix(base_colour, u_reticle.rgb, clamp(1.8 - d, 0.0, 1.0));
+  }
+  if (u_frame_rail.a > 0.5 && centre_x >= 83.0 && centre_x < 236.0 &&
+      y >= 45.0 && y < 146.0) {
+    vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
+    float left = dist_segment(p, vec2(256.5, 167.4), vec2(256.5, 520.2));
+    float right = dist_segment(p, vec2(700.5, 167.4), vec2(700.5, 520.2));
+    base_colour = mix(base_colour, u_frame_rail.rgb,
+                      clamp(1.6 - min(left, right), 0.0, 1.0));
   }
   if (u_frame_top.a > 0.5 && centre_x >= 83.0 && centre_x < 236.0 &&
       y >= 35.0 && y < 48.0) {
@@ -1326,6 +1334,11 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
                float((hud_state.frame_corner_rgb >> 8) & 255) / 255.f,
                float(hud_state.frame_corner_rgb & 255) / 255.f,
                hud_state.frame_crown ? 1.f : 0.f);
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_frame_rail"),
+               float((hud_state.frame_rail_rgb >> 16) & 255) / 255.f,
+               float((hud_state.frame_rail_rgb >> 8) & 255) / 255.f,
+               float(hud_state.frame_rail_rgb & 255) / 255.f,
+               hud_state.frame_rails ? 1.f : 0.f);
   if (std::getenv("FA18_HUD_RETICLE_DEBUG")) {
     static int reports = 0;
     if (reports++ == 0)

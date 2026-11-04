@@ -24,9 +24,10 @@ for mode in flight pause; do
     frame=3570
     args=(--frames 3580 --script "$repo/tests/data/pause_gl.txt")
   fi
-  FA18_HUD_FRAME_NATIVE=0 "$bin" "${common[@]}" "${args[@]}" \
+  FA18_HUD_FRAME_NATIVE=0 FA18_HUD_RAILS_NATIVE=0 \
+    "$bin" "${common[@]}" "${args[@]}" \
     --screenshot "$frame" "$tmp/$mode-old.ppm" "$adf" >"$tmp/$mode-old.log" 2>&1
-  "$bin" "${common[@]}" "${args[@]}" \
+  FA18_HUD_RAILS_NATIVE=0 "$bin" "${common[@]}" "${args[@]}" \
     --screenshot "$frame" "$tmp/$mode-native.ppm" "$adf" >"$tmp/$mode-native.log" 2>&1
   python3 "$repo/tests/check_gl_frame.py" \
     "$tmp/$mode-native.ppm" "$tmp/$mode-old.ppm"
