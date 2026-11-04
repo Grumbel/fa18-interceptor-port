@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bound the vector flight numerals to their original screen-space cells."""
+"""Bound vector flight numerals and unit labels to their source cells."""
 
 import sys
 
@@ -14,11 +14,19 @@ def main():
     left = (width - 960) // 2
     boxes = (
         (139, 169, 52, 59),  # two pairs of flight HUD numbers
-        (97, 111, 83, 91),   # airspeed
-        (217, 231, 83, 91), # altitude
-        (95, 107, 120, 128), # G readout
+        (97, 112, 83, 98),   # airspeed and KT label
+        (217, 232, 83, 98), # altitude and FT label
+        (95, 113, 120, 129), # G readout and G label
+    )
+    labels = (
+        (101, 106, 90, 97), # K
+        (105, 110, 90, 97), # T
+        (221, 226, 90, 97), # F
+        (225, 230, 90, 97), # T
+        (107, 112, 120, 127), # G
     )
     changed = [0] * len(boxes)
+    label_changed = [0] * len(labels)
     pixels = 0
     gradients = set()
     for y in range(height):
@@ -35,6 +43,9 @@ def main():
             assert matches, f"numeral changed outside HUD text: {(x, y)}"
             for i in matches:
                 changed[i] += 1
+            for i, (x0, x1, y0, y1) in enumerate(labels):
+                if x0 <= sx < x1 and y0 <= sy < y1:
+                    label_changed[i] += 1
             if matches[0] == 0:
                 gradients.add(ink)
 
@@ -43,9 +54,11 @@ def main():
         assert changed[0] >= 100, "top digits not reconstructed"
         assert changed[1] >= 30 and changed[2] >= 30, "speed/altitude missing"
         assert changed[3] >= 30, "G readout missing"
+        assert all(n >= 10 for n in label_changed), (
+            f"native KT/FT/G glyphs missing: {label_changed}")
         assert len(gradients) >= 3, "no native antialias shades"
-    print(f"PASS: {sys.argv[3]} native HUD numbers: {pixels} bounded pixels, "
-          f"fields={changed}")
+    print(f"PASS: {sys.argv[3]} native HUD glyphs: {pixels} bounded pixels, "
+          f"fields={changed} labels={label_changed}")
 
 
 if __name__ == "__main__":

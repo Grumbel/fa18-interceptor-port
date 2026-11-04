@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compare font-stencil-derived native HUD numerals with the original blits.
+# Compare font-stencil-derived native HUD numbers and unit labels with blits.
 set -euo pipefail
 
 if [ "$#" -lt 1 ]; then
@@ -16,6 +16,8 @@ export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
 
 common=(--native off --interpret --det-timing --fast --gl 3
         --widescreen --render-fps 120)
+# Scripted screenshots intentionally use SDL composition. Shader parity is
+# exercised separately with FA18_GL_DIRECT_COMPARE=1 in check_gl_direct.sh.
 for mode in flight pause; do
   if [ "$mode" = flight ]; then
     frame=4000
@@ -32,4 +34,4 @@ for mode in flight pause; do
     "$tmp/$mode-native.ppm" "$tmp/$mode-old.ppm" "$mode"
 done
 
-echo 'PASS: original-stencil native HUD digits bounded across flight/Pause'
+echo 'PASS: original-stencil native HUD numbers/labels bounded across flight/Pause'
