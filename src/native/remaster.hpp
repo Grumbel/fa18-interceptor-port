@@ -38,6 +38,19 @@ inline constexpr std::array<HudDigitSlot, 12> kHudDigitSlots{{
     {96, 121, 93, 3}, {102, 121, 93, 3},
 }};
 
+// The five fixed flight-unit labels are drawn with the same 3x5 font as
+// the numbers. Only exact source-screen glyphs are replaced; the cockpit
+// and alternate cameras retain their original text.
+struct HudLetterSlot {
+  int x, y, background_x;
+  char letter;
+};
+inline constexpr std::array<HudLetterSlot, 5> kHudLetterSlots{{
+    {102, 91, 94, 'K'}, {106, 91, 94, 'T'}, // airspeed (KT)
+    {222, 91, 215, 'F'}, {226, 91, 215, 'T'}, // altitude (FT)
+    {108, 121, 93, 'G'},                       // G-meter
+}};
+
 // The crosshair and frame source pixels only supply visibility and live
 // colour; the digit cells additionally decode the old glyph shape into a
 // native seven-stroke digit. The reticle tracks the copper Pause fade.
@@ -53,6 +66,8 @@ struct NativeHudState {
   // 0 = no validated digit; otherwise seven-stroke mask (128 = centre 1).
   std::array<uint8_t, kHudDigitSlots.size()> digit_strokes{};
   std::array<uint32_t, 4> digit_colours{};
+  std::array<uint8_t, kHudLetterSlots.size()> letter_visible{};
+  std::array<uint32_t, kHudLetterSlots.size()> letter_colours{};
 };
 NativeHudState native_hud_state(const amiga::Machine& m);
 // The native GL presenter calls this after prepare_gpu_layers(). Keep it

@@ -14,6 +14,7 @@
 //                set (1) / clear (0); $5a9e2 bit b set = XOR for polygons
 #include "amiga/machine.hpp"
 #include "native/gl_renderer.hpp"
+#include "native/hud_glyph.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
 #include "native/remaster.hpp"
@@ -1046,48 +1047,9 @@ void blend_native_frame_rails(std::vector<uint32_t>& out, int side, int scale,
       }
 }
 
-// The flight HUD's small numeric cells use the same distinctive 3x5 shapes
-// as the resident instrument font, but the screen-space text writer is not
-// yet hooked. Decode only exact digit stencils, then render their strokes
-// at output resolution. This deliberately leaves non-numeric HUD text and
-// any unrecognised/intermediate redraws in the original 2D overlay.
+// The screen-space HUD text writer is not yet hooked. Recognise only
+// complete source glyphs; leave partial redraws in the original overlay.
 namespace {
-constexpr uint8_t kHudDigitRows[10][5] = {
-    {7, 5, 5, 5, 7}, {2, 2, 2, 2, 2}, {7, 1, 7, 4, 7},
-    {7, 1, 7, 1, 7}, {5, 5, 7, 1, 1}, {7, 4, 7, 1, 7},
-    {7, 4, 7, 5, 7}, {7, 1, 1, 1, 1}, {7, 5, 7, 5, 7},
-    {7, 5, 7, 1, 1},
-};
-// Strokes A,B,C,D,E,F,G (1 is a centre stem, not a right-side seven).
-constexpr uint8_t kHudStrokes[10] = {63, 128, 91, 79, 102, 109, 125, 7, 127, 103};
-
-bool hud_digit_ink(uint32_t pixel, uint32_t background) {
-  const int r = int((pixel >> 16) & 255);
-  const int g = int((pixel >> 8) & 255);
-  const int b = int(pixel & 255);
-  return r == g && g == b && r >= 24 &&
-         r > int((background >> 16) & 255) + 12 &&
-         g > int((background >> 8) & 255) + 12;
-}
-
-int decode_hud_digit(const uint32_t* rgb, const HudDigitSlot& slot, uint32_t& ink) {
-  uint8_t rows[5]{};
-  ink = 0;
-  for (int y = 0; y < 5; ++y) {
-    const uint32_t bg = rgb[(slot.y + y) * W + slot.background_x];
-    for (int x = 0; x < 3; ++x) {
-      const uint32_t colour = rgb[(slot.y + y) * W + slot.x + x];
-      if (hud_digit_ink(colour, bg)) {
-        rows[y] |= uint8_t(4 >> x);
-        if (!ink) ink = colour & 0xffffffu;
-        else if ((colour & 0xffffffu) != ink) return -1;
-      }
-    }
-  }
-  for (int digit = 0; digit < 10; ++digit)
-    if (std::equal(rows, rows + 5, kHudDigitRows[digit])) return digit;
-  return -1;
-}
 
 float hud_digit_coverage(float px, float py, const HudDigitSlot& slot, uint8_t mask) {
   const float left = (slot.x + .5f) * 3.f, right = (slot.x + 2.5f) * 3.f;
@@ -1125,6 +1087,46 @@ void blend_native_hud_digits(std::vector<uint32_t>& out, int side, int scale,
   }
 }
 
+float hud_letter_coverage(float px, float py, const HudLetterSlot& slot) {
+  const float l = (slot.x + .5f) * 3.f, m = (slot.x + 1.5f) * 3.f;
+  const float r = (slot.x + 2.5f) * 3.f;
+  const float t = (slot.y + .5f) * 3.6f, c = (slot.y + 2.5f) * 3.6f;
+  const float b = (slot.y + 4.5f) * 3.6f;
+  float d = 1e9f;
+  const auto line = [&](float x0, float y0, float x1, float y1) {
+    d = std::min(d, hud_segment_distance(px, py, x0, y0, x1, y1));
+  };
+  if (slot.letter == 'K') {
+    line(l, t, l, b); line(r, t, l, c); line(l, c, r, b);
+  } else if (slot.letter == 'T') {
+    line(l, t, r, t); line(m, t, m, b);
+  } else if (slot.letter == 'F') {
+    line(l, t, l, b); line(l, t, r, t); line(l, c, r, c);
+  } else if (slot.letter == 'G') {
+    line(r, t, m, t); line(m, t, l, t + 3.6f);
+    line(l, t + 3.6f, l, b - 3.6f);
+    line(l, b - 3.6f, m, b); line(m, b, r, b);
+    line(r, c, r, b - 3.6f);
+  }
+  return 1.9f - d;
+}
+
+void blend_native_hud_letters(std::vector<uint32_t>& out, int side, int scale,
+                              const NativeHudState& hud) {
+  const int stride = (W + side * 2) * scale;
+  for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
+    if (!hud.letter_visible[i]) continue;
+    const auto& slot = kHudLetterSlots[i];
+    for (int y = (slot.y - 1) * scale; y < (slot.y + 6) * scale; ++y)
+      for (int x = (slot.x - 1) * scale; x < (slot.x + 4) * scale; ++x) {
+        const float px = (x + .5f) * 3.f / scale;
+        const float py = (y + .5f) * 3.6f / scale;
+        uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+        blend_hud_pixel(dst, hud.letter_colours[i], hud_letter_coverage(px, py, slot));
+      }
+  }
+}
+
 const HudDigitSlot* hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
   for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
     const auto& slot = kHudDigitSlots[i];
@@ -1132,6 +1134,15 @@ const HudDigitSlot* hud_original_digit_cell(int x, int y, const NativeHudState& 
         y >= slot.y && y < slot.y + 5) return &slot;
   }
   return nullptr;
+}
+
+int hud_original_letter_cell(int x, int y, const NativeHudState& hud) {
+  for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
+    const auto& slot = kHudLetterSlots[i];
+    if (hud.letter_visible[i] && x >= slot.x && x < slot.x + 3 &&
+        y >= slot.y && y < slot.y + 5) return int(i);
+  }
+  return -1;
 }
 }  // namespace
 
@@ -1236,6 +1247,12 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
+        if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
+            (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
+          const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
         if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
             slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
           const uint32_t bg = rgb[y * W + slot->background_x];
@@ -1344,6 +1361,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
+  blend_native_hud_letters(out, side, S, hud);
   return true;
 }
 
@@ -1409,6 +1427,15 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
+          (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
+        const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
       if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
           slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
         const uint32_t bg = rgb[y * W + slot->background_x];
@@ -1572,9 +1599,9 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
     if (!digits || std::strcmp(digits, "0") != 0) {
       for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
         uint32_t ink = 0;
-        const int value = decode_hud_digit(rgb, kHudDigitSlots[i], ink);
+        const int value = hud_font::decode_digit(rgb, kHudDigitSlots[i], ink);
         if (value < 0) continue;
-        out.digit_strokes[i] = kHudStrokes[value];
+        out.digit_strokes[i] = hud_font::kDigitStrokes[value];
         out.digit_colours[kHudDigitSlots[i].group] = ink;
         if (std::getenv("FA18_HUD_DIGITS_DEBUG")) {
           static int reported = 0;
@@ -1582,6 +1609,23 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
             std::fprintf(stderr, "HUD digit frame=%llu x=%d y=%d value=%d ink=%06x\n",
                          (unsigned long long)m.frame_count(),
                          kHudDigitSlots[i].x, kHudDigitSlots[i].y, value, ink);
+        }
+      }
+      const char* letters = std::getenv("FA18_HUD_LABELS_NATIVE");
+      if (!letters || std::strcmp(letters, "0") != 0) {
+        for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
+          uint32_t ink = 0;
+          if (!hud_font::decode_letter(rgb, kHudLetterSlots[i], ink)) continue;
+          out.letter_visible[i] = 1;
+          out.letter_colours[i] = ink;
+          if (std::getenv("FA18_HUD_DIGITS_DEBUG")) {
+            static int reported = 0;
+            if (reported++ < 32)
+              std::fprintf(stderr, "HUD label frame=%llu x=%d y=%d letter=%c ink=%06x\n",
+                           (unsigned long long)m.frame_count(),
+                           kHudLetterSlots[i].x, kHudLetterSlots[i].y,
+                           kHudLetterSlots[i].letter, ink);
+          }
         }
       }
     }

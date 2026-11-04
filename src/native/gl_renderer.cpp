@@ -287,6 +287,9 @@ uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
 uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
+uniform vec4 u_labels0; // K,T,F,T visibility (validated 3x5 source glyphs)
+uniform float u_label_g;
+uniform vec4 u_label_ink0, u_label_ink1, u_label_ink2, u_label_ink3, u_label_ink4;
 varying vec2 v_uv;
 float dist_segment(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
@@ -312,6 +315,37 @@ float digit_coverage(vec2 p, vec2 xy, float mask) {
 }
 vec3 draw_digit(vec3 base, vec2 p, vec2 xy, float mask, vec3 ink) {
   return mix(base, ink, digit_coverage(p, xy, mask));
+}
+float letter_coverage(vec2 p, vec2 xy, float visible, float glyph) {
+  if (visible < 0.5) return 0.0;
+  float l = (xy.x + 0.5) * 3.0, m = (xy.x + 1.5) * 3.0;
+  float r = (xy.x + 2.5) * 3.0;
+  float t = (xy.y + 0.5) * 3.6, c = (xy.y + 2.5) * 3.6;
+  float b = (xy.y + 4.5) * 3.6;
+  float d = 1e6;
+  if (glyph < 1.5) { // K
+    d = min(d, dist_segment(p, vec2(l,t), vec2(l,b)));
+    d = min(d, dist_segment(p, vec2(r,t), vec2(l,c)));
+    d = min(d, dist_segment(p, vec2(l,c), vec2(r,b)));
+  } else if (glyph < 2.5) { // T
+    d = min(dist_segment(p, vec2(l,t), vec2(r,t)),
+            dist_segment(p, vec2(m,t), vec2(m,b)));
+  } else if (glyph < 3.5) { // F
+    d = min(dist_segment(p, vec2(l,t), vec2(l,b)),
+            min(dist_segment(p, vec2(l,t), vec2(r,t)),
+                dist_segment(p, vec2(l,c), vec2(r,c))));
+  } else { // G: the source font opens the upper-left and lower-left corners
+    d = min(d, dist_segment(p, vec2(r,t), vec2(m,t)));
+    d = min(d, dist_segment(p, vec2(m,t), vec2(l,t+3.6)));
+    d = min(d, dist_segment(p, vec2(l,t+3.6), vec2(l,b-3.6)));
+    d = min(d, dist_segment(p, vec2(l,b-3.6), vec2(m,b)));
+    d = min(d, dist_segment(p, vec2(m,b), vec2(r,b)));
+    d = min(d, dist_segment(p, vec2(r,c), vec2(r,b-3.6)));
+  }
+  return clamp(1.9 - d, 0.0, 1.0);
+}
+vec3 draw_letter(vec3 base, vec2 p, vec2 xy, float visible, float glyph, vec3 ink) {
+  return mix(base, ink, letter_coverage(p, xy, visible, glyph));
 }
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
@@ -435,6 +469,27 @@ void main() {
         base_colour = draw_digit(base_colour,p,vec2(96.0,121.0),u_digits2.z,u_digit_ink3.rgb);
       if (centre_x >= 101.0 && centre_x < 107.0)
         base_colour = draw_digit(base_colour,p,vec2(102.0,121.0),u_digits2.w,u_digit_ink3.rgb);
+    }
+  }
+  if (centre_x >= 101.0 && centre_x < 232.0 &&
+      ((y >= 90.0 && y < 97.0) || (y >= 120.0 && y < 127.0))) {
+    // The visible window may scale a 1284x600 native image into 1280x718.
+    // Resolve at the nearest source-layer subpixel, just like SDL's CPU
+    // compositor, so tiny antialias edge weights remain GPU/CPU-identical.
+    vec2 source = vec2(v_uv.x * u_dimensions.x - u_side, v_uv.y * 200.0);
+    vec2 sample_xy = (floor(source * u_scale) + vec2(0.5)) / u_scale;
+    vec2 p = sample_xy * vec2(3.0, 3.6);
+    if (y < 97.0) {
+      if (centre_x >= 101.0 && centre_x < 106.0)
+        base_colour = draw_letter(base_colour,p,vec2(102.0,91.0),u_labels0.x,1.0,u_label_ink0.rgb);
+      if (centre_x >= 105.0 && centre_x < 110.0)
+        base_colour = draw_letter(base_colour,p,vec2(106.0,91.0),u_labels0.y,2.0,u_label_ink1.rgb);
+      if (centre_x >= 221.0 && centre_x < 226.0)
+        base_colour = draw_letter(base_colour,p,vec2(222.0,91.0),u_labels0.z,3.0,u_label_ink2.rgb);
+      if (centre_x >= 225.0 && centre_x < 230.0)
+        base_colour = draw_letter(base_colour,p,vec2(226.0,91.0),u_labels0.w,2.0,u_label_ink3.rgb);
+    } else if (centre_x >= 107.0 && centre_x < 112.0) {
+      base_colour = draw_letter(base_colour,p,vec2(108.0,121.0),u_label_g,4.0,u_label_ink4.rgb);
     }
   }
   gl_FragColor = vec4(base_colour, 1.0);
@@ -1509,6 +1564,20 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
     const uint32_t c = hud_state.digit_colours[size_t(group)];
     const char* name = group == 0 ? "u_digit_ink0" : group == 1 ? "u_digit_ink1" :
                        group == 2 ? "u_digit_ink2" : "u_digit_ink3";
+    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
+                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
+                 float(c & 255) / 255.f, c ? 1.f : 0.f);
+  }
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_labels0"),
+               float(hud_state.letter_visible[0]), float(hud_state.letter_visible[1]),
+               float(hud_state.letter_visible[2]), float(hud_state.letter_visible[3]));
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_label_g"),
+               float(hud_state.letter_visible[4]));
+  for (int letter = 0; letter < 5; ++letter) {
+    const char* name = letter == 0 ? "u_label_ink0" : letter == 1 ? "u_label_ink1" :
+                       letter == 2 ? "u_label_ink2" : letter == 3 ? "u_label_ink3" :
+                                     "u_label_ink4";
+    const uint32_t c = hud_state.letter_colours[size_t(letter)];
     gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
                  float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
                  float(c & 255) / 255.f, c ? 1.f : 0.f);
