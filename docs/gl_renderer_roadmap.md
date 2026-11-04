@@ -293,6 +293,13 @@ before committing. Note limitations explicitly rather than masking them.
   and retain the full bitmap-stencil fallback until a valid redraw is
   captured. `FA18_HUD_MARK_CAPTURE=0` reverts to stencil recognition;
   `tests/check_gl_heading_capture.sh` checks exact flight/Pause output parity.
+- [x] Recover native aiming-reticle visibility from the original two-stage
+  rasteriser sequence: `$444a2` sets four vertical points and `$44924`
+  emits the five-pixel horizontal bar. Keep a per-screen-buffer latch for
+  the complete command set, read only the current grayscale/copper pen for
+  visibility, and fall back to the original bitmap stencil for unobserved
+  redraws. `FA18_HUD_RETICLE_CAPTURE=0` disables the writer latch and
+  `tests/check_gl_reticle_capture.sh` verifies flight/Pause parity.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -363,6 +363,24 @@ and stencil output pixel-for-pixel in flight/Pause;
 `tests/check_gl_heading.sh` bounds the native changed regions; and
 `tests/check_gl_direct.sh` checks actual GPU presentation parity.
 
+The 5×5 aiming reticle at (157..161,71..75) is also backed by its
+**original drawing commands**. The original `$444a2` branch plots its four
+vertical pen-10 pixels at x=159, rows 71/72/74/75, while `$44924` writes
+the complete five-pixel horizontal bar at y=73. The destination and caller
+registers (`A0`, `D7`, `A4`, `A5`, `D4`) distinguish these draws from the
+other geometry sharing those rasterisers. Both are latched per Amiga screen
+buffer, and the native CPU/direct-GL stroke is enabled only after the
+complete five-command redraw. The original bitmap then supplies only a
+single live, copper-faded grayscale pixel for visibility and colour.
+Until that redraw is known, or when its ink is no longer visible, the old
+multi-pixel stencil gate remains active. Use
+`FA18_HUD_RETICLE_CAPTURE=0` for the old gate alone, and
+`FA18_HUD_RETICLE_CAPTURE_DEBUG=1` for capture/compositor diagnostics.
+Keep both writer PCs in `tools/recomp_hooks.txt`. The new
+`tests/check_gl_reticle_capture.sh` compares rendered flight/Pause frames
+pixel-for-pixel with the legacy reticle visibility logic;
+`tests/check_gl_reticle.sh` checks the native reticle's changed region.
+
 ## Open points
 
 
