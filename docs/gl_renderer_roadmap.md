@@ -216,6 +216,16 @@ before committing. Note limitations explicitly rather than masking them.
   The direct-GPU Pause heading is also delayed until the original title
   actually appears, rather than flashing immediately at Pause-state entry.
   The SDL/CPU Pause-heading path still uses the earlier state-only gate.
+- [x] Rasterise the cockpit HUD frame's **top rail and two diagonal chamfers**
+  at native corrected 960x720 resolution. The original top/corner pens are
+  separately sampled as visibility and *live copper colour* oracles, so the
+  new geometry dims along with the existing Pause fade. Only the 320x200
+  rail/chamfer stencil is erased; both the CPU widescreen composer and the
+  direct GPU shader draw matching antialiased segments. Use
+  `FA18_HUD_FRAME_NATIVE=0` to compare the legacy bitmap and
+  `tests/check_gl_frame.sh` for the bounded-diff flight/Pause check. The
+  long black vertical frame rails still come from the bitplanes: removing
+  those safely requires reconstructing the moving scene behind them first.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

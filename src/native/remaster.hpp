@@ -30,7 +30,10 @@ bool pause_screen_active();
 struct NativeHudState {
   bool pause_title = false;
   bool reticle = false;
+  bool frame_crown = false;
   uint32_t reticle_rgb = 0;
+  uint32_t frame_top_rgb = 0;
+  uint32_t frame_corner_rgb = 0;
 };
 NativeHudState native_hud_state(const amiga::Machine& m);
 // The native GL presenter calls this after prepare_gpu_layers(). Keep it

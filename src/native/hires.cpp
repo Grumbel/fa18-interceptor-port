@@ -972,33 +972,77 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
 
 // Same antialiased 960x720 crosshair geometry as the visible GPU shader.
 // Its original 5x5 bitmap pixels are cleared from the 2D overlay first.
+float hud_segment_distance(float px, float py, float ax, float ay, float bx, float by) {
+  const float dx = bx - ax, dy = by - ay;
+  const float t = std::clamp(((px - ax) * dx + (py - ay) * dy) /
+                               (dx * dx + dy * dy), 0.f, 1.f);
+  return std::hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+void blend_hud_pixel(uint32_t& dst, uint32_t rgb, float coverage) {
+  const uint32_t a = uint32_t(std::lround(255.f * std::clamp(coverage, 0.f, 1.f)));
+  if (!a) return;
+  uint32_t colour = 0xff000000u;
+  for (int shift = 0; shift < 24; shift += 8) {
+    const uint32_t v = ((((rgb >> shift) & 255) * a) +
+                        (((dst >> shift) & 255) * (255 - a)) + 127) / 255;
+    colour |= v << shift;
+  }
+  dst = colour;
+}
+
 void blend_native_reticle(std::vector<uint32_t>& out, int side, int scale,
                           const NativeHudState& hud) {
   if (!hud.reticle) return;
   const int stride = (W + 2 * side) * scale;
-  auto segment_distance = [](float px, float py, float ax, float ay, float bx, float by) {
-    const float dx = bx - ax, dy = by - ay;
-    const float t = std::clamp(((px - ax) * dx + (py - ay) * dy) /
-                                 (dx * dx + dy * dy), 0.f, 1.f);
-    return std::hypot(px - ax - t * dx, py - ay - t * dy);
-  };
   for (int y = 70 * scale; y < 77 * scale; ++y)
     for (int x = 155 * scale; x < 162 * scale; ++x) {
       const float px = (float(x) + .5f) * 3.f / scale;
       const float py = (float(y) + .5f) * 3.6f / scale;
-      const float d = std::min(segment_distance(px, py, 478.5f, 257.4f, 478.5f, 271.8f),
-                               segment_distance(px, py, 472.5f, 264.6f, 484.5f, 264.6f));
-      const uint32_t a = uint32_t(std::lround(255.f * std::clamp(1.8f - d, 0.f, 1.f)));
-      if (!a) continue;
+      const float d = std::min(hud_segment_distance(px, py, 478.5f, 257.4f, 478.5f, 271.8f),
+                               hud_segment_distance(px, py, 472.5f, 264.6f, 484.5f, 264.6f));
       uint32_t& dst = out[size_t(y) * stride + size_t((side * scale) + x)];
-      uint32_t colour = 0xff000000u;
-      for (int shift = 0; shift < 24; shift += 8) {
-        const uint32_t v = ((((hud.reticle_rgb >> shift) & 255) * a) +
-                            (((dst >> shift) & 255) * (255 - a)) + 127) / 255;
-        colour |= v << shift;
-      }
-      dst = colour;
+      blend_hud_pixel(dst, hud.reticle_rgb, 1.8f - d);
     }
+}
+
+// The 132-pixel top rail and the two 8-pixel chamfers of the HUD window
+// were single coarse Amiga pixels. Keep their two live copper pen colours,
+// but rasterise their lines directly in 960x720 corrected coordinates.
+// The long black vertical rails are deliberately still original bitplanes;
+// those need the scene underneath to be restored before they can be replaced.
+void blend_native_frame_crown(std::vector<uint32_t>& out, int side, int scale,
+                              const NativeHudState& hud) {
+  if (!hud.frame_crown) return;
+  const int stride = (W + 2 * side) * scale;
+  for (int y = 35 * scale; y < 48 * scale; ++y)
+    for (int x = 83 * scale; x < 236 * scale; ++x) {
+      const float px = (float(x) + .5f) * 3.f / scale;
+      const float py = (float(y) + .5f) * 3.6f / scale;
+      const float top = hud_segment_distance(px, py, 280.5f, 135.f, 673.5f, 135.f);
+      const float left = hud_segment_distance(px, py, 277.5f, 138.6f, 256.5f, 163.8f);
+      const float right = hud_segment_distance(px, py, 676.5f, 135.f, 700.5f, 163.8f);
+      uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      blend_hud_pixel(dst, hud.frame_top_rgb, 1.6f - top);
+      blend_hud_pixel(dst, hud.frame_corner_rgb, 1.6f - std::min(left, right));
+    }
+}
+
+// Exact *locations* of the old 320x200 source strokes, only used to clear
+// their bitmap footprints. No source pixel supplies the vector geometry.
+bool frame_crown_source_pixel(int x, int y, const NativeHudState& hud,
+                              uint32_t colour) {
+  if (!hud.frame_crown) return false;
+  if (y == 37 && x >= 93 && x <= 224) return colour == hud.frame_top_rgb;
+  if (y == 37 && x == 225) return colour == hud.frame_corner_rgb;
+  if (y >= 38 && y <= 45 && (x == 130 - y || x == 188 + y))
+    return colour == hud.frame_corner_rgb;
+  return false;
+}
+
+uint32_t frame_crown_background(const uint32_t* rgb, int x, int y) {
+  return rgb[(y == 37 ? 36 : y) * W +
+             (y == 37 ? x : (x < 159 ? x - 2 : x + 2))];
 }
 
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
@@ -1085,6 +1129,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
+        if (frame_crown_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+          const uint32_t bg = frame_crown_background(rgb, x, y);
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
         const uint8_t li = idx[y * W + x];
         if (fuel.contains(x, y)) {
           const uint32_t colour = fuel.pixel(x, y);
@@ -1149,6 +1198,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
     }
   }
   blend_native_reticle(out, side, S, hud);
+  blend_native_frame_crown(out, side, S, hud);
   return true;
 }
 
@@ -1233,6 +1283,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[3] = 255;
         continue;
       }
+      if (frame_crown_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+        const uint32_t bg = frame_crown_background(rgb, x, y);
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
       if (fuel.contains(x, y)) {
         const uint32_t c = fuel.pixel(x, y);
         p[0] = uint8_t(c >> 16);
@@ -1310,6 +1368,25 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
         if (r >= 32 && g >= 16 && r > g && g > int(c & 255)) ++amber_pixels;
       }
     out.pause_title = amber_pixels > 24;
+  }
+
+  // Top and corner strokes are two different original pens. Their source
+  // stencils establish visibility and both current copper-faded colours.
+  // External camera and transitional frames retain their old bitplanes.
+  const char* native_frame = std::getenv("FA18_HUD_FRAME_NATIVE");
+  if (!native_frame || std::strcmp(native_frame, "0") != 0) {
+    const uint32_t top = rgb[37 * W + 159] & 0xffffffu;
+    const uint32_t corner = rgb[38 * W + 92] & 0xffffffu;
+    const uint8_t r = uint8_t(top >> 16);
+    out.frame_crown = r >= 16 && top == (uint32_t(r) * 0x010101u) &&
+                      top != (rgb[36 * W + 159] & 0xffffffu) &&
+                      (rgb[37 * W + 94] & 0xffffffu) == top &&
+                      (rgb[37 * W + 200] & 0xffffffu) == top &&
+                      (rgb[38 * W + 226] & 0xffffffu) == corner &&
+                      (rgb[45 * W + 85] & 0xffffffu) == corner &&
+                      (rgb[45 * W + 233] & 0xffffffu) == corner;
+    out.frame_top_rgb = top;
+    out.frame_corner_rgb = corner;
   }
 
   if (const char* opt = std::getenv("FA18_HUD_RETICLE_NATIVE");
