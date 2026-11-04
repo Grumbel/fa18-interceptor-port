@@ -25,6 +25,23 @@ int main() {
   Screen screen{};
   screen.fill(kBackground);
   uint32_t ink = 0;
+  // All HUD values can be decoded from the original writer's resident
+  // glyph bytes, without reading the destination screen pixels.
+  for (int number = 0; number < 10; ++number) {
+    uint8_t bytes[5];
+    for (int y = 0; y < 5; ++y) bytes[y] = uint8_t(kDigitRows[number][y] << 5);
+    assert(source_digit(bytes) == number);
+    bytes[2] ^= 0x20;
+    assert(source_digit(bytes) == -1);
+  }
+  for (const auto& slot : kHudLetterSlots) {
+    uint8_t bytes[5];
+    const int glyph = letter_index(slot.letter);
+    for (int y = 0; y < 5; ++y) bytes[y] = uint8_t(kLetterRows[glyph][y] << 5);
+    assert(source_letter(bytes, slot.letter));
+    bytes[3] ^= 0x20;
+    assert(!source_letter(bytes, slot.letter));
+  }
   for (const auto& slot : kHudLetterSlots) {
     const int glyph = letter_index(slot.letter);
     assert(glyph >= 0);
@@ -32,6 +49,8 @@ int main() {
     assert(!decode_letter(screen.data(), slot, ink)); // absent
     draw(screen, slot.x, slot.y, kLetterRows[glyph]);
     assert(decode_letter(screen.data(), slot, ink) && ink == kInk);
+    assert(live_ink(screen.data(), slot.x, slot.y, slot.background_x,
+                    kLetterRows[glyph][0], ink) && ink == kInk);
 
     // Any missing or newly painted pixel must retain the original bitmap.
     int first = 0;
@@ -57,6 +76,8 @@ int main() {
     screen.fill(kBackground);
     draw(screen, slot.x, slot.y, kLetterRows[glyph], 0x226644);
     assert(!decode_letter(screen.data(), slot, ink));
+    assert(!live_ink(screen.data(), slot.x, slot.y, slot.background_x,
+                     kLetterRows[glyph][0], ink));
     screen.fill(kInk);
     assert(!decode_letter(screen.data(), slot, ink));
   }
