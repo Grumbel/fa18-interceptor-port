@@ -69,5 +69,37 @@ int main() {
       assert(decode_digit(screen.data(), slot, ink) == number && ink == kInk);
     }
   }
-  std::puts("PASS: complete HUD unit labels and numbers, partial/absent/palette fallback");
+  // The heading ticks can shift horizontally while the centre index is
+  // fixed. A complete alternation of long/short ticks is required.
+  auto heading = [&](int first, uint32_t colour) {
+    screen.fill(kBackground);
+    for (int y = 63; y <= 65; ++y) screen[size_t(y) * 320 + 159] = colour;
+    for (int i = 0; i < 5; ++i) {
+      const int x = first + 10 * i;
+      screen[61 * 320 + size_t(x)] = colour;
+      if (i % 2 == 0) screen[60 * 320 + size_t(x)] = colour;
+    }
+  };
+  int first = 0;
+  screen.fill(kBackground);
+  assert(!decode_heading_marks(screen.data(), first, ink));
+  for (int phase : {140, 143, 148}) {
+    heading(phase, kInk);
+    assert(decode_heading_marks(screen.data(), first, ink));
+    assert(first == phase && ink == kInk);
+    screen[61 * 320 + size_t(phase + 20)] = kBackground;
+    assert(!decode_heading_marks(screen.data(), first, ink));
+    heading(phase, kInk);
+    screen[61 * 320 + size_t(phase + 1)] = kInk; // adjacent stray ink
+    assert(!decode_heading_marks(screen.data(), first, ink));
+    heading(phase, kInk);
+    screen[60 * 320 + size_t(phase + 10)] = kInk; // minor became major
+    assert(!decode_heading_marks(screen.data(), first, ink));
+    heading(phase, kInk);
+    screen[64 * 320 + 159] = 0x888888; // mixed pen in centre index
+    assert(!decode_heading_marks(screen.data(), first, ink));
+  }
+  heading(143, 0x226644); // not the grayscale HUD palette
+  assert(!decode_heading_marks(screen.data(), first, ink));
+  std::puts("PASS: complete HUD numbers, labels and heading marks; partial/palette fallback");
 }
