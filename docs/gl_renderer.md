@@ -319,6 +319,20 @@ bridge is not yet a replacement for the underlying game HUD formatter.
 partial/incorrect-colour glyphs without game data;
 `tests/check_gl_hud_digits.sh` checks the flight/Pause regions with an ADF.
 
+The five heading-scale marks beneath the top numerals are now native as well:
+three two-pixel major ticks alternate with two single-pixel minor ticks,
+10 source columns apart, and a fixed three-pixel central heading index at
+(159,63..65). Their heading-dependent horizontal phase is located over
+columns 138..148 by comparing the full original 8+3-pixel stencil against
+one live grayscale pen. Any incomplete, dimmed or unfamiliar layout keeps
+the original bitmap. The CPU and direct-GL passes erase only validated source
+pixels and draw narrow antialiased strokes at corrected 960x720 coordinates;
+the shader snaps its coverage to the same 3x source grid for exact GPU/CPU
+parity in the scaled 1280x718 viewport. Disable this layer independently with
+`FA18_HUD_HEADING_NATIVE=0`. `gl_hud_glyph_test` checks source recognition,
+`tests/check_gl_heading.sh` bounds the changed flight/Pause pixels, and
+`tests/check_gl_direct.sh` checks actual GPU presentation parity.
+
 ## Open points
 
 

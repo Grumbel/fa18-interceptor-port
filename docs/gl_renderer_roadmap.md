@@ -271,6 +271,13 @@ before committing. Note limitations explicitly rather than masking them.
   original pixels. Test the exact shapes and rejections without the ADF in
   `gl_hud_glyph_test`, and bound live flight/Pause pixel changes with
   `check_gl_hud_digits.sh`. `FA18_HUD_LABELS_NATIVE=0` disables only labels.
+- [x] Replace the five alternating heading tape ticks and the central heading
+  index with narrow antialiased native strokes. Detect the moving 10-column
+  tick phase only from a complete 11-pixel 320x200 stencil with one live
+  grayscale pen; a partial/faded stencil retains the source HUD. The CPU
+  composer and direct-GL shader use the same coverage/sample grid. Disable
+  just this pass with `FA18_HUD_HEADING_NATIVE=0` and test with
+  `gl_hud_glyph_test`, `check_gl_heading.sh`, `check_gl_direct.sh`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

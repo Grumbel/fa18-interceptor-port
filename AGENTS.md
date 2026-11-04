@@ -123,8 +123,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   recognised as exact 3x5 glyphs before native stroke replacement.
   `FA18_HUD_DIGITS_NATIVE=0` restores all the old HUD glyphs;
   `FA18_HUD_LABELS_NATIVE=0` disables only the labels.
+  The compass tape's five alternating major/minor ticks and central index
+  are separately reconstructed from a complete 11-pixel screen stencil,
+  including moving tick phase; `FA18_HUD_HEADING_NATIVE=0` disables them.
   `FA18_HUD_DIGITS_DEBUG=1` prints accepted cells. Run
-  `tests/check_gl_hud_digits.sh` when changing the flight HUD compositor.
+  `tests/check_gl_hud_digits.sh`, `tests/check_gl_heading.sh` and
+  `tests/check_gl_direct.sh` when changing the flight HUD compositor.
 
 - `--text-pace` (debug menu "Text pacing", script `textpace on|off`):
   the text stream $478f2 at stock A500 pace: menu passes of game_frame
