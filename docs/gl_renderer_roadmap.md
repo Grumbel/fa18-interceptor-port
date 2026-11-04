@@ -278,6 +278,14 @@ before committing. Note limitations explicitly rather than masking them.
   composer and direct-GL shader use the same coverage/sample grid. Disable
   just this pass with `FA18_HUD_HEADING_NATIVE=0` and test with
   `gl_hud_glyph_test`, `check_gl_heading.sh`, `check_gl_direct.sh`.
+- [x] Capture flight HUD digit/label values directly from the original
+  68000 glyph writer `$47d56` (source bytes at D4/A0, destination A3,
+  pixel shift D2). Record complete five-row redraws per screen buffer and
+  use those values for the native CPU/direct-GL HUD. Retain a one-pixel
+  colour/visibility probe for copper fades and the previous complete-stencil
+  fallback until the displayed bank has been refreshed. Use
+  `FA18_HUD_FONT_CAPTURE=0` to disable interception;
+  `tests/check_gl_hud_capture.sh` checks output identity and real use.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

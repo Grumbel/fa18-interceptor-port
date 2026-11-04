@@ -319,6 +319,24 @@ bridge is not yet a replacement for the underlying game HUD formatter.
 partial/incorrect-colour glyphs without game data;
 `tests/check_gl_hud_digits.sh` checks the flight/Pause regions with an ADF.
 
+The numeric and label **values now have an independent original-code source**.
+Unlike the green cockpit LCD's `$47476` branch, the gray flight HUD is drawn
+by `$47d56` into bitplane 3. The glyph base in `D4`, advancing byte pointer
+in `A0`, destination in `A3`, and horizontal shift in `D2` identify every
+row of the 12 digit cells and five labels. Capture waits for all five rows
+and associates each result with the correct double-buffered Amiga screen
+base, so refreshing an offscreen bank cannot change the displayed number.
+The native CPU compositor and direct-GL presenter receive the same captured
+values; they sample just one original glyph pixel for the live copper-faded
+gray ink and visibility. Full 3x5 bitplane-stencil decoding now serves as
+the fallback before a buffer has a completed capture, or if the visible
+colour check fails. `FA18_HUD_FONT_CAPTURE=0` restores the previous
+stencil-only logic. `FA18_HUD_CAPTURE_DEBUG=1` reports completed glyphs and
+capture use, and `tests/check_gl_hud_capture.sh` compares flight/Pause
+output against the old renderer pixel-for-pixel. This removes the source
+bitmap as a *value* oracle; broader HUD visibility, line marks and the
+original clears are still mediated by the source bitmap.
+
 The five heading-scale marks beneath the top numerals are now native as well:
 three two-pixel major ticks alternate with two single-pixel minor ticks,
 10 source columns apart, and a fixed three-pixel central heading index at
