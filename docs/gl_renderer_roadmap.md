@@ -236,13 +236,31 @@ before committing. Note limitations explicitly rather than masking them.
   only these new rails with `FA18_HUD_RAILS_NATIVE=0`, or the complete
   frame with `FA18_HUD_FRAME_NATIVE=0`. `tests/check_gl_rails.sh` covers
   flight and faded Pause and rejects changes outside the two rail regions.
+- [x] Render the 3D scene directly into the **colour texture attached to its
+  framebuffer**, instead of copying the completed RGBA8/RGBA4 renderbuffer
+  into a second full-sized texture on each `--gl-direct` presentation. On
+  GL 2.1 and GLES2 use an unsized `GL_RGBA` texture; if its framebuffer is
+  incomplete, retain the previous renderbuffer plus GPU-to-GPU copy path.
+  Explicit `FA18_GL_FORCE_RGBA4=1` continues to use a genuine RGBA4
+  renderbuffer; `FA18_GL_SCENE_TEXTURE=0` selects the previous implementation
+  as a visual oracle. Cache up to four framebuffer sets (with their own
+  depth/stencil and scene textures) across centred/widescreen resize requests
+  so alternating capture dimensions do not reallocate GPU storage every
+  presentation. A 3,650-frame offscreen widescreen/direct replay reduced
+  framebuffer allocations from **322 to 4** (the four distinct sizes).
+  `FA18_GL_SCENE_DEBUG=1` logs only newly created attachments;
+  `tests/check_gl_scene_texture.sh` verifies flight/Pause pixel identity,
+  RGBA4 parity, direct GPU pixel-centre agreement and allocation reuse.
+  Restrict the vertical frame-rail shader to the two narrow x regions rather
+  than evaluating segment distances across the entire HUD window.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
 - [ ] Verify residual seam flicker under other transitions (views, terrain,
   Pause/resume) on real GPU hardware, including the 120/240 Hz present loop.
-- [ ] Remove the intermediate GPU-to-GPU FBO copy by using a scene colour
-  texture attachment; investigate a GLES2-safe RGBA4 path.
+- [ ] Verify GLES2 render-to-texture completeness on device GPUs and explore
+  an explicit RGBA4 texture-attachment format when the default RGBA texture
+  consumes too much GPU memory.
 - [ ] Make the compositor independent of the original HUD bitplanes;
   classify cockpit instrument writes directly (not by comparing bitplanes
   against the static ILBM) and re-render them at output resolution.

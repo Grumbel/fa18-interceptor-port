@@ -65,8 +65,9 @@ the important diagnostic when high refresh seems ineffective: CPU emulation,
 GPU/CPU readback, compositing and SDL presentation can leave too little
 time for an extra redraw. `FA18_GL_PROFILE=1` reports per-20-capture
 primitive/draw-call/vertex counts, draw submission, synchronous readback
-and palette conversion time. The hidden GL context still reads pixels back
-into SDL; an on-screen GL compositor is the next architecture step (see
+and palette conversion time. This describes the default CPU/SDL display
+path; the experimental `--gl-direct` compositor renders to the visible GL
+window without the per-presentation CPU readback (see below and
 `docs/gl_renderer_roadmap.md`).
 
 Full-detail baseline on the bundled free1 replay (3,700 deterministic,
@@ -84,7 +85,21 @@ For widescreen or >60 Hz playback, a newly captured GL scene is now
 finalised without first drawing/readback at the original width. The visible
 presentation is the first GL rendering pass for that capture. This removes
 one redundant readback every scene but **does not** remove the synchronous
-readback and CPU-to-SDL upload on each presented frame. The host Graphics
+readback and CPU-to-SDL upload on each presented frame in the default path.
+With `--gl-direct`, the completed scene is already in the compositor's
+own FBO colour texture, which eliminates both transfers and the previous
+full-sized GPU-to-GPU copy. Its fallback uses the old renderbuffer and copy
+when a driver rejects a texture colour attachment, or when explicitly
+selected with `FA18_GL_SCENE_TEXTURE=0`.
+
+The renderer caches four sets of GL colour/depth/stencil attachments to
+avoid reallocating them when the original 4:3 scene and widened output
+alternate in size. `FA18_GL_SCENE_DEBUG=1` reports new framebuffer
+allocations, and `tests/check_gl_scene_texture.sh` verifies identical flight
+and Pause pixels against the original path. Forced `FA18_GL_FORCE_RGBA4=1`
+still selects a real RGBA4 renderbuffer for strict-format testing; the
+unsized RGBA texture path and fallback both use only GL 2.1/GLES2 entry
+points. GLES2 hardware testing remains outstanding. The host Graphics
 submenu can switch 3D mode, widescreen, target FPS, detail and stats live.
 
 ## Pipeline
@@ -163,11 +178,12 @@ with and without `--gl`).  Per game frame:
    triangles share ordered batches with per-vertex palette and depth bias.
    Flat overlays are drawn as two ordered batches in disjoint land/water
    stencil classes, preserving the overlay order within each class.
-5. The indices are read back into the hi-res layer of `hires.cpp`, whose
-   composition is unchanged: pixels the game drew after the scene (HUD,
-   cockpit) and 2D drawing during the scene that no 3D primitive explains
-   come from the low-res frame, everything else from the layer, through
-   the live per-row palette (fades, flashes).
+5. In CPU/SDL presentation, the indices are read back into the hi-res layer
+   of `hires.cpp`: pixels the game drew after the scene (HUD, cockpit) and
+   unexplained 2D drawing during the scene come from the old screen,
+   everything else from the layer through the live per-row palette.
+   `--gl-direct` instead samples the scene texture and resolves the same
+   overlays, copper palette and double-buffered row mapping on the GPU.
 
 ## Plane operations in practice
 

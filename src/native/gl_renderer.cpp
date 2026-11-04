@@ -80,8 +80,10 @@ struct GL {
   void (*BindRenderbuffer)(GLenum, GLuint);
   void (*RenderbufferStorage)(GLenum, GLenum, GLsizei, GLsizei);
   void (*FramebufferRenderbuffer)(GLenum, GLenum, GLenum, GLuint);
+  void (*FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
   GLenum (*CheckFramebufferStatus)(GLenum);
   void (*DeleteRenderbuffers)(GLsizei, const GLuint*);
+  void (*DeleteFramebuffers)(GLsizei, const GLuint*);
   void (*Viewport)(GLint, GLint, GLsizei, GLsizei);
   void (*ClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
   void (*ClearStencil)(GLint);
@@ -119,6 +121,7 @@ struct GL {
   void (*ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
   void (*PixelStorei)(GLenum, GLint);
   void (*GenTextures)(GLsizei, GLuint*);
+  void (*DeleteTextures)(GLsizei, const GLuint*);
   void (*BindTexture)(GLenum, GLuint);
   void (*TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
   void (*TexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*);
@@ -155,8 +158,10 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.BindRenderbuffer, "glBindRenderbuffer", m);
   load(p, gl.RenderbufferStorage, "glRenderbufferStorage", m);
   load(p, gl.FramebufferRenderbuffer, "glFramebufferRenderbuffer", m);
+  load(p, gl.FramebufferTexture2D, "glFramebufferTexture2D", m);
   load(p, gl.CheckFramebufferStatus, "glCheckFramebufferStatus", m);
   load(p, gl.DeleteRenderbuffers, "glDeleteRenderbuffers", m);
+  load(p, gl.DeleteFramebuffers, "glDeleteFramebuffers", m);
   load(p, gl.Viewport, "glViewport", m);
   load(p, gl.ClearColor, "glClearColor", m);
   load(p, gl.ClearStencil, "glClearStencil", m);
@@ -194,6 +199,7 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.ReadPixels, "glReadPixels", m);
   load(p, gl.PixelStorei, "glPixelStorei", m);
   load(p, gl.GenTextures, "glGenTextures", m);
+  load(p, gl.DeleteTextures, "glDeleteTextures", m);
   load(p, gl.BindTexture, "glBindTexture", m);
   load(p, gl.TexImage2D, "glTexImage2D", m);
   load(p, gl.TexSubImage2D, "glTexSubImage2D", m);
@@ -353,7 +359,9 @@ void main() {
                   dist_segment(p, vec2(472.5, 264.6), vec2(484.5, 264.6)));
     base_colour = mix(base_colour, u_reticle.rgb, clamp(1.8 - d, 0.0, 1.0));
   }
-  if (u_frame_rail.a > 0.5 && centre_x >= 83.0 && centre_x < 236.0 &&
+  if (u_frame_rail.a > 0.5 &&
+      ((centre_x >= 83.0 && centre_x < 88.0) ||
+       (centre_x >= 231.0 && centre_x < 236.0)) &&
       y >= 45.0 && y < 146.0) {
     vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
     float left = dist_segment(p, vec2(256.5, 167.4), vec2(256.5, 520.2));
@@ -419,6 +427,7 @@ struct State {
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
   GLuint hud_tex = 0, pause_tex = 0, cockpit_tex = 0;
   bool present_failed = false;
+  bool scene_attached = false;  // scene texture is the FBO colour attachment
   int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
   GLint u_view = -1, u_param = -1, u_colour = -1, u_xscale = -1;
@@ -450,6 +459,18 @@ struct State {
 };
 
 State st;
+
+// An original game tick may request a centre-size readback and a different
+// widescreen presentation size. A single FBO would recreate *all* its colour,
+// depth and stencil storage at each alternation. Cache a few complete sets
+// (including the colour texture) instead; mobile GPUs have finite memory, so
+// the cache is deliberately bounded rather than growing with viewport sizes.
+struct CachedFbo {
+  GLuint fbo, colour_rb, depth_rb, stencil_rb, scene_tex;
+  int w, h, tex_w, tex_h;
+  bool scene_attached;
+};
+std::vector<CachedFbo> dormant_fbos;
 
 // ---- triangulation (ear clipping) of the terrain polygons ---------------------------
 
@@ -596,12 +617,56 @@ void stencil_class(int water) {
 
 bool ensure_fbo(int w, int h) {
   if (st.fbo && st.fb_w == w && st.fb_h == h) return true;
+  const auto snapshot = []() -> CachedFbo {
+    return {st.fbo, st.colour_rb, st.depth_rb, st.stencil_rb, st.scene_tex,
+            st.fb_w, st.fb_h, st.scene_tex_w, st.scene_tex_h, st.scene_attached};
+  };
+  const auto restore = [](const CachedFbo& saved) {
+    st.fbo = saved.fbo;
+    st.colour_rb = saved.colour_rb;
+    st.depth_rb = saved.depth_rb;
+    st.stencil_rb = saved.stencil_rb;
+    st.scene_tex = saved.scene_tex;
+    st.fb_w = saved.w;
+    st.fb_h = saved.h;
+    st.scene_tex_w = saved.tex_w;
+    st.scene_tex_h = saved.tex_h;
+    st.scene_attached = saved.scene_attached;
+  };
+  for (size_t i = 0; i < dormant_fbos.size(); ++i) {
+    if (dormant_fbos[i].w != w || dormant_fbos[i].h != h) continue;
+    const CachedFbo matching = dormant_fbos[i];
+    dormant_fbos.erase(dormant_fbos.begin() + long(i));
+    if (st.fbo) dormant_fbos.push_back(snapshot());
+    restore(matching);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
+    return true;
+  }
+  if (st.fbo) {
+    dormant_fbos.push_back(snapshot());
+    if (dormant_fbos.size() > 3) {
+      const CachedFbo retired = dormant_fbos.front();
+      dormant_fbos.erase(dormant_fbos.begin());
+      for (GLuint rb : {retired.colour_rb, retired.depth_rb, retired.stencil_rb})
+        if (rb) gl.DeleteRenderbuffers(1, &rb);
+      if (retired.scene_tex) gl.DeleteTextures(1, &retired.scene_tex);
+      gl.DeleteFramebuffers(1, &retired.fbo);
+    }
+    restore({});
+  }
   if (!st.fbo) gl.GenFramebuffers(1, &st.fbo);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
+  // On resize the old depth and stencil storage may have different sizes.
+  // Detach it before checking a texture colour attachment (strict GLES2).
+  gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+  gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+  gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, 0);
+  gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
   GLuint old[3] = {st.colour_rb, st.depth_rb, st.stencil_rb};
   for (GLuint r : old)
     if (r) gl.DeleteRenderbuffers(1, &r);
   st.colour_rb = st.depth_rb = st.stencil_rb = 0;
+  st.scene_attached = false;
   auto rb = [&](GLenum format) {
     GLuint r = 0;
     gl.GenRenderbuffers(1, &r);
@@ -609,16 +674,43 @@ bool ensure_fbo(int w, int h) {
     gl.RenderbufferStorage(GL_RENDERBUFFER, format, w, h);
     return r;
   };
-  // Prefer RGBA8; fall back to RGBA4 on strict GLES2 without sized formats.
-  // For reproducible tests FA18_GL_FORCE_RGBA4 exercises the GLES fallback.
-  if (!std::getenv("FA18_GL_FORCE_RGBA4")) {
-    st.colour_rb = rb(GL_RGBA8);
-    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
+  // Rendering directly into the texture sampled by the visible compositor
+  // removes one full-size GPU-to-GPU copy per presentation. The unsized
+  // GL_RGBA/UNSIGNED_BYTE texture format is legal on GL 2.1 and GLES2.
+  // Preserve the explicit RGBA4 renderbuffer oracle and a fallback for
+  // drivers that cannot complete an FBO with a colour texture.
+  const bool force_rgba4 = std::getenv("FA18_GL_FORCE_RGBA4") != nullptr;
+  const char* texture_opt = std::getenv("FA18_GL_SCENE_TEXTURE");
+  if (!force_rgba4 && (!texture_opt || std::strcmp(texture_opt, "0") != 0)) {
+    gl.ActiveTexture(GL_TEXTURE0);
+    if (!st.scene_tex) gl.GenTextures(1, &st.scene_tex);
+    gl.BindTexture(GL_TEXTURE_2D, st.scene_tex);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (st.scene_tex_w != w || st.scene_tex_h != h) {
+      gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+      st.scene_tex_w = w;
+      st.scene_tex_h = h;
+    }
+    gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                            st.scene_tex, 0);
+    st.scene_attached = gl.CheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
   }
-  if (!st.colour_rb || gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    if (st.colour_rb) gl.DeleteRenderbuffers(1, &st.colour_rb);
-    st.colour_rb = rb(GL_RGBA4);
-    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, st.colour_rb);
+  if (!st.scene_attached) {
+    gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    if (!force_rgba4) {
+      st.colour_rb = rb(GL_RGBA8);
+      gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                 st.colour_rb);
+    }
+    if (!st.colour_rb || gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      if (st.colour_rb) gl.DeleteRenderbuffers(1, &st.colour_rb);
+      st.colour_rb = rb(GL_RGBA4);
+      gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                 st.colour_rb);
+    }
   }
   // packed depth/stencil (GL 3, EXT/OES_packed_depth_stencil), else separate
   st.depth_rb = rb(GL_DEPTH24_STENCIL8);
@@ -637,6 +729,9 @@ bool ensure_fbo(int w, int h) {
   }
   st.fb_w = w;
   st.fb_h = h;
+  if (std::getenv("FA18_GL_SCENE_DEBUG"))
+    std::fprintf(stderr, "gl: scene FBO %dx%d colour=%s\n", w, h,
+                 st.scene_attached ? "texture" : "renderbuffer");
   return true;
 }
 
@@ -1271,20 +1366,25 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
     else
       gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
   };
-  // GPU-to-GPU copy from the RGBA8/RGBA4 scene renderbuffer. This preserves
-  // the strict GLES2 renderbuffer fallback until the scene can use an FBO
-  // texture attachment directly; neither path synchronously reads pixels.
-  if (!st.scene_tex || st.scene_tex_w != width || st.scene_tex_h != height) {
-    bind_texture(st.scene_tex, 0, width, height, nullptr);
-    st.scene_tex_w = width;
-    st.scene_tex_h = height;
+  // The ordinary path already rendered into scene_tex as the scene FBO's
+  // colour attachment. Only a strict RGBA4 / unsupported-texture fallback
+  // needs the legacy renderbuffer-to-texture copy.
+  if (!st.scene_attached) {
+    if (!st.scene_tex || st.scene_tex_w != width || st.scene_tex_h != height) {
+      bind_texture(st.scene_tex, 0, width, height, nullptr);
+      st.scene_tex_w = width;
+      st.scene_tex_h = height;
+    } else {
+      gl.ActiveTexture(GL_TEXTURE0);
+      gl.BindTexture(GL_TEXTURE_2D, st.scene_tex);
+    }
+    gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
+    gl.CopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
   } else {
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, st.scene_tex);
   }
-  gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
-  gl.CopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
-  gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
   bind_texture(st.overlay_tex, 1, 320, 200, layer.overlay.data());
   bind_texture(st.palette_tex, 2, 32, 200, layer.palette.data());
   bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data());
