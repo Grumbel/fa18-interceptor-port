@@ -290,6 +290,8 @@ uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
 uniform vec4 u_labels0; // K,T,F,T visibility (validated 3x5 source glyphs)
 uniform float u_label_g;
 uniform vec4 u_label_ink0, u_label_ink1, u_label_ink2, u_label_ink3, u_label_ink4;
+uniform vec4 u_heading_ink; // heading scale/index live colour and visibility
+uniform float u_heading_x;  // first major tick, observed from source stencil
 varying vec2 v_uv;
 float dist_segment(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
@@ -346,6 +348,19 @@ float letter_coverage(vec2 p, vec2 xy, float visible, float glyph) {
 }
 vec3 draw_letter(vec3 base, vec2 p, vec2 xy, float visible, float glyph, vec3 ink) {
   return mix(base, ink, letter_coverage(p, xy, visible, glyph));
+}
+float heading_coverage(vec2 p, float first_x) {
+  float upper = 60.5 * 3.6, lower = 61.5 * 3.6;
+  float d = dist_segment(p, vec2(159.5*3.0, 63.5*3.6),
+                        vec2(159.5*3.0, 65.5*3.6));
+  for (int i = 0; i < 5; ++i) {
+    float xx = (first_x + float(i)*10.0 + 0.5)*3.0;
+    if (mod(float(i), 2.0) < 0.5)
+      d = min(d, dist_segment(p, vec2(xx,upper), vec2(xx,lower)));
+    else
+      d = min(d, distance(p, vec2(xx,lower)));
+  }
+  return clamp(1.7 - d, 0.0, 1.0);
 }
 void main() {
   float x = floor(v_uv.x * u_dimensions.x);
@@ -491,6 +506,13 @@ void main() {
     } else if (centre_x >= 107.0 && centre_x < 112.0) {
       base_colour = draw_letter(base_colour,p,vec2(108.0,121.0),u_label_g,4.0,u_label_ink4.rgb);
     }
+  }
+  if (u_heading_ink.a > 0.5 && centre_x >= 136.0 && centre_x < 192.0 &&
+      y >= 59.0 && y < 67.0) {
+    vec2 source = vec2(v_uv.x * u_dimensions.x - u_side, v_uv.y * 200.0);
+    vec2 sample_xy = (floor(source * u_scale) + vec2(0.5)) / u_scale;
+    float cov = heading_coverage(sample_xy * vec2(3.0,3.6), u_heading_x);
+    base_colour = mix(base_colour, u_heading_ink.rgb, cov);
   }
   gl_FragColor = vec4(base_colour, 1.0);
 }
@@ -1582,6 +1604,14 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
                  float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
                  float(c & 255) / 255.f, c ? 1.f : 0.f);
   }
+  const uint32_t heading = hud_state.heading_rgb;
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_heading_ink"),
+               float((heading >> 16) & 255) / 255.f,
+               float((heading >> 8) & 255) / 255.f,
+               float(heading & 255) / 255.f,
+               hud_state.heading_marks ? 1.f : 0.f);
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_heading_x"),
+               float(hud_state.heading_first_x));
   if (std::getenv("FA18_HUD_RETICLE_DEBUG")) {
     static int reports = 0;
     if (reports++ == 0)

@@ -79,4 +79,40 @@ inline bool decode_letter(const uint32_t* rgb, const HudLetterSlot& slot, uint32
          std::equal(rows, rows + 5, kLetterRows[glyph]);
 }
 
+// The heading tape has five 10-column-spaced ticks, with alternating
+// 2-pixel/1-pixel heights. Its phase can move with the aircraft's heading;
+// the fixed three-pixel centre index remains at x=159. Accept only the
+// complete 8+3-pixel group, in one live pen colour, before replacing it.
+inline bool decode_heading_marks(const uint32_t* rgb, int& first_x, uint32_t& ink) {
+  constexpr int index_x = 159;
+  uint32_t index_ink = rgb[63 * kScreenWidth + index_x] & 0xffffffu;
+  if (!glyph_ink(index_ink, rgb[63 * kScreenWidth + 165]) ||
+      (rgb[64 * kScreenWidth + index_x] & 0xffffffu) != index_ink ||
+      (rgb[65 * kScreenWidth + index_x] & 0xffffffu) != index_ink ||
+      (rgb[62 * kScreenWidth + index_x] & 0xffffffu) == index_ink ||
+      (rgb[66 * kScreenWidth + index_x] & 0xffffffu) == index_ink) return false;
+  for (int start = 138; start <= 148; ++start) {
+    bool matches = true;
+    for (int i = 0; i < 5 && matches; ++i) {
+      const int x = start + i * 10;
+      const uint32_t pixel = rgb[61 * kScreenWidth + x] & 0xffffffu;
+      matches = pixel == index_ink &&
+                glyph_ink(pixel, rgb[61 * kScreenWidth + x + 2]) &&
+                (rgb[61 * kScreenWidth + x - 1] & 0xffffffu) != index_ink &&
+                (rgb[61 * kScreenWidth + x + 1] & 0xffffffu) != index_ink;
+      const bool major = (i % 2) == 0;
+      const uint32_t upper = rgb[60 * kScreenWidth + x] & 0xffffffu;
+      matches = matches && (major ? upper == index_ink &&
+                            glyph_ink(upper, rgb[60 * kScreenWidth + x + 2]) :
+                            upper != index_ink);
+    }
+    if (matches) {
+      first_x = start;
+      ink = index_ink;
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace remaster::hud_font

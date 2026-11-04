@@ -1127,6 +1127,35 @@ void blend_native_hud_letters(std::vector<uint32_t>& out, int side, int scale,
   }
 }
 
+float hud_heading_coverage(float px, float py, int first_x) {
+  const float upper = 60.5f * 3.6f, lower = 61.5f * 3.6f;
+  float d = hud_segment_distance(px, py, 159.5f * 3.f, 63.5f * 3.6f,
+                                 159.5f * 3.f, 65.5f * 3.6f);
+  for (int i = 0; i < 5; ++i) {
+    const float x = (first_x + i * 10 + .5f) * 3.f;
+    if (i % 2 == 0)
+      d = std::min(d, hud_segment_distance(px, py, x, upper, x, lower));
+    else
+      d = std::min(d, std::hypot(px - x, py - lower));
+  }
+  return 1.7f - d;
+}
+
+void blend_native_heading_marks(std::vector<uint32_t>& out, int side, int scale,
+                                const NativeHudState& hud) {
+  if (!hud.heading_marks) return;
+  const int stride = (W + side * 2) * scale;
+  for (int y = 59 * scale; y < 67 * scale; ++y)
+    for (int x = (hud.heading_first_x - 1) * scale;
+         x < (hud.heading_first_x + 42) * scale; ++x) {
+      const float px = (x + .5f) * 3.f / scale;
+      const float py = (y + .5f) * 3.6f / scale;
+      uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      blend_hud_pixel(dst, hud.heading_rgb,
+                      hud_heading_coverage(px, py, hud.heading_first_x));
+    }
+}
+
 const HudDigitSlot* hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
   for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
     const auto& slot = kHudDigitSlots[i];
@@ -1143,6 +1172,15 @@ int hud_original_letter_cell(int x, int y, const NativeHudState& hud) {
         y >= slot.y && y < slot.y + 5) return int(i);
   }
   return -1;
+}
+
+bool hud_original_heading_pixel(int x, int y, const NativeHudState& hud) {
+  if (!hud.heading_marks) return false;
+  if (x == 159 && y >= 63 && y <= 65) return true;
+  if (y != 60 && y != 61) return false;
+  const int delta = x - hud.heading_first_x;
+  if (delta < 0 || delta > 40 || delta % 10 != 0) return false;
+  return y == 61 || (delta / 10) % 2 == 0;
 }
 }  // namespace
 
@@ -1247,6 +1285,12 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
+        if (hud_original_heading_pixel(x, y, hud) &&
+            (rgb[y * W + x] & 0xffffffu) == hud.heading_rgb) {
+          const uint32_t bg = rgb[y * W + (x == 159 ? 165 : x + 2)];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+          continue;
+        }
         if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
             (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
           const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
@@ -1362,6 +1406,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
   blend_native_hud_letters(out, side, S, hud);
+  blend_native_heading_marks(out, side, S, hud);
   return true;
 }
 
@@ -1427,6 +1472,15 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (hud_original_heading_pixel(x, y, hud) &&
+          (rgb[y * W + x] & 0xffffffu) == hud.heading_rgb) {
+        const uint32_t bg = rgb[y * W + (x == 159 ? 165 : x + 2)];
+        p[0] = uint8_t(bg >> 16);
+        p[1] = uint8_t(bg >> 8);
+        p[2] = uint8_t(bg);
+        p[3] = 255;
+        continue;
+      }
       if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
           (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
         const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
@@ -1595,6 +1649,18 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   }
 
   if (out.frame_crown) {
+    const char* marks = std::getenv("FA18_HUD_HEADING_NATIVE");
+    if (!marks || std::strcmp(marks, "0") != 0) {
+      out.heading_marks = hud_font::decode_heading_marks(
+          rgb, out.heading_first_x, out.heading_rgb);
+      if (out.heading_marks && std::getenv("FA18_HUD_DIGITS_DEBUG")) {
+        static int reported = 0;
+        if (reported++ < 24)
+          std::fprintf(stderr, "HUD heading frame=%llu tick=%d ink=%06x\n",
+                       (unsigned long long)m.frame_count(),
+                       out.heading_first_x, out.heading_rgb);
+      }
+    }
     const char* digits = std::getenv("FA18_HUD_DIGITS_NATIVE");
     if (!digits || std::strcmp(digits, "0") != 0) {
       for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {

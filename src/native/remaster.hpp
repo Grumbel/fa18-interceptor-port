@@ -68,6 +68,9 @@ struct NativeHudState {
   std::array<uint32_t, 4> digit_colours{};
   std::array<uint8_t, kHudLetterSlots.size()> letter_visible{};
   std::array<uint32_t, kHudLetterSlots.size()> letter_colours{};
+  bool heading_marks = false;
+  int heading_first_x = 0;
+  uint32_t heading_rgb = 0;
 };
 NativeHudState native_hud_state(const amiga::Machine& m);
 // The native GL presenter calls this after prepare_gpu_layers(). Keep it
