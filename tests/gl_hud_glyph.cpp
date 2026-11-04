@@ -152,5 +152,35 @@ int main() {
   heading(143, kInk);
   assert(!live_heading_ink(screen.data(), 137, ink));
   assert(!live_heading_ink(screen.data(), 149, ink));
-  std::puts("PASS: HUD font and heading point-writer capture, live ink, partial/palette fallback");
+
+  // A reticle redraw comes from two different original 68000 writers. One
+  // horizontal bar is not enough, nor are four isolated vertical points.
+  ReticleWrites reticle{};
+  assert(!reticle.complete());
+  for (int y : {71, 72, 74}) reticle.add_vertical(y);
+  reticle.horizontal = true;
+  assert(!reticle.complete());
+  reticle.add_vertical(75);
+  assert(reticle.complete());
+  reticle = {};
+  for (int y : {75, 74, 72, 71}) reticle.add_vertical(y);
+  assert(!reticle.complete());
+  reticle.horizontal = true;
+  assert(reticle.complete());
+  reticle.add_vertical(73); // not one of the original vertical commands
+  assert(!reticle.complete());
+
+  screen.fill(kBackground);
+  screen[73 * 320 + 159] = kInk;
+  assert(live_reticle_ink(screen.data(), ink) && ink == kInk);
+  screen[73 * 320 + 159] = 0x111111; // faint Pause palette still visible
+  assert(live_reticle_ink(screen.data(), ink) && ink == 0x111111);
+  screen[73 * 320 + 159] = 0x0f0f0f;
+  assert(!live_reticle_ink(screen.data(), ink));
+  screen[73 * 320 + 159] = 0x776677;
+  assert(!live_reticle_ink(screen.data(), ink));
+  screen[73 * 320 + 159] = kBackground;
+  assert(!live_reticle_ink(screen.data(), ink));
+
+  std::puts("PASS: HUD font, heading and reticle writer capture; partial/palette fallback");
 }
