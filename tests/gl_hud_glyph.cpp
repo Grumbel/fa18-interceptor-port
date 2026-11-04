@@ -122,5 +122,35 @@ int main() {
   }
   heading(143, 0x226644); // not the grayscale HUD palette
   assert(!decode_heading_marks(screen.data(), first, ink));
-  std::puts("PASS: complete HUD numbers, labels and heading marks; partial/palette fallback");
+
+  // The original point-writer capture is screen-independent. It should
+  // identify a complete set even when the CPU draws it in a different order,
+  // but never recognise partial or spurious points as a valid heading.
+  for (int phase : {140, 143, 148}) {
+    HeadingMarkWrites captured{};
+    captured.add(159, 65);
+    for (int i = 4; i >= 0; --i) {
+      const int x = phase + 10 * i;
+      captured.add(x, 61);
+      if (i % 2 == 0) captured.add(x, 60);
+    }
+    assert(captured.phase() == -1); // centre index incomplete
+    captured.add(159, 63);
+    assert(captured.phase() == -1);
+    captured.add(159, 64);
+    assert(captured.phase() == phase);
+    captured.add(phase + 1, 61); // unexpected writer command
+    assert(captured.phase() == -1);
+
+    heading(phase, kInk);
+    assert(live_heading_ink(screen.data(), phase, ink) && ink == kInk);
+    screen[61 * 320 + size_t(phase)] = kBackground;
+    assert(!live_heading_ink(screen.data(), phase, ink));
+    heading(phase, 0x226644);
+    assert(!live_heading_ink(screen.data(), phase, ink));
+  }
+  heading(143, kInk);
+  assert(!live_heading_ink(screen.data(), 137, ink));
+  assert(!live_heading_ink(screen.data(), 149, ink));
+  std::puts("PASS: HUD font and heading point-writer capture, live ink, partial/palette fallback");
 }
