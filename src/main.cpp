@@ -745,11 +745,20 @@ public:
           tex_w = w;
           tex_h = h;
         }
-        SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
-        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-        SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, nullptr, nullptr);
-        SDL_RenderPresent(ren);
+        bool gpu_viewer = false;
+        if (direct_gl && glr::ready() && !fast) {
+          int dw = 0, dh = 0;
+          SDL_GL_GetDrawableSize(win, &dw, &dh);
+          gpu_viewer = glr::present_bitmap_gpu(cv.data(), w, h, amiga::FB_W, dw, dh);
+          if (gpu_viewer) SDL_GL_SwapWindow(win);
+        }
+        if (!gpu_viewer) {
+          SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
+          SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+          SDL_RenderClear(ren);
+          SDL_RenderCopy(ren, tex, nullptr, nullptr);
+          SDL_RenderPresent(ren);
+        }
         SDL_Delay(16);
       }
       menu_status = "mesh viewer closed";
@@ -1173,11 +1182,20 @@ public:
         }
         open = false;
       }
-      SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
-      SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-      SDL_RenderClear(ren);
-      SDL_RenderCopy(ren, tex, nullptr, nullptr);
-      SDL_RenderPresent(ren);
+      bool gpu_menu = false;
+      if (direct_gl && glr::ready() && !fast) {
+        int dw = 0, dh = 0;
+        SDL_GL_GetDrawableSize(win, &dw, &dh);
+        gpu_menu = glr::present_bitmap_gpu(cv.data(), w, h, amiga::FB_W, dw, dh);
+        if (gpu_menu) SDL_GL_SwapWindow(win);
+      }
+      if (!gpu_menu) {
+        SDL_UpdateTexture(tex, nullptr, cv.data(), w * 4);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, nullptr, nullptr);
+        SDL_RenderPresent(ren);
+      }
       SDL_Delay(16);
     }
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
@@ -1317,6 +1335,51 @@ public:
     report_presentation();
     return true;
   }
+  bool display_gpu_bitmap(const uint32_t* pixels, int w, int h, int logical_width) {
+    if (!direct_gl || !glr::ready()) return false;
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    const bool show_hud = stats_on || fps_on;
+    if (show_hud && hud_frame != frame_no) {
+      prepare_hud();
+      hud_rgba.resize(stats_buf.size() * 4);
+      for (size_t i = 0; i < stats_buf.size(); ++i) {
+        const uint32_t argb = stats_buf[i];
+        hud_rgba[i * 4 + 0] = uint8_t(argb >> 16);
+        hud_rgba[i * 4 + 1] = uint8_t(argb >> 8);
+        hud_rgba[i * 4 + 2] = uint8_t(argb);
+        hud_rgba[i * 4 + 3] = uint8_t(argb >> 24);
+      }
+      hud_frame = frame_no;
+    }
+    if (!glr::present_bitmap_gpu(pixels, w, h, logical_width, dw, dh,
+                                 show_hud ? hud_rgba.data() : nullptr)) return false;
+    if (std::getenv("FA18_GL_BITMAP_COMPARE") && !show_hud) {
+      std::vector<uint8_t> actual;
+      if (glr::read_gpu_window(actual, dw, dh)) {
+        const double aspect = double(logical_width) / 240.0;
+        const int vw = std::min(dw, int(std::round(dh * aspect)));
+        const int vh = std::min(dh, int(std::round(dw / aspect)));
+        const int ox = (dw - vw) / 2, oy = (dh - vh) / 2;
+        int different = 0;
+        for (int y = 0; y < h; ++y) {
+          const int sy = std::clamp(oy + int((y + 0.5) * vh / h), 0, dh - 1);
+          for (int x = 0; x < w; ++x) {
+            const int sx = std::clamp(ox + int((x + 0.5) * vw / w), 0, dw - 1);
+            const uint8_t* p = &actual[(size_t(dh - 1 - sy) * dw + sx) * 4];
+            const uint32_t colour = pixels[size_t(y) * w + x];
+            different += p[0] != uint8_t(colour >> 16) ||
+                         p[1] != uint8_t(colour >> 8) || p[2] != uint8_t(colour);
+          }
+        }
+        fprintf(stderr, "gl: bitmap parity frame %d different %d/%d\n",
+                frame_no, different, w * h);
+      }
+    }
+    SDL_GL_SwapWindow(win);
+    report_presentation();
+    return true;
+  }
   void present(const uint32_t* fb, int w, int h) {
     ++frame_no;
     {
@@ -1362,7 +1425,15 @@ public:
     if (gl_video && !gpu_presented && video != view_buf.data() &&
         std::getenv("FA18_GL_PRESENT_DEBUG"))
       fprintf(stderr, "gl: frame %d fell back to the original framebuffer\n", frame_no);
-    if (!gpu_presented) display_frame(video, vw, vh, logical_w);
+    // Keep the same GL swapchain even on menus, before the first complete
+    // scene, or when the enhanced scene cannot be composited yet.  Otherwise
+    // switching unpredictably between SDL_RenderPresent and SDL_GL_SwapWindow
+    // can expose an undefined backbuffer on some drivers.
+    const bool bitmap_gpu_presented = !gpu_presented && direct_gl && !fast &&
+        frame_no != screenshot_frame && pending_shot.empty() &&
+        display_gpu_bitmap(video, vw, vh, logical_w);
+    if (!gpu_presented && !bitmap_gpu_presented)
+      display_frame(video, vw, vh, logical_w);
     if (frame_no == screenshot_frame) save_screenshot(video);
     if (!pending_shot.empty()) {
       std::swap(pending_shot, screenshot_path);
@@ -1403,7 +1474,9 @@ public:
           if (!remaster::compose_view(*machine, view_buf, side,
                                       phase(float(i) / samples), true)) break;
           blend_pause_ui(view_buf, side, machine->hires_scale);
-          display_frame(view_buf.data(), vw, vh, logical_w);
+          if (!bitmap_gpu_presented ||
+              !display_gpu_bitmap(view_buf.data(), vw, vh, logical_w))
+            display_frame(view_buf.data(), vw, vh, logical_w);
         }
         ++extra_gl_presented;
         if (std::getenv("FA18_GL_INTERP_DEBUG") &&

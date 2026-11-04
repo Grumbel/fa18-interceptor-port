@@ -78,6 +78,15 @@ bool present_gpu(const remaster::GpuLayers& layers, int side, int S, float alpha
                  const uint8_t* hud_rgba = nullptr, bool hud_visible = false,
                  const uint8_t* pause_rgba = nullptr, bool pause_visible = false,
                  const uint8_t* cockpit_rgba = nullptr);
+// Show a framebuffer that has no usable captured 3D scene (title, menu,
+// transitions, original/software graphics mode) on the same visible GL
+// window. The caller swaps the GL window after presenting; the original
+// bitplanes remain the source texture until those UI screens are native.
+// `pixels` are top-down ARGB8888, `logical_width` uses the 320x240 aspect
+// convention of SDL_Renderer. Optional HUD is a top-left 960x720 RGBA layer.
+bool present_bitmap_gpu(const uint32_t* pixels, int width, int height,
+                        int logical_width, int drawable_w, int drawable_h,
+                        const uint8_t* hud_rgba = nullptr);
 // Debug/test-only: read the visible GL back buffer before swapping. Never
 // called by the ordinary presentation path.
 bool read_gpu_window(std::vector<uint8_t>& rgba, int w, int h);

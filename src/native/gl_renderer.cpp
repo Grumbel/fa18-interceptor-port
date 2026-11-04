@@ -72,6 +72,7 @@ constexpr GLenum GL_TEXTURE_MIN_FILTER = 0x2801, GL_TEXTURE_MAG_FILTER = 0x2800;
 constexpr GLenum GL_TEXTURE_WRAP_S = 0x2802, GL_TEXTURE_WRAP_T = 0x2803;
 constexpr GLenum GL_NEAREST = 0x2600, GL_CLAMP_TO_EDGE = 0x812F;
 constexpr GLenum GL_SCISSOR_TEST = 0x0C11, GL_BLEND = 0x0BE2, GL_CULL_FACE = 0x0B44;
+constexpr GLenum GL_SRC_ALPHA = 0x0302, GL_ONE_MINUS_SRC_ALPHA = 0x0303;
 
 struct GL {
   void (*GenFramebuffers)(GLsizei, GLuint*);
@@ -90,6 +91,7 @@ struct GL {
   void (*Clear)(GLbitfield);
   void (*Enable)(GLenum);
   void (*Disable)(GLenum);
+  void (*BlendFunc)(GLenum, GLenum);
   void (*DepthFunc)(GLenum);
   void (*DepthMask)(GLboolean);
   void (*ColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
@@ -168,6 +170,7 @@ bool load_gl(GetProc p, std::string& err) {
   load(p, gl.Clear, "glClear", m);
   load(p, gl.Enable, "glEnable", m);
   load(p, gl.Disable, "glDisable", m);
+  load(p, gl.BlendFunc, "glBlendFunc", m);
   load(p, gl.DepthFunc, "glDepthFunc", m);
   load(p, gl.DepthMask, "glDepthMask", m);
   load(p, gl.ColorMask, "glColorMask", m);
@@ -271,6 +274,17 @@ void main() {
   v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5);
   gl_Position = vec4(a_pos, 0.0, 1.0);
 }
+)";
+// Lightweight full-frame presenter for original 2D views, debug menus and
+// unavoidable CPU-composition fallbacks. Both sources are top-down RGBA;
+// the texture coordinates deliberately match the direct scene compositor.
+const char* kBitmapFragment = R"(
+#ifdef GL_ES
+precision mediump float;
+#endif
+uniform sampler2D u_image;
+varying vec2 v_uv;
+void main() { gl_FragColor = texture2D(u_image, v_uv); }
 )";
 const char* kPresentFragment = R"(
 #ifdef GL_ES
@@ -560,6 +574,9 @@ struct State {
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
+  GLuint bitmap_prog = 0, bitmap_tex = 0;
+  int bitmap_tex_w = 0, bitmap_tex_h = 0;
+  bool bitmap_failed = false;
   GLuint hud_tex = 0, pause_tex = 0, cockpit_tex = 0;
   bool present_failed = false;
   bool scene_attached = false;  // scene texture is the FBO colour attachment
@@ -1663,6 +1680,112 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   }
   gl.UseProgram(0);
   gl.ActiveTexture(GL_TEXTURE0);
+  return true;
+}
+
+bool present_bitmap_gpu(const uint32_t* pixels, int width, int height,
+                        int logical_width, int drawable_w, int drawable_h,
+                        const uint8_t* hud_rgba) {
+  if (!ready() || !pixels || width <= 0 || height <= 0 || logical_width <= 0 ||
+      drawable_w <= 0 || drawable_h <= 0 || st.bitmap_failed) return false;
+  st.make_current();
+  if (!st.bitmap_prog) {
+    std::string err;
+    const GLuint vs = compile(GL_VERTEX_SHADER, kPresentVertex, err);
+    const GLuint fs = compile(GL_FRAGMENT_SHADER, kBitmapFragment, err);
+    if (!vs || !fs) {
+      std::fprintf(stderr, "gl: native bitmap presenter unavailable (%s)\n", err.c_str());
+      st.bitmap_failed = true;
+      return false;
+    }
+    st.bitmap_prog = gl.CreateProgram();
+    gl.AttachShader(st.bitmap_prog, vs);
+    gl.AttachShader(st.bitmap_prog, fs);
+    gl.BindAttribLocation(st.bitmap_prog, 0, "a_pos");
+    gl.LinkProgram(st.bitmap_prog);
+    GLint linked = 0;
+    gl.GetProgramiv(st.bitmap_prog, GL_LINK_STATUS, &linked);
+    if (!linked) {
+      char log[2048] = {};
+      gl.GetProgramInfoLog(st.bitmap_prog, sizeof(log), nullptr, log);
+      std::fprintf(stderr, "gl: native bitmap presenter link: %s\n", log);
+      st.bitmap_failed = true;
+      return false;
+    }
+  }
+
+  // Upload only the 2D bitmap, never the old 3D scene. Normal flight uses
+  // present_gpu() and keeps its 3D geometry and UI on the GPU throughout.
+  static std::vector<uint8_t> rgba;
+  rgba.resize(size_t(width) * size_t(height) * 4);
+  for (size_t i = 0, n = size_t(width) * size_t(height); i < n; ++i) {
+    const uint32_t argb = pixels[i];
+    rgba[i * 4 + 0] = uint8_t(argb >> 16);
+    rgba[i * 4 + 1] = uint8_t(argb >> 8);
+    rgba[i * 4 + 2] = uint8_t(argb);
+    rgba[i * 4 + 3] = 255;
+  }
+  auto upload = [&](GLuint& tex, int unit, int w, int h, const uint8_t* data, bool resize) {
+    gl.ActiveTexture(GL_TEXTURE0 + unit);
+    if (!tex) gl.GenTextures(1, &tex);
+    gl.BindTexture(GL_TEXTURE_2D, tex);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (resize) gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    else gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
+  };
+  upload(st.bitmap_tex, 0, width, height, rgba.data(),
+         st.bitmap_tex_w != width || st.bitmap_tex_h != height);
+  st.bitmap_tex_w = width;
+  st.bitmap_tex_h = height;
+
+  gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+  gl.Viewport(0, 0, drawable_w, drawable_h);
+  gl.Disable(GL_SCISSOR_TEST);
+  gl.Disable(GL_DEPTH_TEST);
+  gl.Disable(GL_STENCIL_TEST);
+  gl.Disable(GL_CULL_FACE);
+  gl.Disable(GL_BLEND);
+  gl.ColorMask(1, 1, 1, 1);
+  gl.ClearColor(0, 0, 0, 1);
+  gl.Clear(GL_COLOR_BUFFER_BIT);
+  const double aspect = double(logical_width) / 240.0;
+  const int vw = std::min(drawable_w, int(std::round(drawable_h * aspect)));
+  const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
+
+  gl.UseProgram(st.bitmap_prog);
+  gl.Uniform1i(gl.GetUniformLocation(st.bitmap_prog, "u_image"), 0);
+  static const float quad[12] = {-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1};
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
+  gl.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
+  gl.DisableVertexAttribArray(1);
+  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+  gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
+  gl.DrawArrays(GL_TRIANGLES, 0, 6);
+
+  if (hud_rgba) {
+    // In widescreen, the statistics layer stays at the *window* top-left,
+    // rather than the left edge of the centred 4:3 bitmap.
+    upload(st.hud_tex, 0, 960, 720, hud_rgba, !st.hud_tex);
+    gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl.Enable(GL_BLEND);
+    gl.Viewport(0, 0, std::min(drawable_w, int(std::round(drawable_h * 4.0 / 3.0))),
+                drawable_h);
+    gl.DrawArrays(GL_TRIANGLES, 0, 6);
+    gl.Disable(GL_BLEND);
+  }
+  gl.UseProgram(0);
+  gl.ActiveTexture(GL_TEXTURE0);
+  if (std::getenv("FA18_GL_BITMAP_DEBUG")) {
+    static int count = 0;
+    if (++count <= 4 || count % 120 == 0)
+      std::fprintf(stderr, "gl: native bitmap presentation %d (%dx%d, logical %d, hud %d), error %#x\n",
+                   count, width, height, logical_width, hud_rgba != nullptr,
+                   gl.GetError());
+  }
   return true;
 }
 
