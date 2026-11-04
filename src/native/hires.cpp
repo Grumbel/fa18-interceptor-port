@@ -1047,8 +1047,9 @@ void blend_native_frame_rails(std::vector<uint32_t>& out, int side, int scale,
       }
 }
 
-// The screen-space HUD text writer is not yet hooked. Recognise only
-// complete source glyphs; leave partial redraws in the original overlay.
+// HUD text is captured from the original screen-space font writer when
+// possible; the complete bitplane-stencil recogniser remains a fallback
+// until each of the two screen buffers has received its first redraw.
 namespace {
 
 float hud_digit_coverage(float px, float py, const HudDigitSlot& slot, uint8_t mask) {
@@ -1649,6 +1650,8 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   }
 
   if (out.frame_crown) {
+    const HudFontCapture captured = captured_hud_font(m.frame_row_key());
+    int captured_digits = 0, captured_letters = 0;
     const char* marks = std::getenv("FA18_HUD_HEADING_NATIVE");
     if (!marks || std::strcmp(marks, "0") != 0) {
       out.heading_marks = hud_font::decode_heading_marks(
@@ -1665,7 +1668,15 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
     if (!digits || std::strcmp(digits, "0") != 0) {
       for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
         uint32_t ink = 0;
-        const int value = hud_font::decode_digit(rgb, kHudDigitSlots[i], ink);
+        int value = captured.digits[i];
+        if (value >= 0 && value < 10 &&
+            hud_font::live_ink(rgb, kHudDigitSlots[i].x, kHudDigitSlots[i].y,
+                               kHudDigitSlots[i].background_x,
+                               hud_font::kDigitRows[value][0], ink)) {
+          ++captured_digits;
+        } else {
+          value = hud_font::decode_digit(rgb, kHudDigitSlots[i], ink);
+        }
         if (value < 0) continue;
         out.digit_strokes[i] = hud_font::kDigitStrokes[value];
         out.digit_colours[kHudDigitSlots[i].group] = ink;
@@ -1681,7 +1692,15 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       if (!letters || std::strcmp(letters, "0") != 0) {
         for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
           uint32_t ink = 0;
-          if (!hud_font::decode_letter(rgb, kHudLetterSlots[i], ink)) continue;
+          const auto& slot = kHudLetterSlots[i];
+          const int glyph = hud_font::letter_index(slot.letter);
+          if (captured.letters[i] && glyph >= 0 &&
+              hud_font::live_ink(rgb, slot.x, slot.y, slot.background_x,
+                                 hud_font::kLetterRows[glyph][0], ink)) {
+            ++captured_letters;
+          } else if (!hud_font::decode_letter(rgb, slot, ink)) {
+            continue;
+          }
           out.letter_visible[i] = 1;
           out.letter_colours[i] = ink;
           if (std::getenv("FA18_HUD_DIGITS_DEBUG")) {
@@ -1694,6 +1713,9 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
           }
         }
       }
+      if (std::getenv("FA18_HUD_CAPTURE_DEBUG") && m.frame_count() % 400 == 0)
+        std::fprintf(stderr, "HUD capture use frame=%llu digits=%d letters=%d\n",
+                     (unsigned long long)m.frame_count(), captured_digits, captured_letters);
     }
   }
 

@@ -5,6 +5,7 @@
 
 #include "amiga/machine.hpp"
 #include "native/cockpit_assets.hpp"
+#include "native/hud_glyph.hpp"
 #include "native/remaster.hpp"
 
 #include <array>
@@ -16,9 +17,18 @@ namespace {
 
 constexpr uint32_t kFuelPixelWriter = 0x4744e;
 constexpr uint32_t kRightGlyphWriter = 0x47476;
+constexpr uint32_t kHudGlyphWriter = 0x47d56;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
 constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
+
+struct CapturedGlyph {
+  int8_t value = -1;
+  int8_t pending = -1;
+  uint8_t rows = 0;
+  uint32_t source_base = 0;
+  bool complete = false;
+};
 
 struct FuelBank {
   uint32_t row_key = 0;
@@ -29,12 +39,37 @@ struct FuelBank {
   std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_valid{};
   std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_pen{};
   bool right_refreshed = false;
+  std::array<CapturedGlyph, kHudDigitSlots.size()> hud_digits{};
+  std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
 };
 
 std::array<FuelBank, 4> fuel_banks{};
 uint64_t last_frame = 0;
 
 bool debug_enabled() { return std::getenv("FA18_COCKPIT_FUEL_DEBUG") != nullptr; }
+
+void capture_glyph_row(CapturedGlyph& glyph, int row, uint32_t base, int value,
+                       uint64_t frame, uint32_t bank_key, int x, int y) {
+  if (row == 0) {
+    glyph.complete = false;
+    glyph.pending = int8_t(value);
+    glyph.source_base = base;
+    glyph.rows = 0;
+  }
+  if (glyph.source_base != base || glyph.pending < 0 ||
+      glyph.rows != row) return;
+  ++glyph.rows;
+  if (glyph.rows == 5) {
+    glyph.value = glyph.pending;
+    glyph.complete = true;
+    if (std::getenv("FA18_HUD_CAPTURE_DEBUG")) {
+      static int printed = 0;
+      if (printed++ < 48)
+        std::fprintf(stderr, "HUD captured font frame=%llu bank=%06x x=%d y=%d value=%d\n",
+                     (unsigned long long)frame, bank_key, x, y, value);
+    }
+  }
+}
 
 int32_t current_fuel(amiga::Machine& m) {
   const int16_t player_offset = int16_t(m.r16(0x5abd6));
@@ -176,6 +211,73 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       return;
     }
   });
+  // The flight HUD uses another branch of the same resident 3x5 font:
+  // $47d56 ORs the pre-shifted glyph row into bitplane 3. D4 is the source
+  // glyph, A0 its current byte, A3 the double-buffered destination and the
+  // low nibble of D2 is the horizontal shift. Record only complete five-row
+  // writes to the 17 measured HUD cells, not arbitrary menu lettering.
+  m.add_pc_hook(kHudGlyphWriter, [&m] {
+    const uint32_t dst = m.cpu.a[3] & 0xffffff;
+    const uint32_t source = m.cpu.d[4] & 0xffffff;
+    const uint32_t src_row = m.cpu.a[0] & 0xffffff;
+    if (source < 0x52900 || source + 5 > 0x52b00 ||
+        src_row < source || src_row - source >= 5) return;
+    const int row = int(src_row - source);
+    if ((m.cpu.d[6] & 0xffff) != uint32_t(4 - row)) return;
+    uint8_t bytes[5]{};
+    if (row == 0)
+      for (int i = 0; i < 5; ++i) bytes[i] = m.r8(source + uint32_t(i));
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane3 = bank.row_key - FuelDigits::Y * kRowStride +
+                              3 * kPlaneBytes;
+      if (dst < plane3 || dst >= plane3 + kPlaneBytes) continue;
+      const uint32_t pos = dst - plane3;
+      const int y = pos / kRowStride;
+      const int x = int((pos % kRowStride) * 8 + (m.cpu.d[2] & 15));
+      for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
+        const auto& slot = kHudDigitSlots[i];
+        if (x != slot.x || y != slot.y + row) continue;
+        auto& glyph = bank.hud_digits[i];
+        const int value = row == 0 ? hud_font::source_digit(bytes) : glyph.pending;
+        capture_glyph_row(glyph, row, source, value, m.frame_count(),
+                          bank.row_key, x, slot.y);
+        return;
+      }
+      for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
+        const auto& slot = kHudLetterSlots[i];
+        if (x != slot.x || y != slot.y + row) continue;
+        auto& glyph = bank.hud_letters[i];
+        const int value = row == 0 ? int(hud_font::source_letter(bytes, slot.letter)) :
+                                     glyph.pending;
+        capture_glyph_row(glyph, row, source, value, m.frame_count(),
+                          bank.row_key, x, slot.y);
+        return;
+      }
+    }
+  });
+}
+
+HudFontCapture captured_hud_font(const uint32_t* row_keys) {
+  HudFontCapture out;
+  out.digits.fill(-1);
+  if (const char* opt = std::getenv("FA18_HUD_FONT_CAPTURE");
+      opt && opt[0] == '0' && opt[1] == '\0') return out;
+  if (!row_keys) return out;
+  // HUD interception must also work when the separate cockpit-art pass is
+  // disabled. Observe the displayed bitmap independently of fuel/readouts.
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        bank.row_key < FuelDigits::Y * kRowStride ||
+        bank.row_key - FuelDigits::Y * kRowStride != row_keys[0]) continue;
+    for (size_t i = 0; i < bank.hud_digits.size(); ++i)
+      if (bank.hud_digits[i].complete) out.digits[i] = bank.hud_digits[i].value;
+    for (size_t i = 0; i < bank.hud_letters.size(); ++i)
+      out.letters[i] = bank.hud_letters[i].complete && bank.hud_letters[i].value == 1;
+    break;
+  }
+  return out;
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,

@@ -36,6 +36,27 @@ inline int letter_index(char letter) {
   }
 }
 
+// The 68000 HUD writer receives five consecutive glyph bytes, with the
+// three meaningful bits in the high end of each byte. Decode those source
+// bytes directly, independent of display-plane pixels or palette fades.
+inline int source_digit(const uint8_t (&bytes)[5]) {
+  for (int n = 0; n < 10; ++n) {
+    bool same = true;
+    for (int y = 0; y < 5; ++y)
+      same &= (bytes[y] >> 5) == kDigitRows[n][y];
+    if (same) return n;
+  }
+  return -1;
+}
+
+inline bool source_letter(const uint8_t (&bytes)[5], char letter) {
+  const int glyph = letter_index(letter);
+  if (glyph < 0) return false;
+  for (int y = 0; y < 5; ++y)
+    if ((bytes[y] >> 5) != kLetterRows[glyph][y]) return false;
+  return true;
+}
+
 inline bool glyph_ink(uint32_t pixel, uint32_t background) {
   const int r = int((pixel >> 16) & 255);
   const int g = int((pixel >> 8) & 255);
@@ -43,6 +64,22 @@ inline bool glyph_ink(uint32_t pixel, uint32_t background) {
   return r == g && g == b && r >= 24 &&
          r > int((background >> 16) & 255) + 12 &&
          g > int((background >> 8) & 255) + 12;
+}
+
+// With an original 68000 font-writer capture, the glyph value and complete
+// five-row redraw are known independently of the rendered bitplanes. One
+// expected ink pixel is sufficient to recover its current copper-faded pen
+// and confirm that the source text is still visible in this camera.
+inline bool live_ink(const uint32_t* rgb, int x, int y, int background_x,
+                     uint8_t first_row, uint32_t& ink) {
+  for (int col = 0; col < 3; ++col) {
+    if (!(first_row & (4 >> col))) continue;
+    const uint32_t pixel = rgb[y * kScreenWidth + x + col];
+    if (!glyph_ink(pixel, rgb[y * kScreenWidth + background_x])) return false;
+    ink = pixel & 0xffffffu;
+    return true;
+  }
+  return false;
 }
 
 inline bool read_stencil(const uint32_t* rgb, int x0, int y0, int background_x,

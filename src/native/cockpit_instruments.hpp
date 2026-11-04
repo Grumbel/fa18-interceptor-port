@@ -42,6 +42,14 @@ struct FlightReadouts {
   }
 };
 
+// Source-font values latched when the game's HUD writer finishes drawing a
+// complete glyph into an Amiga screen buffer. The presenter selects the
+// displayed bank; -1 means it has no completed digit redraw for this slot.
+struct HudFontCapture {
+  std::array<int8_t, 12> digits{};
+  std::array<uint8_t, 5> letters{};
+};
+
 // Observe the original digit writer so the displayed value tracks the
 // double-buffered cockpit refresh instead of the current physics value.
 void install_cockpit_instrument_hooks(amiga::Machine& m);
@@ -52,4 +60,5 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
                                const uint32_t* row_palette, bool enabled);
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);
+HudFontCapture captured_hud_font(const uint32_t* row_keys);
 }  // namespace remaster
