@@ -1,0 +1,21 @@
+# Enter flight, accelerate, then sample consecutive emulated frames. Captures
+# are used by check_gl_widescreen_stability.sh to catch alternating blank frames.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 2
+4050 key F10
+4055 key F10
+4510 shot @OUTPUT@/4510.ppm
+4511 shot @OUTPUT@/4511.ppm
+4512 shot @OUTPUT@/4512.ppm
+4513 shot @OUTPUT@/4513.ppm
+4514 shot @OUTPUT@/4514.ppm
+4515 shot @OUTPUT@/4515.ppm
+4516 shot @OUTPUT@/4516.ppm
+4517 shot @OUTPUT@/4517.ppm
+4518 shot @OUTPUT@/4518.ppm
+4519 shot @OUTPUT@/4519.ppm

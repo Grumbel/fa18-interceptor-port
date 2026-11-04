@@ -1218,9 +1218,21 @@ uint32_t frame_rail_cockpit_background(const uint32_t* rgb, int x, int y) {
   return c;
 }
 
+// An unfinished back-buffer draw must not suppress presentation of the
+// preceding complete scene.  The original Amiga display also keeps showing
+// that front buffer while the next frame is still being drawn.
+static const Layer* completed_scene_layer() {
+  if (cur && cur->done) return cur;
+  const Layer* latest = nullptr;
+  for (const Layer& layer : layers)
+    if (layer.done && (!latest || layer.frame > latest->frame)) latest = &layer;
+  return latest;
+}
+
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
-  if (!glr::active() || !cur || !cur->done || m.hires_scale <= 0 || side < 0)
+  const Layer* ready = completed_scene_layer();
+  if (!glr::active() || !ready || m.hires_scale <= 0 || side < 0)
     return false;
   const int S = m.hires_scale;
   const int wide = W + side * 2, stride = wide * S, left = side * S;
@@ -1247,13 +1259,13 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
   // widescreen sides blink black even though the centre still shows world.
-  const bool recent_scene = m.frame_count() >= cur->frame &&
-                            m.frame_count() - cur->frame <= 16;
+  const bool recent_scene = m.frame_count() >= ready->frame &&
+                            m.frame_count() - ready->frame <= 16;
   const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
                       state == 0x23b7e || state == 0x23ba8; // frozen Pause world
   const bool paused = pause_screen_active();
   const NativeHudState hud = native_hud_state(m);
-  const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
+  const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
   for (int y = 0; y < 200; ++y) {
@@ -1273,13 +1285,13 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       // Use the current GL projection for its side bands whenever the
       // scanline belongs to a 3D layer; the original centre remains exact.
       if (flight && side > 0) {
-        const int scene_y = L && ly >= 0 && ly < cur->rows ? ly : y;
-        const int palette_y = y < cur->rows ? y : last_scene_row;
+        const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
+        const int palette_y = y < ready->rows ? y : last_scene_row;
         const uint8_t* scene_row = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride)];
         // Beyond the old viewport use the last scene palette, not the
         // cockpit's scanline palette (which produces flashing side bands).
-        const uint8_t left_bit = y < cur->rows && L ? idx[y * W] & 16 : 0;
-        const uint8_t right_bit = y < cur->rows && L ? idx[y * W + W - 1] & 16 : 0;
+        const uint8_t left_bit = y < ready->rows && L ? idx[y * W] & 16 : 0;
+        const uint8_t right_bit = y < ready->rows && L ? idx[y * W + W - 1] & 16 : 0;
         for (int x = 0; x < left; ++x)
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | left_bit)];
         for (int x = left + W * S; x < stride; ++x)
@@ -1326,9 +1338,9 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
-          const bool scene_behind = flight && y < 138 && y < cur->rows;
+          const bool scene_behind = flight && y < 138 && y < ready->rows;
           if (scene_behind) {
-            const int scene_y = L && ly >= 0 && ly < cur->rows ? ly : y;
+            const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
             const uint8_t* src = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride) +
                                                size_t(left + x * S)];
             for (int xx = 0; xx < S; ++xx)
@@ -1373,7 +1385,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         // writes remain identifiable where a completed Layer does match.
         // In Pause the bitplanes contain the frozen game's real 2D panel
         // and gauges, not a half-drawn 3D back buffer. Keep them visible.
-        const bool missing_3d_row = flight && !paused && y < cur->rows && !L;
+        const bool missing_3d_row = flight && !paused && y < ready->rows && !L;
         if (missing_3d_row ||
             (L && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
           // The screen may point to the preceding Amiga 3D buffer. Its
@@ -1412,8 +1424,9 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
 }
 
 bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
-  if (!glr::active() || !cur || !cur->done || m.hires_scale <= 0 ||
-      cur->rows <= 0 || cur->rows >= 255) return false;
+  const Layer* ready = completed_scene_layer();
+  if (!glr::active() || !ready || m.hires_scale <= 0 ||
+      ready->rows <= 0 || ready->rows >= 255) return false;
   const uint32_t* rgb = m.frame_rgb();
   const uint8_t* idx = m.frame_idx();
   const uint32_t* key = m.frame_row_key();
@@ -1429,8 +1442,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   // must project the world behind the entire uncockpitted side area.
   out.scene_rows = 200;
   const uint32_t state = native::rd32(0x2a6d4);
-  const bool recent_scene = m.frame_count() >= cur->frame &&
-                            m.frame_count() - cur->frame <= 16;
+  const bool recent_scene = m.frame_count() >= ready->frame &&
+                            m.frame_count() - ready->frame <= 16;
   const bool flight = native::rd8(0x5aa8d) != 0 || recent_scene ||
                       state == 0x23b7e || state == 0x23ba8;
   const bool paused = pause_screen_active();
@@ -1440,7 +1453,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
                  (unsigned long long)m.frame_count(), int(hud.reticle), hud.reticle_rgb,
                  int(hud.pause_title));
-  const int last_scene_row = std::clamp(cur->rows - 1, 0, 199);
+  const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
@@ -1455,14 +1468,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const int row = int(d / 40);
       if (row < l.rows) { L = &l; ly = row; break; }
     }
-    const bool scene = L && ly >= 0 && ly < cur->rows;
+    const bool scene = L && ly >= 0 && ly < ready->rows;
     const bool side_scene = flight || scene;
     out.rows[size_t(y) * 4] = side_scene ? uint8_t(scene ? ly : y) : 255;
     out.rows[size_t(y) * 4 + 1] = side_scene ? 255 : 0;
-    out.rows[size_t(y) * 4 + 2] = y < cur->rows && scene && (idx[y * W] & 16) ? 255 : 0;
-    out.rows[size_t(y) * 4 + 3] = y < cur->rows && scene && (idx[y * W + W - 1] & 16) ? 255 : 0;
+    out.rows[size_t(y) * 4 + 2] = y < ready->rows && scene && (idx[y * W] & 16) ? 255 : 0;
+    out.rows[size_t(y) * 4 + 3] = y < ready->rows && scene && (idx[y * W + W - 1] & 16) ? 255 : 0;
     for (int n = 0; n < 32; ++n) {
-      const uint32_t c = pal[size_t(y < cur->rows ? y : last_scene_row) * 32 + n];
+      const uint32_t c = pal[size_t(y < ready->rows ? y : last_scene_row) * 32 + n];
       uint8_t* p = &out.palette[(size_t(y) * 32 + n) * 4];
       p[0] = uint8_t(c >> 16);
       p[1] = uint8_t(c >> 8);
@@ -1528,7 +1541,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         continue;
       }
       if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
-        if (flight && y < 138 && y < cur->rows) {
+        if (flight && y < 138 && y < ready->rows) {
           // Reveal native scene indices, using the same double-buffered row
           // lookup as every other scene-backed pixel in the GPU presenter.
           p[0] = p[1] = p[2] = p[3] = 0;
@@ -1572,7 +1585,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         }
         ++dynamic_pixels;
       }
-      const bool missing_3d_row = flight && !paused && y < cur->rows && !scene;
+      const bool missing_3d_row = flight && !paused && y < ready->rows && !scene;
       if (missing_3d_row ||
           (scene && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
         p[0] = p[1] = p[2] = 0;

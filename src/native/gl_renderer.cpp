@@ -1190,6 +1190,28 @@ void finish_capture() {
 
 static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alpha) {
   if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
+  if (st.capturing) {
+    // VBL presentation can occur halfway through the next 3D draw.  The
+    // completed scene was moved into previous_* by scene_begin(); drawing
+    // (or finish_capture() here) would otherwise expose/finalise a partial
+    // primitive list and make alternate widescreen frames go blank.  Keep
+    // the capture intact and present the previous complete scene instead.
+    if (!st.has_previous) return false;
+    std::swap(st.verts, st.previous_verts);
+    std::swap(st.prims, st.previous_prims);
+    std::swap(st.camera, st.previous_camera);
+    st.capturing = false;
+    st.has_frame = true;
+    st.has_previous = false;
+    const bool rendered = draw_layer(px, w, h, S, 1.f);
+    st.has_previous = true;
+    st.has_frame = false;
+    st.capturing = true;
+    std::swap(st.camera, st.previous_camera);
+    std::swap(st.prims, st.previous_prims);
+    std::swap(st.verts, st.previous_verts);
+    return rendered;
+  }
   finish_capture();
   // A capture may be finalised at scene_end without rendering (deferred
   // widescreen/high-FPS path). Log/profile the first *render* of a capture,
