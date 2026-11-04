@@ -286,6 +286,13 @@ before committing. Note limitations explicitly rather than masking them.
   fallback until the displayed bank has been refreshed. Use
   `FA18_HUD_FONT_CAPTURE=0` to disable interception;
   `tests/check_gl_hud_capture.sh` checks output identity and real use.
+- [x] Capture the eleven heading tape and fixed-index point writes through
+  original `$444c0` (HUD caller A5, pen and per-bank destination word/mask),
+  deriving the moving phase without source-screen shape comparisons. Require
+  a complete recognised command set, use only a live grayscale pen probe,
+  and retain the full bitmap-stencil fallback until a valid redraw is
+  captured. `FA18_HUD_MARK_CAPTURE=0` reverts to stencil recognition;
+  `tests/check_gl_heading_capture.sh` checks exact flight/Pause output parity.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

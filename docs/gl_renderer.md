@@ -340,15 +340,27 @@ original clears are still mediated by the source bitmap.
 The five heading-scale marks beneath the top numerals are now native as well:
 three two-pixel major ticks alternate with two single-pixel minor ticks,
 10 source columns apart, and a fixed three-pixel central heading index at
-(159,63..65). Their heading-dependent horizontal phase is located over
-columns 138..148 by comparing the full original 8+3-pixel stencil against
-one live grayscale pen. Any incomplete, dimmed or unfamiliar layout keeps
-the original bitmap. The CPU and direct-GL passes erase only validated source
+(159,63..65). The original `$444c0` point writer provides the moving
+phase directly from its eleven bitplane-3 write commands: the destination
+word in `A0` and one-bit mask in the low half of `D4` locate the written
+pixel. Its HUD caller context (`A5=$5a966`, pen 5 in upper `D4`) distinguishes
+the compass from other pixels sharing this routine. An exact set of all
+eleven points, including the fixed centre, is required per redraw and per
+screen buffer; incomplete or unfamiliar commands are rejected. The CPU and
+direct-GL passes share this captured phase, using the source bitmap only for
+one live grayscale ink/visibility check. Until a complete writer capture is
+available (or when its live ink check fails), the previous full 8+3-pixel
+stencil decoder remains the fallback. The passes erase only validated source
 pixels and draw narrow antialiased strokes at corrected 960x720 coordinates;
 the shader snaps its coverage to the same 3x source grid for exact GPU/CPU
 parity in the scaled 1280x718 viewport. Disable this layer independently with
-`FA18_HUD_HEADING_NATIVE=0`. `gl_hud_glyph_test` checks source recognition,
-`tests/check_gl_heading.sh` bounds the changed flight/Pause pixels, and
+`FA18_HUD_HEADING_NATIVE=0`; set `FA18_HUD_MARK_CAPTURE=0` to use only the
+prior stencil decoder, or `FA18_HUD_MARK_CAPTURE_DEBUG=1` to trace original
+point-writer captures and compositing. `$444c0` is a recompiler hook boundary
+in `tools/recomp_hooks.txt`. `gl_hud_glyph_test` checks complete, partial and
+unexpected write sets; `tests/check_gl_heading_capture.sh` compares capture
+and stencil output pixel-for-pixel in flight/Pause;
+`tests/check_gl_heading.sh` bounds the native changed regions; and
 `tests/check_gl_direct.sh` checks actual GPU presentation parity.
 
 ## Open points
