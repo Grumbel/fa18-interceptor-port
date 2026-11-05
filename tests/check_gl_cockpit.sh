@@ -34,7 +34,7 @@ for mode in flight pause dynamic; do
     --screenshot "$frame" "$tmp/$mode-original.ppm" "$adf" \
     >"$tmp/$mode-original.log" 2>&1
   FA18_COCKPIT_FUEL_HIRES=0 FA18_COCKPIT_FUEL_BAR_NATIVE=0 \
-    FA18_COCKPIT_READOUTS_HIRES=0 \
+    FA18_COCKPIT_READOUTS_HIRES=0 FA18_COCKPIT_RADAR_NATIVE=0 \
     FA18_COCKPIT_DEBUG=1 FA18_COCKPIT_FUEL_DEBUG=1 \
     FA18_COCKPIT_TEXT_DEBUG=1 "$bin" "${common[@]}" \
     --screenshot "$frame" "$tmp/$mode-native.ppm" "$adf" \

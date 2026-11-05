@@ -1,0 +1,17 @@
+# Taxi, accelerate, pull back, bank left, then recover.
+# Pull-back exposes the moving contact inside the central radar.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3510 key 59
+3570 key 59
+4420 joy d
+4700 joy
+4760 joy l
+5100 joy
+5170 joy u
+5500 joy

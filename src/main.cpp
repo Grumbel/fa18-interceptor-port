@@ -1297,7 +1297,7 @@ public:
       return false;
     if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
       // Diagnostic only: compare the GPU-owned window against the existing
-      // CPU compositor at corresponding logical pixel centres. Normal GL
+      // CPU compositor at corresponding output sample centres. Normal GL
       // presentation has no readback; this mode deliberately does one.
       std::vector<uint8_t> actual;
       const bool read = glr::read_gpu_window(actual, dw, dh);
@@ -1310,13 +1310,25 @@ public:
         const int vw = std::min(dw, int(std::round(dh * aspect)));
         const int vh = std::min(dh, int(std::round(dw / aspect)));
         const int ox = (dw - vw) / 2, oy = (dh - vh) / 2;
+        // Retain historical source-centre parity for the existing HUD tests.
+        // A stricter output-subpixel oracle for thin native vectors is opt-in.
+        const bool subpixel_parity = std::getenv("FA18_GL_DIRECT_SUBPIXEL_PARITY") != nullptr;
         int mismatches = 0, total = 0;
         for (int y = 0; y < 200; ++y) {
           const int sy = std::clamp(oy + int((y + 0.5) * vh / 200), 0, dh - 1);
           for (int x = 0; x < wide; ++x) {
             const int sx = std::clamp(ox + int((x + 0.5) * vw / wide), 0, dw - 1);
             const uint8_t* p = &actual[(size_t(dh - 1 - sy) * dw + sx) * 4];
-            const uint32_t colour = view_buf[size_t(y * S + S / 2) * wide * S + x * S + S / 2];
+            // The aspect-corrected window may have 720 rows while the CPU
+            // vector layer has 600. Sample matching subpixels when requested;
+            // otherwise use the original logical-cell midpoint reference.
+            const int cx = subpixel_parity ?
+              std::clamp(int((sx - ox + 0.5) * wide * S / vw), 0, wide * S - 1) :
+              x * S + S / 2;
+            const int cy = subpixel_parity ?
+              std::clamp(int((sy - oy + 0.5) * 200 * S / vh), 0, 200 * S - 1) :
+              y * S + S / 2;
+            const uint32_t colour = view_buf[size_t(cy) * wide * S + cx];
             ++total;
             if (p[0] != uint8_t(colour >> 16) || p[1] != uint8_t(colour >> 8) ||
                 p[2] != uint8_t(colour)) {

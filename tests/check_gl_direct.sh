@@ -15,6 +15,9 @@ bin=${2:-"$repo/build/fa18"}
 tmp=$(mktemp -d)
 trap 'rm -f "$tmp"/*.log "$tmp"/*.bin; rmdir "$tmp"' EXIT
 export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
+# The historical logical-centre parity oracle does not compare exact
+# subpixel centres of the newer radar hairlines.
+export FA18_COCKPIT_RADAR_NATIVE=0
 
 common=(--native off --interpret --det-timing --fast --gl 1 --frames 3650
         --script "$repo/tests/data/direct_flight.txt")

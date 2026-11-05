@@ -50,6 +50,39 @@ struct FuelBar {
   }
 };
 
+// Small moving symbols on the central radar screen. The two diagonal guides
+// and centre reference are native geometry. Until the game's radar object
+// writer is isolated, only the contact's *position* is observed from the
+// original displayed bitplane; none of its enlarged pixels are reused.
+// Validate the complete source stencil before replacing any pixels so menu,
+// Pause and intermediate double-buffer redraws remain original.
+struct RadarSymbols {
+  static constexpr int X = 135, Y = 146, W = 47, H = 36;
+  bool active = false;
+  int dot_x = -1, dot_y = -1;
+  uint32_t guide_rgb = 0, marker_rgb = 0, dot_rgb = 0;
+  std::array<uint32_t, H> background{};
+
+  static bool guide_at(int x, int y) {
+    return y >= 148 && y <= 163 &&
+           (x == 139 + y - 148 || x == 177 - (y - 148));
+  }
+  static bool marker_at(int x, int y) {
+    return (x == 158 && y == 167) ||
+           (y == 168 && x >= 157 && x <= 159);
+  }
+  bool source_at(int x, int y, uint32_t rgb) const {
+    if (!active) return false;
+    const uint32_t c = rgb & 0xffffffu;
+    return (guide_at(x, y) && c == guide_rgb) ||
+           (marker_at(x, y) && c == marker_rgb) ||
+           (x == dot_x && y == dot_y && c == dot_rgb);
+  }
+  uint32_t backing(int y) const {
+    return background[std::size_t(y - Y)];
+  }
+};
+
 // Seven 3x5 numeric fields in the original 320x200 cockpit: five green
 // flight/auxiliary readouts and two black-on-purple ECM numbers. The mask
 // spans all three clusters but leaves uncaptured pixels untouched.
@@ -105,6 +138,8 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
                                const uint32_t* row_palette, bool enabled);
 FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
                          const uint32_t* row_palette, int hires_scale);
+RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* frame_rgb,
+                                   bool enabled);
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);
 HudFontCapture captured_hud_font(const uint32_t* row_keys);

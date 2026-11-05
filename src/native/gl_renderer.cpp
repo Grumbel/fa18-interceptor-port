@@ -304,6 +304,8 @@ uniform float u_fuel_stroke4;
 uniform vec4 u_fuel_ink; // live LCD foreground RGB and vector visibility
 uniform vec4 u_fuel_bar; // live pen-4 RGB and native vertical-bar visibility
 uniform float u_fuel_bar_rows; // integer height captured from displayed fuel
+uniform vec4 u_radar_guide, u_radar_marker, u_radar_contact;
+uniform vec2 u_radar_dot_pos; // validated location of the original moving dot
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
 uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
@@ -465,6 +467,24 @@ void main() {
                 clamp((p.y - top) * u_scale, 0.0, 1.0) *
                 clamp((181.0 - p.y) * u_scale, 0.0, 1.0);
     base_colour = mix(base_colour, u_fuel_bar.rgb, cov);
+  }
+  // Central radar glyphs are subpixel native geometry, using original pen
+  // colours but no source-resolution dot/line pixels or additional textures.
+  if (u_radar_guide.a > 0.5 && centre_x >= 135.0 && centre_x < 182.0 &&
+      y >= 146.0 && y < 182.0) {
+    vec2 source = vec2(v_uv.x * u_dimensions.x - u_side, v_uv.y * 200.0);
+    // GL drawable dimensions need not divide evenly into logical 3x pixels.
+    // Snap to those pixel centres so the direct shader and CPU composer
+    // antialias exactly the same vector samples despite viewport rounding.
+    vec2 p = (floor(source * u_scale) + vec2(0.5)) / u_scale;
+    float dg = min(dist_segment(p, vec2(139.5,148.5), vec2(154.5,163.5)),
+                   dist_segment(p, vec2(177.5,148.5), vec2(162.5,163.5)));
+    float dm = min(dist_segment(p, vec2(158.5,167.5), vec2(157.5,168.5)),
+                   dist_segment(p, vec2(157.5,168.5), vec2(159.5,168.5)));
+    float dc = distance(p, u_radar_dot_pos + vec2(0.5));
+    base_colour = mix(base_colour, u_radar_guide.rgb, clamp(1.0 - dg*u_scale, 0.0, 1.0));
+    base_colour = mix(base_colour, u_radar_marker.rgb, clamp(1.0 - dm*u_scale, 0.0, 1.0));
+    base_colour = mix(base_colour, u_radar_contact.rgb, clamp(1.0 - dc*u_scale, 0.0, 1.0));
   }
   // The fuel LCD's original 19x5 text cells have already been replaced by
   // native panel backing in u_overlay. Their five captured values are now
@@ -1696,6 +1716,16 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                layer.fuel_bar_vector ? 1.f : 0.f);
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_fuel_bar_rows"),
                float(layer.fuel_bar_rows));
+  const auto radar_ink = [&](const char* uniform, uint32_t c) {
+    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, uniform),
+                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
+                 float(c & 255) / 255.f, layer.radar_vector ? 1.f : 0.f);
+  };
+  radar_ink("u_radar_guide", layer.radar_guide_rgb);
+  radar_ink("u_radar_marker", layer.radar_marker_rgb);
+  radar_ink("u_radar_contact", layer.radar_dot_rgb);
+  gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_radar_dot_pos"),
+               float(layer.radar_dot_x), float(layer.radar_dot_y));
   gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
                float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
                float((hud_state.reticle_rgb >> 8) & 255) / 255.f,

@@ -573,6 +573,50 @@ FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
   return out;
 }
 
+RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* rgb,
+                                   bool enabled) {
+  RadarSymbols out;
+  if (const char* mode = std::getenv("FA18_COCKPIT_RADAR_NATIVE");
+      mode && mode[0] == '0' && mode[1] == '\0') return out;
+  if (!enabled || !rgb || m.hires_scale < 2 || m.r8(0x5aa7d) != 0 ||
+      (m.r8(0x5aa8d) == 0 && !pause_screen_active())) return out;
+
+  const auto pixel = [&](int x, int y) { return rgb[std::size_t(y) * 320 + x] & 0xffffffu; };
+  const uint32_t guide = pixel(139, 148), marker = pixel(158, 167);
+  if (guide == marker || guide == pixel(135, 148) ||
+      marker == pixel(135, 167)) return out;
+  int guides = 0;
+  for (int y = 148; y <= 163; ++y) {
+    guides += pixel(139 + y - 148, y) == guide;
+    guides += pixel(177 - (y - 148), y) == guide;
+  }
+  if (guides < 31 || pixel(157, 168) != marker ||
+      pixel(158, 168) != marker || pixel(159, 168) != marker) return out;
+
+  // The black radar pane contains one purple-blue contact in the original
+  // captures. Reject unexpected multi-contact or partially drawn frames;
+  // never infer an arbitrary dot location from unrelated cockpit pixels.
+  int dots = 0;
+  for (int y = RadarSymbols::Y; y < RadarSymbols::Y + RadarSymbols::H; ++y)
+    for (int x = RadarSymbols::X; x < RadarSymbols::X + RadarSymbols::W; ++x) {
+      const uint32_t c = pixel(x, y);
+      const int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+      if (r < 16 || b <= r + 24 || std::abs(r - g) > 8) continue;
+      if (++dots > 1) return RadarSymbols{};
+      out.dot_x = x;
+      out.dot_y = y;
+      out.dot_rgb = c;
+    }
+  if (dots != 1) return RadarSymbols{};
+
+  out.guide_rgb = guide;
+  out.marker_rgb = marker;
+  for (int y = RadarSymbols::Y; y < RadarSymbols::Y + RadarSymbols::H; ++y)
+    out.background[std::size_t(y - RadarSymbols::Y)] = rgb[std::size_t(y) * 320 + 135];
+  out.active = true;
+  return out;
+}
+
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled) {
   FlightReadouts out;

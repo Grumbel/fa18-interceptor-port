@@ -240,6 +240,17 @@ before committing. Note limitations explicitly rather than masking them.
   antialiased seven-stroke shapes; the GPU path reuses the existing overlay
   for stroke tokens. Test the three LCD regions, Pause fallback and unchanged
   emulated memory with `tests/check_gl_readout_vector.sh`.
+- [x] Vectorise the radar's 16-pixel diagonal guides, four-pixel centre
+  marker and moving purple contact inside the central cockpit panel. The
+  guide/marker geometry is independent native code; contact location is
+  validated from the *displayed* source bitmap because radar object-write
+  tracking is not yet available. A full source stencil and a unique dot are
+  required before clearing any old glyph pixels. GPU composition adds only
+  uniforms to the existing pass. `tests/check_gl_radar_vector.sh` covers
+  baseline/pull-back dot movement, panel bounds, RAM and GPU parity.
+- [ ] Intercept the Amiga radar contact/object writer (both displayed
+  buffers), derive dot coordinates from its parameters or flight state,
+  and eliminate the last source-bitplane dependence of the native radar.
 - [x] Replace the 5x5 flight HUD aiming cross with native antialiased
   strokes at corrected 4:3 resolution. A small original-screen stencil
   establishes visibility and the live copper pen colour, including the

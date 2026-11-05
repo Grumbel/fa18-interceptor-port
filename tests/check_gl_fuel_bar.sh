@@ -11,6 +11,9 @@ bin=${2:-"$repo/build/fa18"}
 tmp=$(mktemp -d)
 trap 'rm -f "$tmp"/*.ppm "$tmp"/*.log; rmdir "$tmp"' EXIT
 export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
+# Keep the direct-parity reference scoped to the fuel gauge, not later
+# antialiased radar lines (which use an opt-in subpixel parity oracle).
+export FA18_COCKPIT_RADAR_NATIVE=0
 
 for level in full three-quarters half quarter; do
   case "$level" in

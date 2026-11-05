@@ -35,7 +35,7 @@ done
 # The compositor's diagnostic comparison samples one logical pixel centre
 # for every source pixel. At 3x, the old raster edge still differs by two
 # unrelated pixels at the centre of the runway; the rails must add none.
-FA18_GL_DIRECT_COMPARE=1 "$bin" --native off --interpret --det-timing --fast \
+FA18_COCKPIT_RADAR_NATIVE=0 FA18_GL_DIRECT_COMPARE=1 "$bin" --native off --interpret --det-timing --fast \
   --gl 3 --gl-direct --widescreen --render-fps 120 --frames 3650 \
   --script "$repo/tests/data/direct_flight.txt" \
   "$adf" >"$tmp/direct.log" 2>&1

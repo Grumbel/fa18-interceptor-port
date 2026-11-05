@@ -47,7 +47,7 @@ grep -q 'gl: scene FBO .* colour=renderbuffer' "$tmp/rgba4.log"
 # A real visible-GPU frame alternates between the original centre readback
 # and full-width scene. The cache must allocate each distinct size *once*.
 FA18_GL_SCENE_DEBUG=1 FA18_GL_DIRECT_COMPARE=1 \
-  "$bin" --native off --interpret --det-timing --fast --gl 3 --gl-direct \
+  FA18_COCKPIT_RADAR_NATIVE=0 "$bin" --native off --interpret --det-timing --fast --gl 3 --gl-direct \
   --render-fps 120 --widescreen --frames 3650 \
   --script "$repo/tests/data/direct_flight.txt" \
   "$adf" >"$tmp/direct.log" 2>&1

@@ -490,6 +490,31 @@ call. `FA18_COCKPIT_READOUTS_HIRES=0` restores the original 3x5 shapes;
 `tests/check_gl_readout_vector.sh` bounds all changed pixels to the LCDs
 and compares the unchanged game RAM.
 
+The **central radar** is the next native dynamic cockpit layer. Comparing
+ADF-extracted `pix/inst5` artwork to scripted flight frames shows that its
+bezel/background are static, while two 16-pixel diagonals, a four-pixel
+centre marker and a single blue-purple contact are drawn by the game. The
+native code reproduces the guides and marker from geometry, and renders a
+small antialiased contact at the position found in the *displayed* 320×200
+frame (initially `(150,174)`, briefly `(166,160)` during a pull-back).
+This is **not yet independent of the Amiga radar drawing**: the contact's
+position is still read from a strictly bounded source-bitplane recognition
+pass, pending identification of the game's radar object writer. It is not
+guessed from the current physics state, which could be one screen buffer
+ahead. Before replacing source pixels, the recogniser requires the original
+guide/marker stencil and exactly one contact; incomplete redraws, Pause
+transitions and non-cockpit cameras fall back untouched. Colours come from
+the live frame, not hardcoded artwork. CPU and GPU draw directly at 2×–8×
+with no new GL texture or draw call; 1× stays pixel-exact.
+`FA18_COCKPIT_RADAR_NATIVE=0` restores source radar pixels at every scale.
+`tests/check_gl_radar_vector.sh` covers the two contact locations, bounded
+output differences, unchanged emulated RAM and direct-GPU parity. The latter
+sets `FA18_GL_DIRECT_SUBPIXEL_PARITY=1` to compare corresponding subpixel
+centres in the 600-row CPU buffer and 720-row aspect-corrected drawable;
+the old logical-centre diagnostic remains the default for previous tests.
+Comparing a CPU pixel's middle subpixel against every rescaled drawable
+sample is insufficient for verifying hairline antialiasing.
+
 The flight HUD's eight numeric glyphs at source positions (140,53),
 (144,53), (160,53), (164,53), (106,84), (226,84), (96,121) and (102,121)
 now have a limited native vector counterpart. Unlike the cockpit's hooked

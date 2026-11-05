@@ -952,6 +952,8 @@ void blend_native_fuel_bar(std::vector<uint32_t>& out, int side, int scale,
                            const FuelBar& bar);
 void blend_native_readout_digits(std::vector<uint32_t>& out, int side, int scale,
                                  const FlightReadouts& readouts, const uint32_t* palette);
+void blend_native_radar_symbols(std::vector<uint32_t>& out, int side, int scale,
+                                const RadarSymbols& radar);
 }
 
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
@@ -976,6 +978,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
   if (getenv("FA18_HIRES_KEYS") && m.frame_count() % 400 == 0) {
     std::fprintf(stderr, "[hires] frame %llu key0=%06x key50=%06x key100=%06x layers:", (unsigned long long)m.frame_count(), key[0], key[50], key[100]);
     for (auto& l : layers) std::fprintf(stderr, " %06x(rows=%d done=%d)", l.base, l.rows, l.done);
@@ -997,6 +1000,10 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* o = &out[size_t(y * S + yy) * size_t(Wp)];
       for (int x = 0; x < W; ++x) {
+        if (radar.source_at(x, y, rgb[size_t(y) * W + x])) {
+          for (int xx = 0; xx < S; ++xx) o[x * S + xx] = radar.backing(y);
+          continue;
+        }
         if (bar.contains(x, y)) {
           const uint32_t colour = bar.backing(y);
           for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
@@ -1036,6 +1043,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   blend_native_fuel_bar(out, 0, S, bar);
   blend_native_fuel_digits(out, 0, S, fuel);
   blend_native_readout_digits(out, 0, S, readouts, pal);
+  blend_native_radar_symbols(out, 0, S, radar);
   return true;
 }
 
@@ -1198,6 +1206,33 @@ void blend_native_fuel_bar(std::vector<uint32_t>& out, int side, int scale,
         std::clamp((FuelBar::Y + FuelBar::H - py) * scale, 0.f, 1.f);
       uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
       blend_hud_pixel(dst, bar.ink_rgb, coverage);
+    }
+}
+
+// Native radar guides and central reference use geometries measured against
+// the original game's pixel writer. The contact's *location* is still
+// observed from the displayed Amiga bitmap, but its shape is generated here.
+// Keep the three inks separate, using the live copper colours.
+void blend_native_radar_symbols(std::vector<uint32_t>& out, int side, int scale,
+                                const RadarSymbols& radar) {
+  if (!radar.active) return;
+  const int stride = (W + side * 2) * scale;
+  for (int y = RadarSymbols::Y * scale;
+       y < (RadarSymbols::Y + RadarSymbols::H) * scale; ++y)
+    for (int x = RadarSymbols::X * scale;
+         x < (RadarSymbols::X + RadarSymbols::W) * scale; ++x) {
+      const float px = (x + .5f) / scale, py = (y + .5f) / scale;
+      uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      const float guide = std::min(
+        hud_segment_distance(px, py, 139.5f, 148.5f, 154.5f, 163.5f),
+        hud_segment_distance(px, py, 177.5f, 148.5f, 162.5f, 163.5f));
+      blend_hud_pixel(dst, radar.guide_rgb, 1.f - guide * scale);
+      const float marker = std::min(
+        hud_segment_distance(px, py, 158.5f, 167.5f, 157.5f, 168.5f),
+        hud_segment_distance(px, py, 157.5f, 168.5f, 159.5f, 168.5f));
+      blend_hud_pixel(dst, radar.marker_rgb, 1.f - marker * scale);
+      const float dot = std::hypot(px - radar.dot_x - .5f, py - radar.dot_y - .5f);
+      blend_hud_pixel(dst, radar.dot_rgb, 1.f - dot * scale);
     }
 }
 
@@ -1390,6 +1425,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
@@ -1487,6 +1523,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         const uint8_t li = idx[y * W + x];
+        if (radar.source_at(x, y, rgb[size_t(y) * W + x])) {
+          const uint32_t colour = radar.backing(y);
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+          continue;
+        }
         if (bar.contains(x, y)) {
           const uint32_t colour = bar.backing(y);
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
@@ -1559,6 +1600,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
   blend_native_fuel_bar(out, side, S, bar);
+  blend_native_radar_symbols(out, side, S, radar);
   blend_native_fuel_digits(out, side, S, fuel);
   blend_native_readout_digits(out, side, S, readouts, pal);
   blend_native_hud_letters(out, side, S, hud);
@@ -1581,12 +1623,19 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, m.hires_scale);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
   out.fuel_strokes = fuel.stroke_masks;
   out.fuel_ink_rgb = fuel.ink_rgb;
   out.fuel_vector = fuel.vector_enabled;
   out.fuel_bar_ink_rgb = bar.ink_rgb;
   out.fuel_bar_rows = bar.filled_rows;
   out.fuel_bar_vector = bar.active;
+  out.radar_vector = radar.active;
+  out.radar_guide_rgb = radar.guide_rgb;
+  out.radar_marker_rgb = radar.marker_rgb;
+  out.radar_dot_rgb = radar.dot_rgb;
+  out.radar_dot_x = radar.dot_x;
+  out.radar_dot_y = radar.dot_y;
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.
@@ -1636,6 +1685,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (radar.source_at(x, y, rgb[size_t(y) * W + x])) {
+        const uint32_t c = radar.backing(y);
+        p[0] = uint8_t(c >> 16);
+        p[1] = uint8_t(c >> 8);
+        p[2] = uint8_t(c);
+        p[3] = 255;
+        continue;
+      }
       if (bar.contains(x, y)) {
         const uint32_t c = bar.backing(y);
         p[0] = uint8_t(c >> 16);
