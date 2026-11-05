@@ -328,6 +328,10 @@ before committing. Note limitations explicitly rather than masking them.
   coverage mask (including sliver/edge expansion), with a legacy reference
   toggle for 1x/4x framebuffer and RAM parity checks. The separate **Amiga**
   blitter still runs for now.
+- [x] Reuse the GPU compositor's 2D fallback, copper palette and display-row
+  mapping textures between interpolated high-FPS presentations of one game
+  frame, including explicit rebinds after a bitmap presenter transition;
+  retain a reference upload mode and Pause GPU/RAM parity test.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

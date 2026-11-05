@@ -217,6 +217,20 @@ In a 3,550-frame deterministic interpreter replay using `--full-detail
 and presentation, not merely the removed raster work; it is not a benchmark
 of native hardware GPU performance.
 
+For `--gl-direct --render-fps 120|180|240`, the GPU reprojects an interpolated
+scene between original game ticks. The original 320×200 overlay, 32×200
+scanline copper palette and 1×200 double-buffer row map do not change within
+a tick; they are now uploaded once per game-frame revision and merely rebound
+on subsequent presentations. The bitmap/title presenter can change texture
+bindings, so reuse still explicitly rebinds all three units. Setting
+`FA18_GL_LAYER_UPLOAD_REFERENCE=1` restores every-presentation uploads;
+`FA18_GL_LAYER_UPLOAD_DEBUG=1` logs upload/reuse totals. The deterministic
+visible-GPU replay `tests/check_gl_layer_upload.sh` exercises both paths and
+checks RAM hashes, 120 Hz extra presentations and identical GPU/CPU parity
+results with and without caching at Pause (including the bounded 1x title
+sample-centre difference). `tests/check_gl_direct.sh` retains its separate
+tighter 3x Pause parity check.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical
