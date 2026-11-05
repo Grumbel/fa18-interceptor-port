@@ -1,0 +1,10 @@
+# Reach the runway, then drop the player's original fuel word to 12,500.
+# At this scenario the player object's offset is zero; fuel is record+114.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3520 poke 5b4ee 0030d400 l

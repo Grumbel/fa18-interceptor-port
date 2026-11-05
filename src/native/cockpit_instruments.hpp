@@ -31,6 +31,25 @@ struct FuelDigits {
   }
 };
 
+// The adjacent vertical gauge is 4x23 source pixels, filled from the bottom.
+// Its height is derived from the *displayed* fuel bank, not the current
+// physics tick. At enhanced resolution the bar is drawn as a native shape;
+// its background and ink use the live copper colours.
+struct FuelBar {
+  static constexpr int X = 111, Y = 158, W = 4, H = 23;
+  std::array<uint32_t, H> background_rgba{};
+  uint32_t ink_rgb = 0;
+  int filled_rows = 0;
+  bool active = false;
+
+  bool contains(int x, int y) const {
+    return active && x >= X && x < X + W && y >= Y && y < Y + H;
+  }
+  uint32_t backing(int y) const {
+    return background_rgba[std::size_t(y - Y)];
+  }
+};
+
 // Seven 3x5 numeric fields in the original 320x200 cockpit: five green
 // flight/auxiliary readouts and two black-on-purple ECM numbers. The mask
 // spans all three clusters but leaves uncaptured pixels untouched.
@@ -84,6 +103,8 @@ void reset_cockpit_instrument_state();
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
                                const uint32_t* row_keys,
                                const uint32_t* row_palette, bool enabled);
+FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
+                         const uint32_t* row_palette, int hires_scale);
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);
 HudFontCapture captured_hud_font(const uint32_t* row_keys);

@@ -93,6 +93,11 @@ struct GpuLayers {
   std::array<uint8_t, 5> fuel_strokes{};
   uint32_t fuel_ink_rgb = 0;
   bool fuel_vector = false;
+  // Native vertical fuel gauge, cleared from the source-pixel overlay and
+  // drawn by the same GPU pass with no additional texture or draw call.
+  uint32_t fuel_bar_ink_rgb = 0;
+  int fuel_bar_rows = 0;
+  bool fuel_bar_vector = false;
 };
 bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out);
 }  // namespace remaster

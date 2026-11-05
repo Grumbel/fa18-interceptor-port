@@ -948,6 +948,8 @@ void install(amiga::Machine& m) {
 namespace {
 void blend_native_fuel_digits(std::vector<uint32_t>& out, int side, int scale,
                               const FuelDigits& fuel);
+void blend_native_fuel_bar(std::vector<uint32_t>& out, int side, int scale,
+                           const FuelBar& bar);
 void blend_native_readout_digits(std::vector<uint32_t>& out, int side, int scale,
                                  const FlightReadouts& readouts, const uint32_t* palette);
 }
@@ -972,6 +974,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), key, pal, cockpit_enabled);
+  const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
   if (getenv("FA18_HIRES_KEYS") && m.frame_count() % 400 == 0) {
     std::fprintf(stderr, "[hires] frame %llu key0=%06x key50=%06x key100=%06x layers:", (unsigned long long)m.frame_count(), key[0], key[50], key[100]);
@@ -994,6 +997,11 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* o = &out[size_t(y * S + yy) * size_t(Wp)];
       for (int x = 0; x < W; ++x) {
+        if (bar.contains(x, y)) {
+          const uint32_t colour = bar.backing(y);
+          for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
+          continue;
+        }
         if (fuel.contains(x, y)) {
           const uint32_t colour = fuel.backing(x, y);
           for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
@@ -1025,6 +1033,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   }
   if (S == 1 && getenv("FA18_HIRES_STATS"))
     std::fprintf(stderr, "[hires-diff] frame %llu mismatch=%d\n", (unsigned long long)m.frame_count(), mismatch);
+  blend_native_fuel_bar(out, 0, S, bar);
   blend_native_fuel_digits(out, 0, S, fuel);
   blend_native_readout_digits(out, 0, S, readouts, pal);
   return true;
@@ -1166,6 +1175,29 @@ void blend_native_fuel_digits(std::vector<uint32_t>& out, int side, int scale,
       uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
       blend_hud_pixel(dst, fuel.ink_rgb,
                       hud_digit_coverage(px, py, slot, fuel.stroke_masks[size_t(digit)]));
+    }
+}
+
+// The original bar is a 4x23 rectangle, with 0..23 filled rows. Replace
+// enlarged low-resolution pixels with a scanline-palette-correct native
+// rectangle, giving the narrow sides and the changing upper edge subpixel
+// coverage. Its surrounding green tick marks are separate static artwork.
+void blend_native_fuel_bar(std::vector<uint32_t>& out, int side, int scale,
+                           const FuelBar& bar) {
+  if (!bar.active || !bar.filled_rows) return;
+  const int stride = (W + side * 2) * scale;
+  const float top = float(FuelBar::Y + FuelBar::H - bar.filled_rows);
+  for (int y = FuelBar::Y * scale; y < (FuelBar::Y + FuelBar::H) * scale; ++y)
+    for (int x = FuelBar::X * scale; x < (FuelBar::X + FuelBar::W) * scale; ++x) {
+      const float px = (x + .5f) / scale;
+      const float py = (y + .5f) / scale;
+      const float coverage =
+        std::clamp((px - FuelBar::X) * scale, 0.f, 1.f) *
+        std::clamp((FuelBar::X + FuelBar::W - px) * scale, 0.f, 1.f) *
+        std::clamp((py - top) * scale, 0.f, 1.f) *
+        std::clamp((FuelBar::Y + FuelBar::H - py) * scale, 0.f, 1.f);
+      uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      blend_hud_pixel(dst, bar.ink_rgb, coverage);
     }
 }
 
@@ -1356,6 +1388,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
+  const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
@@ -1454,6 +1487,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         const uint8_t li = idx[y * W + x];
+        if (bar.contains(x, y)) {
+          const uint32_t colour = bar.backing(y);
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+          continue;
+        }
         if (fuel.contains(x, y)) {
           const uint32_t colour = fuel.backing(x, y);
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
@@ -1520,6 +1558,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
+  blend_native_fuel_bar(out, side, S, bar);
   blend_native_fuel_digits(out, side, S, fuel);
   blend_native_readout_digits(out, side, S, readouts, pal);
   blend_native_hud_letters(out, side, S, hud);
@@ -1540,10 +1579,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
+  const FuelBar bar = prepare_fuel_bar(fuel, pal, m.hires_scale);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
   out.fuel_strokes = fuel.stroke_masks;
   out.fuel_ink_rgb = fuel.ink_rgb;
   out.fuel_vector = fuel.vector_enabled;
+  out.fuel_bar_ink_rgb = bar.ink_rgb;
+  out.fuel_bar_rows = bar.filled_rows;
+  out.fuel_bar_vector = bar.active;
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.
@@ -1593,6 +1636,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (bar.contains(x, y)) {
+        const uint32_t c = bar.backing(y);
+        p[0] = uint8_t(c >> 16);
+        p[1] = uint8_t(c >> 8);
+        p[2] = uint8_t(c);
+        p[3] = 255;
+        continue;
+      }
       if (hud_original_heading_pixel(x, y, hud) &&
           (rgb[y * W + x] & 0xffffffu) == hud.heading_rgb) {
         const uint32_t bg = rgb[y * W + (x == 159 ? 165 : x + 2)];

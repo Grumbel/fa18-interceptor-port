@@ -1,0 +1,9 @@
+# Reach the runway, then set the player fuel to 6,250 (quarter tank).
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3520 poke 5b4ee 00186a00 l

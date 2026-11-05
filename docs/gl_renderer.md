@@ -447,6 +447,24 @@ only the fuel LCD rectangle can change in flight, Pause and a dynamic throttle
 replay, with matching original emulated RAM hashes. A Pause frame with no
 eligible captured glyph/pen stays pixel-exact.
 
+The adjacent vertical **fuel bar** is also independent of the original
+bitplanes at enhanced resolutions. Its 4×23-cell interior is (111,158) to
+(114,180); the green instrument ticks on either side are separate static
+cockpit artwork. Four original-game replays with 24,998, 18,748, 12,498 and
+6,248 fuel units produce respectively 22, 17, 11 and 5 filled rows. This
+establishes the original integer scaling, `min(23, fuel * 23 / 25000)`.
+The per-screen-buffer LCD refresh latch supplies the *displayed* value,
+and the copper palette supplies the black backing and green pen-4 fill.
+The CPU and GPU compose a narrow antialiased rectangle at output resolution;
+the GPU path needs no additional texture or draw call. The exact 1× bitmap
+is untouched, and unusual palette/partially drawn frames keep their
+bitplanes. `FA18_COCKPIT_FUEL_BAR_NATIVE=0` restores the pixel-size source
+bar; `tests/check_gl_fuel_bar.sh` checks four 1× source heights, bounded
+high-resolution changes, RAM hashes and direct-GPU parity.
+Under scripted `--fast`, normal visible GPU swaps are skipped; setting
+`FA18_GL_DIRECT_COMPARE=1` explicitly enables those swaps for the parity
+diagnostic, so headless tests actually exercise the direct shader.
+
 Seven additional numeric fields are now synthesized from the original
 resident 3×5 font without sampling their displayed bitmap pixels. The
 original `$47476` branch supplies the five green flight/auxiliary fields

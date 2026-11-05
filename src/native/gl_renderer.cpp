@@ -302,6 +302,8 @@ uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 uniform vec4 u_fuel_strokes0; // first four fuel-LCD seven-stroke masks
 uniform float u_fuel_stroke4;
 uniform vec4 u_fuel_ink; // live LCD foreground RGB and vector visibility
+uniform vec4 u_fuel_bar; // live pen-4 RGB and native vertical-bar visibility
+uniform float u_fuel_bar_rows; // integer height captured from displayed fuel
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
 uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
@@ -450,6 +452,19 @@ void main() {
     vec4 ui = texture2D(u_pause, vec2((centre_x + fract(v_uv.x * u_dimensions.x)) / 320.0,
                                        v_uv.y));
     base_colour = mix(base_colour, u_pause_ink.rgb, ui.a);
+  }
+  // The original 4x23 fuel fill was removed from the overlay. Its height
+  // is calculated from the same double-buffered fuel latch as the LCD,
+  // then the narrow bar is antialiased at the actual output resolution.
+  if (u_fuel_bar.a > 0.5 && centre_x >= 111.0 && centre_x < 115.0 &&
+      y >= 158.0 && y < 181.0) {
+    vec2 p = vec2(v_uv.x * u_dimensions.x - u_side, v_uv.y * 200.0);
+    float top = 181.0 - u_fuel_bar_rows;
+    float cov = clamp((p.x - 111.0) * u_scale, 0.0, 1.0) *
+                clamp((115.0 - p.x) * u_scale, 0.0, 1.0) *
+                clamp((p.y - top) * u_scale, 0.0, 1.0) *
+                clamp((181.0 - p.y) * u_scale, 0.0, 1.0);
+    base_colour = mix(base_colour, u_fuel_bar.rgb, cov);
   }
   // The fuel LCD's original 19x5 text cells have already been replaced by
   // native panel backing in u_overlay. Their five captured values are now
@@ -1674,6 +1689,13 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                float((layer.fuel_ink_rgb >> 8) & 255) / 255.f,
                float(layer.fuel_ink_rgb & 255) / 255.f,
                layer.fuel_vector ? 1.f : 0.f);
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_bar"),
+               float((layer.fuel_bar_ink_rgb >> 16) & 255) / 255.f,
+               float((layer.fuel_bar_ink_rgb >> 8) & 255) / 255.f,
+               float(layer.fuel_bar_ink_rgb & 255) / 255.f,
+               layer.fuel_bar_vector ? 1.f : 0.f);
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_fuel_bar_rows"),
+               float(layer.fuel_bar_rows));
   gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
                float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
                float((hud_state.reticle_rgb >> 8) & 255) / 255.f,

@@ -111,6 +111,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   and GPU presentation. `FA18_COCKPIT_FUEL_HIRES=0` restores exact 3x5
   source glyphs; `tests/check_gl_fuel_vector.sh` bounds the changed pixels
   and checks RAM equivalence.
+  The neighboring 4×23 fuel gauge draws a native green bar in the
+  higher-resolution cockpit. It uses the same displayed-bank fuel latch
+  as the digits and the original 23-row integer height conversion; the
+  tick marks and 1× pixels are unchanged. Set
+  `FA18_COCKPIT_FUEL_BAR_NATIVE=0` for the original pixel-size gauge and
+  run `tests/check_gl_fuel_bar.sh` for its bounded/palette/GPU checks.
   Seven cockpit readouts are also reconstructed from the game's resident
   3x5 font, tracking the two Amiga screen buffers independently. The green
   altitude, airspeed, throttle/Mach, miles and magnification fields use

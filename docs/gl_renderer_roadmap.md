@@ -197,6 +197,16 @@ before committing. Note limitations explicitly rather than masking them.
   reference toggle; compare bounded flight/dynamic changes, safe Pause
   fallback and RAM
   hashes, then check that direct GPU presentation matches the CPU composer.
+- [x] Recreate the adjacent moving fuel bar as a true output-resolution
+  instrument. Four scripted source-game tank levels recover a 4×23-cell
+  gauge filled from the bottom, with `fuel*23/25000` truncated to source
+  rows. The same per-bank writer latch already used for the LCD supplies
+  the visible value; black backing and pen-4 green fill use live copper
+  colours. Only this 4×23 rectangle is cleared; static side ticks remain
+  intact. CPU and direct GPU share the vector fill without an extra draw
+  call, and 1×/unusual-palette frames remain bitplane-exact. ADF-backed
+  `tests/check_gl_fuel_bar.sh` measures source heights, high-resolution
+  bounds, direct-GPU parity and unchanged emulated RAM.
 - [x] Trace the right-hand altitude and airspeed LCD fields and reconstruct
   their live glyph pixels in the native cockpit layer. The `$47080` /
   `$470f2` formatting routines describe the game values but are not the

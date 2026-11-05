@@ -8,6 +8,7 @@
 #include "native/hud_glyph.hpp"
 #include "native/remaster.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdio>
@@ -542,6 +543,33 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
                    out.value, FuelDigits::X, FuelDigits::Y, FuelDigits::W, FuelDigits::H);
     }
   }
+  return out;
+}
+
+FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
+                         const uint32_t* row_palette, int hires_scale) {
+  FuelBar out;
+  if (const char* mode = std::getenv("FA18_COCKPIT_FUEL_BAR_NATIVE");
+      mode && mode[0] == '0' && mode[1] == '\0') return out;
+  if (!displayed_fuel.active || !row_palette || hires_scale < 2) return out;
+
+  // Replayed quarter/half/three-quarter tanks show respectively 5/11/17
+  // filled rows, and 24,998 units shows 22. The original gauge has 23
+  // possible rows (y=158..180) and truncates fuel*23/25000. Fuel may be
+  // larger than one tank in damaged or edited states; clamp the display.
+  out.filled_rows = int(std::min<uint32_t>(FuelBar::H,
+                                           displayed_fuel.value * FuelBar::H / 25000));
+  out.ink_rgb = row_palette[size_t(FuelBar::Y) * 32 + 4] & 0xffffffu;
+  for (int y = 0; y < FuelBar::H; ++y) {
+    const int sy = FuelBar::Y + y;
+    out.background_rgba[size_t(y)] = row_palette[size_t(sy) * 32];
+    // A single vector ink is only valid when the copper palette keeps
+    // pen 4 consistent throughout this instrument's scanlines. On unusual
+    // palettes/transition frames retain the original bar bitplanes.
+    if ((row_palette[size_t(sy) * 32 + 4] & 0xffffffu) != out.ink_rgb)
+      return FuelBar{};
+  }
+  out.active = true;
   return out;
 }
 
