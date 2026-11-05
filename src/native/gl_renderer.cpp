@@ -297,6 +297,7 @@ precision mediump float;
 uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud, u_pause, u_cockpit;
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
+uniform vec4 u_pause_ink; // live copper pen 9, visibility from original title
 uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
@@ -434,7 +435,7 @@ void main() {
   if (u_pause_visible > 0.5 && centre_x >= 0.0 && centre_x < 320.0) {
     vec4 ui = texture2D(u_pause, vec2((centre_x + fract(v_uv.x * u_dimensions.x)) / 320.0,
                                        v_uv.y));
-    base_colour = mix(base_colour, ui.rgb, ui.a);
+    base_colour = mix(base_colour, u_pause_ink.rgb, ui.a);
   }
   // Native 4:3-corrected antialiased crosshair, independent of original
   // bitplane glyphs. Alpha is the geometric coverage in 960x720 space.
@@ -1620,6 +1621,11 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
   gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_pause"), 5);
   gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_pause_visible"),
                pause_visible && hud_state.pause_title ? 1.f : 0.f);
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_pause_ink"),
+               float((hud_state.pause_rgb >> 16) & 255) / 255.f,
+               float((hud_state.pause_rgb >> 8) & 255) / 255.f,
+               float(hud_state.pause_rgb & 255) / 255.f,
+               hud_state.pause_title ? 1.f : 0.f);
   gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
                float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
                float((hud_state.reticle_rgb >> 8) & 255) / 255.f,

@@ -1697,6 +1697,14 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
         if (r >= 32 && g >= 16 && r > g && g > int(c & 255)) ++amber_pixels;
       }
     out.pause_title = amber_pixels > 24;
+    // The Pause heading's original orange pixels use displayed pen 9 on
+    // scanline 44 (verified against the bitplane frame). Keep the original
+    // title pixels only as a visibility gate; follow their copper fade using
+    // the live scanline palette instead of a constant native amber.
+    if (out.pause_title) {
+      const uint32_t* pal = m.frame_row_pal();
+      out.pause_rgb = pal ? (pal[44 * 32 + 9] & 0xffffffu) : 0x884400u;
+    }
   }
 
   // Top and corner strokes are two different original pens. Their source

@@ -56,6 +56,7 @@ inline constexpr std::array<HudLetterSlot, 5> kHudLetterSlots{{
 // native seven-stroke digit. The reticle tracks the copper Pause fade.
 struct NativeHudState {
   bool pause_title = false;
+  uint32_t pause_rgb = 0;
   bool reticle = false;
   bool frame_crown = false;
   bool frame_rails = false;

@@ -515,7 +515,9 @@ public:
   void prepare_pause_ui() {
     if (!pause_ui.empty()) return;
     pause_ui.assign(size_t(STATS_W) * STATS_H, 0);
-    constexpr uint32_t amber = 0x00B87800u;
+    // Geometry/coverage texture only: tint from the live copper pen 9 at
+    // presentation time, so colour changes do not require a GPU re-upload.
+    constexpr uint32_t amber = 0x00FFFFFFu;
     const std::string label = "- PAUSED -";
     const float advance = 20.f;
     const float left = (STATS_W - advance * label.size()) * .5f;
@@ -578,6 +580,8 @@ public:
 
   void blend_pause_ui(std::vector<uint32_t>& fb, int side, int scale) {
     if (!remaster::pause_screen_active() || fb.empty()) return;
+    const remaster::NativeHudState hud = remaster::native_hud_state(*machine);
+    if (!hud.pause_title) return;
     prepare_pause_ui();
     const int pitch = (amiga::FB_W + 2 * side) * scale;
     // Only sample the heading's small footprint rather than its large
@@ -592,7 +596,7 @@ public:
         uint32_t& dst = fb[size_t(y) * pitch + size_t(side * scale + x)];
         uint32_t out = 0xFF000000u;
         for (int shift = 0; shift < 24; shift += 8) {
-          const uint32_t c = (((src >> shift) & 255) * a +
+          const uint32_t c = (((hud.pause_rgb >> shift) & 255) * a +
                               ((dst >> shift) & 255) * (255 - a) + 127) / 255;
           out |= c << shift;
         }
