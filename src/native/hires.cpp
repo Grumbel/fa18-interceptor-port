@@ -1681,6 +1681,19 @@ static bool hud_font_palette_ink(const amiga::Machine& m, int y, int background_
   return hud_font::glyph_ink(ink, rgb[y * W + background_x]);
 }
 
+// The aiming reticle uses pen 10, not the heading/font's pen 13. Its fade
+// reaches 0x111111 in Pause, so use its original >=16 luminance threshold
+// rather than the brighter 3x5 glyph contrast rule.
+static bool hud_reticle_palette_ink(const amiga::Machine& m, uint32_t& ink) {
+  const uint32_t* rgb = m.frame_rgb();
+  const uint32_t* palette = m.frame_row_pal();
+  if (!rgb || !palette) return false;
+  ink = palette[73 * 32 + 10] & 0xffffffu;
+  const uint32_t background = rgb[73 * W + 165] & 0xffffffu;
+  const uint32_t r = (ink >> 16) & 255u;
+  return ink != background && r >= 16 && ink == r * 0x010101u;
+}
+
 NativeHudState native_hud_state(const amiga::Machine& m) {
   NativeHudState out;
   const uint32_t* rgb = m.frame_rgb();
@@ -1739,12 +1752,15 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   if (out.frame_crown) {
     const HudFontCapture captured = captured_hud_font(m.frame_row_key());
     const bool palette_native = std::getenv("FA18_HUD_PALETTE_REFERENCE") == nullptr;
+    const bool point_palette_native = std::getenv("FA18_HUD_POINT_PALETTE_REFERENCE") == nullptr;
     int captured_digits = 0, captured_letters = 0;
     const char* marks = std::getenv("FA18_HUD_HEADING_NATIVE");
     if (!marks || std::strcmp(marks, "0") != 0) {
       const int captured_phase = captured_heading_phase(m.frame_row_key());
       const bool from_writer = captured_phase >= 0 &&
-          hud_font::live_heading_ink(rgb, captured_phase, out.heading_rgb);
+          (point_palette_native ? hud_font_palette_ink(m, 63, 165, out.heading_rgb) :
+                                  hud_font::live_heading_ink(rgb, captured_phase,
+                                                             out.heading_rgb));
       if (from_writer) {
         out.heading_marks = true;
         out.heading_first_x = captured_phase;
@@ -1836,11 +1852,15 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   if (const char* opt = std::getenv("FA18_HUD_RETICLE_NATIVE");
       opt && std::strcmp(opt, "0") == 0) return out;
   // The four vertical points and horizontal bar are recorded directly from
-  // the original 68000 write commands for the displayed screen bank. Only
-  // the centre pixel is needed for current visibility/copper fade; until a
-  // bank has a complete redraw, keep the prior exact bitmap recogniser.
+  // the original 68000 write commands for the displayed screen bank. Once
+  // complete, pen 10 supplies its colour without reading a reticle glyph
+  // pixel. The flight HUD frame and backdrop still gate visibility; until
+  // a bank has a complete redraw, keep the prior exact bitmap recogniser.
+  const bool point_palette_native = std::getenv("FA18_HUD_POINT_PALETTE_REFERENCE") == nullptr;
   const bool from_writer = captured_reticle_ready(m.frame_row_key()) &&
-      hud_font::live_reticle_ink(rgb, out.reticle_rgb);
+      (point_palette_native ? (out.frame_crown &&
+                               hud_reticle_palette_ink(m, out.reticle_rgb)) :
+                              hud_font::live_reticle_ink(rgb, out.reticle_rgb));
   if (from_writer) {
     out.reticle = true;
   } else {
