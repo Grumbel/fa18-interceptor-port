@@ -191,6 +191,12 @@ before committing. Note limitations explicitly rather than masking them.
   unusual last-row shape of the original font's digit `9`. The corresponding
   `tools/recomp_hooks.txt` boundary prevents recompiled blocks from skipping
   the instrument's original redraw instruction.
+- [x] Replace the native fuel LCD's 3x5 enlarged pixels with antialiased
+  seven-stroke digits at 2x–8x output resolution. Retain the original
+  per-bank refresh latches, palette-coloured LCD backing and the low-res
+  reference toggle; compare bounded flight/dynamic changes, safe Pause
+  fallback and RAM
+  hashes, then check that direct GPU presentation matches the CPU composer.
 - [x] Trace the right-hand altitude and airspeed LCD fields and reconstruct
   their live glyph pixels in the native cockpit layer. The `$47080` /
   `$470f2` formatting routines describe the game values but are not the

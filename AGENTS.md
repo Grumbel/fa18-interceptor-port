@@ -106,6 +106,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the instrument writer instead of skipping this PC hook.
   `FA18_COCKPIT_FUEL_NATIVE=0` disables this native instrument alone;
   `FA18_COCKPIT_FUEL_DEBUG=1` traces it.
+  At 2x–8x OpenGL resolution its five digits are antialiased native
+  seven-stroke shapes over the reconstructed LCD background, in both CPU
+  and GPU presentation. `FA18_COCKPIT_FUEL_HIRES=0` restores exact 3x5
+  source glyphs; `tests/check_gl_fuel_vector.sh` bounds the changed pixels
+  and checks RAM equivalence. The other cockpit readouts are still 3x5.
   Seven cockpit readouts are also reconstructed from the game's resident
   3x5 font, tracking the two Amiga screen buffers independently. The green
   altitude, airspeed, throttle/Mach, miles and magnification fields use

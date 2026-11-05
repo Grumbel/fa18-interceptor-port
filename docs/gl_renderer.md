@@ -434,6 +434,20 @@ skip PC hooks. Set
 latches. The original code still executes to supply the refresh event; the
 next step is an independent native instrument scheduler and further gauges.
 
+At enhanced 2x–8x resolution, the five captured fuel digits are also rendered
+as antialiased native seven-stroke glyphs directly at output resolution.
+The old 19×5 source cells are restored to their live copper-coloured LCD
+backing first; both the SDL/CPU compositor and the direct GL shader then
+draw matching high-resolution strokes using the captured five-digit value.
+The vector layer is enabled only when the font writer has refreshed the
+visible bank and all five ink scanlines agree; elsewhere the exact 3x5
+bitmap remains. `FA18_COCKPIT_FUEL_HIRES=0` selects the original 3x5 output
+for pixel-exact comparisons. `tests/check_gl_fuel_vector.sh` confirms that
+only the fuel LCD rectangle can change in flight, Pause and a dynamic throttle
+replay, with matching original emulated RAM hashes. A Pause frame with no
+eligible captured glyph/pen stays pixel-exact. The remaining seven
+cockpit readouts still have pixel-sized native geometry.
+
 Seven additional numeric fields are now synthesized from the original
 resident 3×5 font without sampling their displayed bitmap pixels. The
 original `$47476` branch supplies the five green flight/auxiliary fields
