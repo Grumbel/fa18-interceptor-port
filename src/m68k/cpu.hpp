@@ -23,32 +23,53 @@ public:
 
   uint8_t* ram = nullptr;
   uint32_t ram_size = 0;
+  // Optional read/write observer for RAM only. Normally null: the debugger
+  // can track dependencies without changing memory or CPU-visible results.
+  using RamAccessObserver = void (*)(void*, uint32_t, uint8_t, bool);
+  RamAccessObserver ram_access_observer = nullptr;
+  void* ram_access_context = nullptr;
 
   uint8_t read8(uint32_t a) {
     a &= 0xFFFFFF;
-    if (a < ram_size) return ram[a];
+    if (a < ram_size) {
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 1, false);
+      return ram[a];
+    }
     return io_read8(a);
   }
   uint16_t read16(uint32_t a) {
     a &= 0xFFFFFF;
-    if (a + 1 < ram_size) return uint16_t(ram[a] << 8 | ram[a + 1]);
+    if (a + 1 < ram_size) {
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 2, false);
+      return uint16_t(ram[a] << 8 | ram[a + 1]);
+    }
     return io_read16(a);
   }
   uint32_t read32(uint32_t a) {
     a &= 0xFFFFFF;
-    if (a + 3 < ram_size)
+    if (a + 3 < ram_size) {
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 4, false);
       return uint32_t(ram[a]) << 24 | uint32_t(ram[a + 1]) << 16 |
              uint32_t(ram[a + 2]) << 8 | ram[a + 3];
+    }
     return uint32_t(read16(a)) << 16 | read16(a + 2);
   }
   void write8(uint32_t a, uint8_t v) {
     a &= 0xFFFFFF;
-    if (a < ram_size) { ram[a] = v; return; }
+    if (a < ram_size) {
+      ram[a] = v;
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 1, true);
+      return;
+    }
     io_write8(a, v);
   }
   void write16(uint32_t a, uint16_t v) {
     a &= 0xFFFFFF;
-    if (a + 1 < ram_size) { ram[a] = uint8_t(v >> 8); ram[a + 1] = uint8_t(v); return; }
+    if (a + 1 < ram_size) {
+      ram[a] = uint8_t(v >> 8); ram[a + 1] = uint8_t(v);
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 2, true);
+      return;
+    }
     io_write16(a, v);
   }
   void write32(uint32_t a, uint32_t v) {
@@ -56,6 +77,7 @@ public:
     if (a + 3 < ram_size) {
       ram[a] = uint8_t(v >> 24); ram[a + 1] = uint8_t(v >> 16);
       ram[a + 2] = uint8_t(v >> 8); ram[a + 3] = uint8_t(v);
+      if (ram_access_observer) [[unlikely]] ram_access_observer(ram_access_context, a, 4, true);
       return;
     }
     write16(a, uint16_t(v >> 16));
