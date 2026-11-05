@@ -160,9 +160,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `tests/check_gl_hud_point_palette.sh` verifies flight/Pause/bank parity.
   The native Pause heading has a cached high-resolution coverage texture:
   colour comes from the live copper palette pen 9 (not hardcoded amber), and
-  the source title's bitplane stencil gates visibility in both SDL/CPU and
-  direct GPU presentation. `tests/check_gl_pause_ink.sh` checks colour and
-  the early Pause transition; `tests/check_gl_direct.sh` checks GPU/CPU parity.
+  the original 5x7 font writer's per-bank captured ink count gates visibility,
+  including before the first draw. Copper pen 5 supplies its title-rectangle
+  backdrop. A verified native five-segment HUD outline remains valid during
+  Pause even after its flight-redraw freshness window. Separate
+  `FA18_PAUSE_TITLE_BITMAP_REFERENCE`, `FA18_PAUSE_BACKDROP_REFERENCE` and
+  `FA18_HUD_FRAME_BITMAP_REFERENCE` switches restore the original bitmap
+  gates for A/B checks. `tests/check_gl_pause_panel_copper.sh` verifies the
+  Pause stages and RAM parity; `tests/check_gl_direct.sh` checks GPU/CPU parity.
   `FA18_HUD_DIGITS_NATIVE=0` restores all the old HUD glyphs;
   `FA18_HUD_LABELS_NATIVE=0` disables only the labels.
   The compass tape's five alternating major/minor ticks and central index

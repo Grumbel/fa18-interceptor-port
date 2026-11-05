@@ -390,8 +390,7 @@ before committing. Note limitations explicitly rather than masking them.
   newly drawn ink pixels. The Amiga framebuffer presents font writes one
   frame later, so exclude current-frame writes when evaluating the visible
   title. The resulting 0/5/23/64/87/…/133 count agrees exactly with the old
-  bitmap scan; preserve it only as an optional reference and for unknown
-  early draws. Test partial and complete titles against source screenshots
+  bitmap scan; preserve it only as an optional reference. Test partial and complete titles against source screenshots
   and memory hashes with `tests/check_gl_pause_title_capture.sh`.
 - [x] Recover the heading ticks' and aiming reticle's displayed ink directly
   from copper palette pens 13 and 10 after complete original writer captures.
@@ -413,6 +412,13 @@ before committing. Note limitations explicitly rather than masking them.
   backdrop) with no sampled HUD-outline pixels. Retain bitmap recognition
   during transitions and before the first verified redraw; compare bit-exact
   images and RAM hashes in `tests/check_gl_hud_frame_capture.sh`.
+- [x] Let a verified five-segment HUD outline remain active throughout Pause,
+  regardless of the usual short flight-redraw freshness window. Eliminate
+  remaining bitmap sampling for the Pause title's first-frame visibility and
+  for its underlying background fill (live copper pen 5). Preserve three
+  independent bitmap reference switches and verify the native paths against
+  five Pause-entry/progressive/settled screenshots and unchanged RAM hashes in
+  `tests/check_gl_pause_panel_copper.sh`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
@@ -431,5 +437,6 @@ before committing. Note limitations explicitly rather than masking them.
   original top HUD rail's generic blitter paths at `$44856` (write) and
   `$44a98` (clear) are now traced to the specific `$48eba` outline caller.
   Finish migrating other HUD/cockpit writers and transitions; even with the
-  outline captured, unknown and stale banks intentionally use the bitmap.
+  outline captured, unknown banks and stale active-flight banks intentionally
+  use the bitmap; a completed outline is held through Pause.
 - [ ] Validate sustained 120/240 Hz and seam stability on real GPU/monitor.

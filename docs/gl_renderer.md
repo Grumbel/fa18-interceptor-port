@@ -259,8 +259,8 @@ displayed colour: its glyphs use copper palette pen 9 (original Pause frame
 texture. The GPU compositor changes only the tint uniform when the copper
 palette fades; the SDL/CPU compositor blends the same per-frame ink. Both
 paths wait for the original title to become visible, rather than displaying
-the native heading as soon as the Pause state begins. The remainder of the
-Pause panel still comes from the original Amiga display. Run
+the native heading as soon as the Pause state begins. The panel's other
+elements still come from the original Amiga display. Run
 `tests/check_gl_pause_ink.sh ORIGINAL.adf` to verify original/source colour,
 delayed visibility and emulated RAM parity.
 
@@ -278,13 +278,29 @@ The observed ink counts at displayed frames 3552–3558 are respectively
 count. The 24-pixel visibility threshold therefore still turns on at frame
 3554, never at Pause-state entry. Copper pen 9 still supplies the colour.
 
+No bitmap inspection is needed to decide title visibility, including on the
+first Pause frame before any glyph has been captured: the heading remains
+hidden until the original writer's observed coverage passes the threshold.
 `FA18_PAUSE_TITLE_BITMAP_REFERENCE=1` forces the old source-pixel visibility
 gate and `FA18_PAUSE_TITLE_CAPTURE_DEBUG=1` prints both values and the
 individual glyph captures. `tests/check_gl_pause_title_capture.sh ORIGINAL.adf`
 compares seven partial and complete title frames pixel-for-pixel, verifies
 emulated RAM hashes, and checks all 21 displayed-frame coverage counts.
-If no original glyph has yet been captured, the old gate remains a fallback;
 leaving Pause invalidates all per-bank title counts.
+
+The Pause heading's backing rectangle no longer samples an original bitmap
+pixel to erase the old letters. The compositor fills it with live copper
+palette **pen 5**, evaluated for each displayed row, in both the SDL/CPU
+and GPU paths. `FA18_PAUSE_BACKDROP_REFERENCE=1` restores the source-pixel
+background for comparison. Unlike active flight, where only recently drawn
+outlines are trusted, a verified complete five-segment HUD outline stays
+available throughout Pause: the original does not need to redraw it every
+16 frames. `FA18_HUD_FRAME_BITMAP_REFERENCE=1` independently restores the
+old outline bitmap test. `tests/check_gl_pause_panel_copper.sh ORIGINAL.adf`
+compares five frames across Pause entry, progressive heading draw and a
+settled Pause, with all three bitmap reference switches set; it also compares
+their emulated RAM hashes and confirms that the native paths are actually
+selected. Leaving Pause invalidates all per-bank title counts.
 
 ## Pipeline
 

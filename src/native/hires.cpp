@@ -1438,6 +1438,8 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                       state == 0x23b7e || state == 0x23ba8; // frozen Pause world
   const bool paused = pause_screen_active();
   const NativeHudState hud = native_hud_state(m);
+  const bool pause_backdrop_copper =
+      std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
   const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
@@ -1490,10 +1492,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         // The native UI will draw the Pause heading at output resolution.
-        // Erase only its old 320x200 title rectangle; sample the surrounding
-        // panel fill so its copper/palette fades remain exactly original.
+        // Erase only the old 320x200 title rectangle with its original
+        // backdrop pen; its colour tracks the copper fades per scanline.
         if (hud.pause_title && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
-          const uint32_t bg = rgb[y * W + 120];
+          const uint32_t bg = pause_backdrop_copper ?
+              pal[size_t(y) * 32 + 5] : rgb[y * W + 120];
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
@@ -1652,6 +1655,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
                       state == 0x23b7e || state == 0x23ba8;
   const bool paused = pause_screen_active();
   const NativeHudState hud = native_hud_state(m);
+  const bool pause_backdrop_copper =
+      std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
   last_prepared_gpu_hud = hud;
   if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
@@ -1734,7 +1739,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         continue;
       }
       if (hud.pause_title && y >= 42 && y <= 50 && x >= 124 && x <= 201) {
-        const uint32_t bg = rgb[y * W + 120];
+        const uint32_t bg = pause_backdrop_copper ?
+            pal[size_t(y) * 32 + 5] : rgb[y * W + 120];
         p[0] = uint8_t(bg >> 16);
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
@@ -1906,11 +1912,10 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   observe_pause_title_state(paused);
   if (paused) {
     // The original enters the Pause state a few frames before drawing its
-    // title. Track its original 3x5 font writes per displayed screen bank;
+    // title. Track its original 5x7 font writes per displayed screen bank;
     // require the same minimum ink coverage as the previous pixel scan.
     const int painted = captured_pause_title_pixels(m.frame_row_key(), m.frame_count());
-    const bool from_writer = painted > 0 &&
-                             !std::getenv("FA18_PAUSE_TITLE_BITMAP_REFERENCE");
+    const bool from_writer = !std::getenv("FA18_PAUSE_TITLE_BITMAP_REFERENCE");
     int amber_pixels = 0;
     if (!from_writer || std::getenv("FA18_PAUSE_TITLE_CAPTURE_DEBUG")) {
       for (int y = 42; y <= 50; ++y)
@@ -1927,9 +1932,8 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
                    (unsigned long long)m.frame_count(), int(from_writer),
                    painted, amber_pixels, int(out.pause_title));
     // The Pause heading's original orange pixels use displayed pen 9 on
-    // scanline 44 (verified against the bitplane frame). Keep the original
-    // title pixels only as a visibility gate; follow their copper fade using
-    // the live scanline palette instead of a constant native amber.
+    // scanline 44 (verified against the bitplane frame). The captured title
+    // pixel count gates visibility; the copper palette follows its fade.
     if (out.pause_title) {
       const uint32_t* pal = m.frame_row_pal();
       out.pause_rgb = pal ? (pal[44 * 32 + 9] & 0xffffffu) : 0x884400u;
@@ -1944,11 +1948,11 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   if (!native_frame || std::strcmp(native_frame, "0") != 0) {
     const uint64_t drawn = captured_hud_frame(m.frame_row_key());
     const uint32_t* row_palette = m.frame_row_pal();
-    const bool fresh = drawn != UINT64_MAX && m.frame_count() >= drawn &&
-                       m.frame_count() - drawn <= 16;
+    const bool observed = drawn != UINT64_MAX && m.frame_count() >= drawn;
+    const bool fresh = observed && m.frame_count() - drawn <= 16;
     const bool use_writer = std::getenv("FA18_HUD_FRAME_BITMAP_REFERENCE") == nullptr &&
-                            fresh && row_palette &&
-                            (native::rd8(0x5aa8d) != 0 || pause_screen_active());
+                            (fresh || (paused && observed)) && row_palette &&
+                            (native::rd8(0x5aa8d) != 0 || paused);
     if (use_writer) {
       const uint32_t top = row_palette[37 * 32 + 10] & 0xffffffu;
       const uint32_t corner = row_palette[38 * 32 + 8] & 0xffffffu;
@@ -1987,7 +1991,7 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       out.frame_rail_rgb = ink;
     }
     if (std::getenv("FA18_HUD_FRAME_CAPTURE_DEBUG") &&
-        m.frame_count() % 400 == 0)
+        (m.frame_count() % 400 == 0 || (paused && m.frame_count() % 20 == 10)))
       std::fprintf(stderr, "HUD frame capture use frame=%llu writer=%d visible=%d rails=%d\n",
                    (unsigned long long)m.frame_count(), int(use_writer),
                    int(out.frame_crown), int(out.frame_rails));
