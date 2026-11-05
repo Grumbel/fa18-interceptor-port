@@ -504,15 +504,32 @@ coordinate and destination bitmap. The capture is latched separately for
 each screen bank; the displayed row pointer selects which contact to show.
 The position is **no longer searched for in the original bitplanes** or
 guessed from physics state; its ink comes from live copper palette pen 5.
-The original guide/marker stencil and one pixel at the captured contact
-remain visibility guards, so incomplete redraws, Pause transitions and
-non-cockpit cameras fall back untouched. This conservative visibility gate
-is the native radar's remaining source-bitmap dependency.
-`FA18_RADAR_WRITER_DEBUG=1` logs original contact positions and bank keys.
+The **guide** is not a sequence of CPU pixel writes: `$447ee` starts two
+16-pixel Amiga line blits by writing `BLTSIZE` (a `D4` low word of `$0402`).
+`D7` addresses plane 0, the high nibble of `D5` places the start at x=139
+or x=177 and `D1` selects the opposite slopes (`$11`/`$15`). The original
+bitmap has a plane-1 mask beneath both lines, so adding plane 0 gives
+**palette pen 3**; this was checked against a dump of the original RAM,
+including the unaffected pen-0 backing. The **marker** uses the four
+original pen-12 CPU pixel writes at `$444b0`, matching an inverted T.
+Both blits and all four marker writes must complete in the displayed
+screen bank before the native shape is shown. The blitter and marker
+coordinates can shift by one pixel vertically during cockpit transitions;
+both CPU and GPU geometry follow those per-bank coordinates.
+
+The production path now depends on original **writer events and palette**,
+not a source-pixel stencil. It still respects the existing game-state and
+cockpit-mode gates and falls back if a writer has not been observed for
+the displayed bank. `FA18_RADAR_BITMAP_REFERENCE=1` temporarily restores
+the earlier bitmap-stencil gate for a diagnostic A/B replay (it is not
+necessary to run the game). `FA18_RADAR_WRITER_DEBUG=1` logs contact points,
+`FA18_RADAR_BLIT_DEBUG=1` logs guide blits, and
+`FA18_RADAR_STENCIL_DEBUG=1` logs completed marker groups.
 CPU and GPU draw directly at 2×–8×
 with no new GL texture or draw call; 1× stays pixel-exact.
 `FA18_COCKPIT_RADAR_NATIVE=0` restores source radar pixels at every scale.
-`tests/check_gl_radar_vector.sh` covers the two contact locations, bounded
+`tests/check_gl_radar_vector.sh` covers both original screen-bank capture
+sequences, two contact locations, legacy bitmap-gate equivalence, bounded
 output differences, unchanged emulated RAM and direct-GPU parity. The latter
 sets `FA18_GL_DIRECT_SUBPIXEL_PARITY=1` to compare corresponding subpixel
 centres in the 600-row CPU buffer and 720-row aspect-corrected drawable;

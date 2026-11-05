@@ -306,6 +306,7 @@ uniform vec4 u_fuel_bar; // live pen-4 RGB and native vertical-bar visibility
 uniform float u_fuel_bar_rows; // integer height captured from displayed fuel
 uniform vec4 u_radar_guide, u_radar_marker, u_radar_contact;
 uniform vec2 u_radar_dot_pos; // validated location of the original moving dot
+uniform vec4 u_radar_stencil_pos; // guide start y, marker top x/y from original writers
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
 uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
@@ -477,10 +478,12 @@ void main() {
     // Snap to those pixel centres so the direct shader and CPU composer
     // antialias exactly the same vector samples despite viewport rounding.
     vec2 p = (floor(source * u_scale) + vec2(0.5)) / u_scale;
-    float dg = min(dist_segment(p, vec2(139.5,148.5), vec2(154.5,163.5)),
-                   dist_segment(p, vec2(177.5,148.5), vec2(162.5,163.5)));
-    float dm = min(dist_segment(p, vec2(158.5,167.5), vec2(157.5,168.5)),
-                   dist_segment(p, vec2(157.5,168.5), vec2(159.5,168.5)));
+    float gy = u_radar_stencil_pos.x + 0.5;
+    vec2 m = u_radar_stencil_pos.yz + vec2(0.5);
+    float dg = min(dist_segment(p, vec2(139.5,gy), vec2(154.5,gy+15.0)),
+                   dist_segment(p, vec2(177.5,gy), vec2(162.5,gy+15.0)));
+    float dm = min(dist_segment(p, m, m + vec2(-1.0,1.0)),
+                   dist_segment(p, m + vec2(-1.0,1.0), m + vec2(1.0,1.0)));
     float dc = distance(p, u_radar_dot_pos + vec2(0.5));
     base_colour = mix(base_colour, u_radar_guide.rgb, clamp(1.0 - dg*u_scale, 0.0, 1.0));
     base_colour = mix(base_colour, u_radar_marker.rgb, clamp(1.0 - dm*u_scale, 0.0, 1.0));
@@ -1726,6 +1729,9 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
   radar_ink("u_radar_contact", layer.radar_dot_rgb);
   gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_radar_dot_pos"),
                float(layer.radar_dot_x), float(layer.radar_dot_y));
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_radar_stencil_pos"),
+               float(layer.radar_guide_y), float(layer.radar_marker_x),
+               float(layer.radar_marker_y), 0.f);
   gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
                float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
                float((hud_state.reticle_rgb >> 8) & 255) / 255.f,

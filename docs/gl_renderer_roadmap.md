@@ -244,16 +244,21 @@ before committing. Note limitations explicitly rather than masking them.
   marker and moving purple contact inside the central cockpit panel. The
   guide/marker geometry is independent native code; contact location is
   captured from original pen-5 writer `$4446a` in the displayed bank.
-  The source guide/marker stencil and a one-pixel visibility check still
-  guard incomplete redraws. GPU composition adds only
+  Complete original guide blits and marker writes now guard incomplete
+  redraws per screen bank, without reading the source bitmap. GPU composition adds only
   uniforms to the existing pass. `tests/check_gl_radar_vector.sh` covers
   baseline/pull-back dot movement, panel bounds, RAM and GPU parity.
 - [x] Intercept the Amiga radar pen-5 writer in both screen buffers and
   derive contact coordinates from its destination address and one-hot mask;
   use live copper palette ink instead of sampling the contact colour.
-- [ ] Remove the remaining radar source-stencil visibility gates after
-  verifying guide/marker redraw writers and Pause transitions, making the
-  radar completely independent of the original screen bitmap.
+- [x] Recover the diagonal guide BLTSIZE writer `$447ee`, the four-pixel
+  pen-12 marker writer `$444b0`, and the existing pen-5 contact writer
+  `$4446a`. Capture all three in each original Amiga screen bank, including
+  temporary one-pixel vertical offsets of the original radar stencil.
+  The native radar has no source-bitmap visibility gate; optional
+  `FA18_RADAR_BITMAP_REFERENCE=1` enables a legacy pixel-oracle comparison
+  for regression testing. Palette indexes are 3 (guide: blitted plane 0
+  over existing plane 1), 12 (marker), and 5 (contact).
 - [x] Replace the 5x5 flight HUD aiming cross with native antialiased
   strokes at corrected 4:3 resolution. A small original-screen stencil
   establishes visibility and the live copper pen colour, including the

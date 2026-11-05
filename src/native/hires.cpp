@@ -1209,10 +1209,9 @@ void blend_native_fuel_bar(std::vector<uint32_t>& out, int side, int scale,
     }
 }
 
-// Native radar guides and central reference use geometries measured against
-// the original game's pixel writer. The contact's *location* is still
-// observed from the displayed Amiga bitmap, but its shape is generated here.
-// Keep the three inks separate, using the live copper colours.
+// Native radar guides, centre marker and contact use the captured original
+// blitter/CPU writer coordinates. The two screen banks can have different
+// one-pixel vertical shifts during a transition. Copper supplies all inks.
 void blend_native_radar_symbols(std::vector<uint32_t>& out, int side, int scale,
                                 const RadarSymbols& radar) {
   if (!radar.active) return;
@@ -1223,13 +1222,16 @@ void blend_native_radar_symbols(std::vector<uint32_t>& out, int side, int scale,
          x < (RadarSymbols::X + RadarSymbols::W) * scale; ++x) {
       const float px = (x + .5f) / scale, py = (y + .5f) / scale;
       uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      const float gy = float(radar.guide_y) + .5f;
+      const float mx = float(radar.marker_x) + .5f;
+      const float my = float(radar.marker_y) + .5f;
       const float guide = std::min(
-        hud_segment_distance(px, py, 139.5f, 148.5f, 154.5f, 163.5f),
-        hud_segment_distance(px, py, 177.5f, 148.5f, 162.5f, 163.5f));
+        hud_segment_distance(px, py, 139.5f, gy, 154.5f, gy + 15.f),
+        hud_segment_distance(px, py, 177.5f, gy, 162.5f, gy + 15.f));
       blend_hud_pixel(dst, radar.guide_rgb, 1.f - guide * scale);
       const float marker = std::min(
-        hud_segment_distance(px, py, 158.5f, 167.5f, 157.5f, 168.5f),
-        hud_segment_distance(px, py, 157.5f, 168.5f, 159.5f, 168.5f));
+        hud_segment_distance(px, py, mx, my, mx - 1.f, my + 1.f),
+        hud_segment_distance(px, py, mx - 1.f, my + 1.f, mx + 1.f, my + 1.f));
       blend_hud_pixel(dst, radar.marker_rgb, 1.f - marker * scale);
       const float dot = std::hypot(px - radar.dot_x - .5f, py - radar.dot_y - .5f);
       blend_hud_pixel(dst, radar.dot_rgb, 1.f - dot * scale);
@@ -1636,6 +1638,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   out.radar_dot_rgb = radar.dot_rgb;
   out.radar_dot_x = radar.dot_x;
   out.radar_dot_y = radar.dot_y;
+  out.radar_guide_y = radar.guide_y;
+  out.radar_marker_x = radar.marker_x;
+  out.radar_marker_y = radar.marker_y;
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.

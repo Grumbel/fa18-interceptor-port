@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Original-game radar stencil and bounded CPU native-vector replacement."""
+"""Original-game radar writers and bounded CPU native-vector replacement."""
 
 from pathlib import Path
 import re
@@ -88,14 +88,66 @@ def writer_capture(log_path, screenshot_frame, expected):
           f"before frame {screenshot_frame}")
 
 
+def stencil_capture(log_path, screenshot_frame):
+    """Check original 16-pixel blits and four pen-12 points in BOTH buffers.
+
+    The game refreshes the line stencil less often than the moving dot; a
+    decoded blit remains current until the game redraws that screen bank.
+    """
+    guides, markers = {}, {}
+    for line in Path(log_path).read_text().splitlines():
+        guide = re.search(r"^radar guide frame=(\d+) bank=([0-9a-f]+) "
+                          r"x=(\d+) y=(\d+) len=(\d+) slope=([0-9a-f]+) "
+                          r"complete=(\d+)", line)
+        if guide:
+            frame, bank, x, y, length, slope, done = guide.groups()
+            frame, x, y, length, slope, done = (int(frame), int(x), int(y),
+                                                  int(length), int(slope, 16),
+                                                  int(done))
+            assert (x, length, slope) in ((139, 16, 0x11), (177, 16, 0x15))
+            assert y in (147, 148, 149), (frame, y)
+            if frame <= screenshot_frame:
+                previous = guides.get(bank, (None, None, set()))
+                if previous[0] != frame:
+                    previous = (frame, y, set())
+                assert previous[1] == y, (bank, frame, previous, y)
+                previous[2].add(x)
+                guides[bank] = previous
+                if done:
+                    assert previous[2] == {139, 177}, (bank, frame, previous)
+            continue
+        marker = re.search(r"^radar marker frame=(\d+) bank=([0-9a-f]+) "
+                           r"x=(\d+) y=(\d+) complete=(\d+)", line)
+        if marker:
+            frame, bank, x, y, done = marker.groups()
+            frame, x, y, done = int(frame), int(x), int(y), int(done)
+            assert done == 1, (bank, frame)
+            assert x == 158 and y in (166, 167, 168), (bank, frame, x, y)
+            if frame <= screenshot_frame:
+                markers[bank] = (frame, x, y)
+
+    assert len(guides) == len(markers) == 2, (guides, markers)
+    assert guides.keys() == markers.keys(), (guides, markers)
+    for bank, (frame, y, x_values) in guides.items():
+        assert x_values == {139, 177}, (bank, frame, x_values)
+        assert screenshot_frame - frame <= 128, (bank, frame, screenshot_frame)
+        marker_frame, _, _ = markers[bank]
+        assert screenshot_frame - marker_frame <= 128, (bank, marker_frame)
+    print(f"PASS: both radar banks captured complete blitter guides and pen-12 "
+          f"marker before frame {screenshot_frame}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 5 and sys.argv[1] == "--original":
         original(sys.argv[2], (int(sys.argv[3]), int(sys.argv[4])))
     elif len(sys.argv) == 6 and sys.argv[1] == "--writer":
         writer_capture(sys.argv[2], int(sys.argv[3]),
                        (int(sys.argv[4]), int(sys.argv[5])))
+    elif len(sys.argv) == 4 and sys.argv[1] == "--stencil":
+        stencil_capture(sys.argv[2], int(sys.argv[3]))
     elif len(sys.argv) == 3:
         bounds(sys.argv[1], sys.argv[2])
     else:
         sys.exit("usage: check_gl_radar_vector.py --original 1x.ppm x y "
-                 "| --writer original-writes.log frame x y | old.ppm new.ppm")
+                 "| --writer writes.log frame x y | --stencil writes.log frame "
+                 "| old.ppm new.ppm")

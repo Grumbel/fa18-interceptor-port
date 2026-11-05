@@ -98,11 +98,12 @@ struct GpuLayers {
   uint32_t fuel_bar_ink_rgb = 0;
   int fuel_bar_rows = 0;
   bool fuel_bar_vector = false;
-  // Central radar: fixed guides/marker and one live-contact position. The
-  // presenter generates these shapes directly, no extra sampler or draw.
+  // Central radar: per-buffer blitter/point capture drives native geometry.
+  // The presenter generates these shapes without an additional sampler.
   bool radar_vector = false;
   uint32_t radar_guide_rgb = 0, radar_marker_rgb = 0, radar_dot_rgb = 0;
   int radar_dot_x = -1, radar_dot_y = -1;
+  int radar_guide_y = 148, radar_marker_x = 158, radar_marker_y = 167;
 };
 bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out);
 }  // namespace remaster

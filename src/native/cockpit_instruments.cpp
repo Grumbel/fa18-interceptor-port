@@ -22,6 +22,8 @@ constexpr uint32_t kRightGlyphWriter = 0x47476;
 constexpr uint32_t kHudGlyphWriter = 0x47d56;
 constexpr uint32_t kHudPointWriter = 0x444c0;
 constexpr uint32_t kRadarPen5Writer = 0x4446a;
+constexpr uint32_t kRadarMarkerPen12Writer = 0x444b0;
+constexpr uint32_t kLineBlitterStart = 0x447ee;
 constexpr uint32_t kReticleVerticalWriter = 0x444a2;
 constexpr uint32_t kReticleHorizontalWriter = 0x44924;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
@@ -49,10 +51,20 @@ struct ReticleBank {
 };
 
 struct RadarBank {
+  struct Point { int16_t x = -1, y = -1; };
   int16_t dot_x = -1;
   int16_t dot_y = -1;
-  uint64_t drawing_frame = UINT64_MAX;
-  bool captured = false;
+  uint64_t dot_frame = UINT64_MAX;
+  bool dot_captured = false;
+  int16_t guide_y = -1;
+  uint8_t guide_mask = 0;
+  uint64_t guide_frame = UINT64_MAX;
+  bool guide_ready = false;
+  int16_t marker_x = -1, marker_y = -1;
+  std::array<Point, 4> marker_points{};
+  uint8_t marker_count = 0;
+  uint64_t marker_frame = UINT64_MAX;
+  bool marker_ready = false;
 };
 
 struct CapturedReadout {
@@ -191,6 +203,92 @@ void reset_cockpit_instrument_state() {
 
 void install_cockpit_instrument_hooks(amiga::Machine& m) {
   reset_cockpit_instrument_state();
+  // The dark diagonal radar guides are *blitter lines*, not ordinary pen-3
+  // CPU pixels. At $447ee the original writes D4 to BLTSIZE; D7 is the
+  // bitplane-0 destination, D5's upper nibble is the starting bit position,
+  // D1 selects the line direction and D4 gives its 16-pixel length.
+  m.add_pc_hook(kLineBlitterStart, [&m] {
+    if (uint16_t(m.cpu.d[4]) != 0x0402 || uint16_t(m.cpu.d[3]) != 0x003c ||
+        m.cpu.a[5] != 5) return;
+    const uint16_t direction = uint16_t(m.cpu.d[1]);
+    if (direction != 0x11 && direction != 0x15) return;
+    const uint32_t dst = m.cpu.d[7] & 0x00ffffff;
+    const int shift = int(m.cpu.d[5] >> 12) & 15;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t base = bank.row_key - FuelDigits::Y * kRowStride;
+      if (dst < base || dst >= base + kPlaneBytes) continue;
+      const uint32_t pos = dst - base;
+      const int y = int(pos / kRowStride);
+      const int x = int((pos % kRowStride) / 2 * 16 + shift);
+      const int index = direction == 0x11 ? 0 : 1;
+      if (x != (index == 0 ? 139 : 177) ||
+          (index == 0 ? uint16_t(m.cpu.d[5]) != 0xbbfa :
+                        uint16_t(m.cpu.d[5]) != 0x1bfa) ||
+          y < RadarSymbols::Y || y + 15 >= RadarSymbols::Y + RadarSymbols::H) return;
+      auto& radar = bank.radar;
+      if (radar.guide_frame != m.frame_count()) {
+        radar.guide_frame = m.frame_count();
+        radar.guide_mask = 0;
+        radar.guide_ready = false;
+        radar.guide_y = int16_t(y);
+      }
+      if (radar.guide_y != y) return;
+      radar.guide_mask |= uint8_t(1u << index);
+      radar.guide_ready = radar.guide_mask == 3;
+      if (std::getenv("FA18_RADAR_BLIT_DEBUG"))
+        std::fprintf(stderr, "radar guide frame=%llu bank=%06x x=%d y=%d len=16 slope=%04x complete=%d\n",
+                     (unsigned long long)m.frame_count(), bank.row_key, x, y,
+                     direction, radar.guide_ready);
+      return;
+    }
+  });
+  // Pen 12 is a four-dot inverted T. Accept it only after the complete
+  // group reaches one destination bank, including occasional +/-1px shifts.
+  m.add_pc_hook(kRadarMarkerPen12Writer, [&m] {
+    const uint16_t mask = uint16_t(m.cpu.d[4]);
+    if (!std::has_single_bit(mask)) return;
+    const uint32_t dst = m.cpu.a[3] & 0x00ffffff;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane0 = bank.row_key - FuelDigits::Y * kRowStride;
+      if (dst < plane0 || dst >= plane0 + kPlaneBytes) continue;
+      const uint32_t pos = dst - plane0;
+      const int y = int(pos / kRowStride);
+      const int x = int((pos % kRowStride) * 8 + 15 - std::countr_zero(mask));
+      if (x < 156 || x > 160 || y < 164 || y > 171) return;
+      auto& radar = bank.radar;
+      if (radar.marker_frame != m.frame_count()) {
+        radar.marker_frame = m.frame_count();
+        radar.marker_count = 0;
+        radar.marker_ready = false;
+      }
+      if (radar.marker_count >= radar.marker_points.size()) return;
+      radar.marker_points[radar.marker_count++] =
+        RadarBank::Point{int16_t(x), int16_t(y)};
+      if (radar.marker_count != radar.marker_points.size()) return;
+      for (const auto& top : radar.marker_points) {
+        const std::array<RadarBank::Point, 4> wanted{{
+          {top.x, top.y}, {int16_t(top.x - 1), int16_t(top.y + 1)},
+          {top.x, int16_t(top.y + 1)}, {int16_t(top.x + 1), int16_t(top.y + 1)}
+        }};
+        const bool complete = std::all_of(wanted.begin(), wanted.end(), [&](const auto& point) {
+          return std::any_of(radar.marker_points.begin(), radar.marker_points.end(),
+                             [&](const auto& got) { return got.x == point.x && got.y == point.y; });
+        });
+        if (!complete) continue;
+        radar.marker_x = top.x;
+        radar.marker_y = top.y;
+        radar.marker_ready = true;
+        break;
+      }
+      if (std::getenv("FA18_RADAR_STENCIL_DEBUG"))
+        std::fprintf(stderr, "radar marker frame=%llu bank=%06x x=%d y=%d complete=%d\n",
+                     (unsigned long long)m.frame_count(), bank.row_key,
+                     radar.marker_x, radar.marker_y, radar.marker_ready);
+      break;
+    }
+  });
   // The four-plane pixel routine for palette pen 5 starts at $4446a:
   // OR.W D4,(A3), AND.W D1,(A2), OR.W D6,(A1), AND.W D3,(A0).
   // Its plane-0 destination and single-bit D4 mask give the exact contact
@@ -208,7 +306,10 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       const int x = int((pos % kRowStride) * 8 + 15 - std::countr_zero(mask));
       if (x < RadarSymbols::X || x >= RadarSymbols::X + RadarSymbols::W ||
           y < RadarSymbols::Y || y >= RadarSymbols::Y + RadarSymbols::H) continue;
-      bank.radar = RadarBank{int16_t(x), int16_t(y), m.frame_count(), true};
+      bank.radar.dot_x = int16_t(x);
+      bank.radar.dot_y = int16_t(y);
+      bank.radar.dot_frame = m.frame_count();
+      bank.radar.dot_captured = true;
       if (std::getenv("FA18_RADAR_WRITER_DEBUG"))
         std::fprintf(stderr, "radar writer frame=%llu bank=%06x x=%d y=%d mask=%04x a3=%06x\n",
                      (unsigned long long)m.frame_count(), bank.row_key, x, y, mask, dst);
@@ -612,42 +713,60 @@ RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* rgb,
   RadarSymbols out;
   if (const char* mode = std::getenv("FA18_COCKPIT_RADAR_NATIVE");
       mode && mode[0] == '0' && mode[1] == '\0') return out;
-  if (!enabled || !rgb || !row_keys || !row_palette || m.hires_scale < 2 ||
+  if (!enabled || !row_keys || !row_palette || m.hires_scale < 2 ||
       m.r8(0x5aa7d) != 0 ||
       (m.r8(0x5aa8d) == 0 && !pause_screen_active())) return out;
 
-  const auto pixel = [&](int x, int y) { return rgb[std::size_t(y) * 320 + x] & 0xffffffu; };
-  const uint32_t guide = pixel(139, 148), marker = pixel(158, 167);
-  if (guide == marker || guide == pixel(135, 148) ||
-      marker == pixel(135, 167)) return out;
-  int guides = 0;
-  for (int y = 148; y <= 163; ++y) {
-    guides += pixel(139 + y - 148, y) == guide;
-    guides += pixel(177 - (y - 148), y) == guide;
-  }
-  if (guides < 31 || pixel(157, 168) != marker ||
-      pixel(158, 168) != marker || pixel(159, 168) != marker) return out;
-
-  // Choose the contact latched by the *displayed* screen buffer. Its pen
-  // comes from the original copper palette, not from identifying a blue
-  // pixel in the finished image. A single source pixel only confirms that
-  // the captured write has reached the display on partial redraw frames.
+  // All three components must have completed a recognisable original write
+  // sequence in the displayed bank. The contact's colour and both stencil
+  // inks come from copper pens 5, 3 and 12 rather than the source pixels.
   observe_display_key(row_keys[FuelDigits::Y]);
   for (const auto& bank : fuel_banks) {
     if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
-        !bank.radar.captured) continue;
+        !bank.radar.dot_captured || !bank.radar.guide_ready ||
+        !bank.radar.marker_ready) continue;
     out.dot_x = bank.radar.dot_x;
     out.dot_y = bank.radar.dot_y;
-    out.dot_rgb = row_palette[std::size_t(out.dot_y) * 32 + 5] & 0xffffffu;
+    out.guide_y = bank.radar.guide_y;
+    out.marker_x = bank.radar.marker_x;
+    out.marker_y = bank.radar.marker_y;
     break;
   }
-  if (out.dot_x < 0 || pixel(out.dot_x, out.dot_y) != out.dot_rgb)
-    return RadarSymbols{};
-
-  out.guide_rgb = guide;
-  out.marker_rgb = marker;
+  if (out.dot_x < 0) return out;
+  // The line blitter touches plane 0 over a pre-existing plane-1 mask:
+  // the visible ink is pen 3 (verified against original Amiga RAM).
+  out.guide_rgb = row_palette[std::size_t(out.guide_y) * 32 + 3] & 0xffffffu;
+  out.marker_rgb = row_palette[std::size_t(out.marker_y) * 32 + 12] & 0xffffffu;
+  out.dot_rgb = row_palette[std::size_t(out.dot_y) * 32 + 5] & 0xffffffu;
   for (int y = RadarSymbols::Y; y < RadarSymbols::Y + RadarSymbols::H; ++y)
-    out.background[std::size_t(y - RadarSymbols::Y)] = rgb[std::size_t(y) * 320 + 135];
+    out.background[std::size_t(y - RadarSymbols::Y)] =
+      row_palette[std::size_t(y) * 32];
+
+  // Diagnostic comparison with the pre-writer-capture source-stencil gate.
+  // Production rendering no longer examines any radar source pixel.
+  out.bitmap_reference = std::getenv("FA18_RADAR_BITMAP_REFERENCE") != nullptr;
+  if (out.bitmap_reference) {
+    if (!rgb) return RadarSymbols{};
+    const auto pixel = [&](int x, int y) {
+      return rgb[std::size_t(y) * 320 + x] & 0xffffffu;
+    };
+    const uint32_t guide = pixel(139, 148), marker = pixel(158, 167);
+    if (guide == marker || guide == pixel(135, 148) ||
+        marker == pixel(135, 167)) return RadarSymbols{};
+    int guides = 0;
+    for (int y = 148; y <= 163; ++y) {
+      guides += pixel(139 + y - 148, y) == guide;
+      guides += pixel(177 - (y - 148), y) == guide;
+    }
+    if (guides < 31 || pixel(157, 168) != marker ||
+        pixel(158, 168) != marker || pixel(159, 168) != marker ||
+        pixel(out.dot_x, out.dot_y) != out.dot_rgb) return RadarSymbols{};
+    out.guide_rgb = guide;
+    out.marker_rgb = marker;
+    for (int y = RadarSymbols::Y; y < RadarSymbols::Y + RadarSymbols::H; ++y)
+      out.background[std::size_t(y - RadarSymbols::Y)] =
+        rgb[std::size_t(y) * 320 + RadarSymbols::X];
+  }
   out.active = true;
   return out;
 }

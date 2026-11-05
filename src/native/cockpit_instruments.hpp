@@ -50,33 +50,36 @@ struct FuelBar {
   }
 };
 
-// Small moving symbols on the central radar screen. The two diagonal guides
-// and centre reference are native geometry. The contact's position comes
-// from the original pen-5 pixel-writer hook, latched separately for each
-// Amiga screen buffer; its colour comes from the copper palette. The original
-// guide stencil and contact's single-pixel visibility gate protect menus,
-// Pause and intermediate double-buffer redraws.
+// The radar's diagonal guides, inverted-T reference and moving contact are
+// captured from the original blitter/CPU writers per Amiga screen buffer.
+// The enhanced shapes and colours need no source bitmap lookup; a diagnostic
+// fallback can still check the legacy source stencil for A/B comparison.
 struct RadarSymbols {
   static constexpr int X = 135, Y = 146, W = 47, H = 36;
   bool active = false;
   int dot_x = -1, dot_y = -1;
+  int guide_y = 148;
+  int marker_x = 158, marker_y = 167;
+  bool bitmap_reference = false;
   uint32_t guide_rgb = 0, marker_rgb = 0, dot_rgb = 0;
   std::array<uint32_t, H> background{};
 
-  static bool guide_at(int x, int y) {
-    return y >= 148 && y <= 163 &&
-           (x == 139 + y - 148 || x == 177 - (y - 148));
+  bool guide_at(int x, int y) const {
+    return y >= guide_y && y <= guide_y + 15 &&
+           (x == 139 + y - guide_y || x == 177 - (y - guide_y));
   }
-  static bool marker_at(int x, int y) {
-    return (x == 158 && y == 167) ||
-           (y == 168 && x >= 157 && x <= 159);
+  bool marker_at(int x, int y) const {
+    return (x == marker_x && y == marker_y) ||
+           (y == marker_y + 1 && x >= marker_x - 1 && x <= marker_x + 1);
   }
   bool source_at(int x, int y, uint32_t rgb) const {
     if (!active) return false;
+    const bool guide = guide_at(x, y), marker = marker_at(x, y);
+    const bool dot = x == dot_x && y == dot_y;
+    if (!bitmap_reference) return guide || marker || dot;
     const uint32_t c = rgb & 0xffffffu;
-    return (guide_at(x, y) && c == guide_rgb) ||
-           (marker_at(x, y) && c == marker_rgb) ||
-           (x == dot_x && y == dot_y && c == dot_rgb);
+    return (guide && c == guide_rgb) ||
+           (marker && c == marker_rgb) || (dot && c == dot_rgb);
   }
   uint32_t backing(int y) const {
     return background[std::size_t(y - Y)];

@@ -33,14 +33,26 @@ for scenario in baseline pull; do
   FA18_COCKPIT_RADAR_NATIVE=0 \
     "$bin" "${args[@]}" "$tmp/$scenario-old.ppm" "$adf" \
     >"$tmp/$scenario-old.log" 2>&1
-  FA18_RADAR_WRITER_DEBUG=1 "$bin" "${args[@]}" "$tmp/$scenario-new.ppm" "$adf" \
+  FA18_RADAR_WRITER_DEBUG=1 FA18_RADAR_BLIT_DEBUG=1 \
+    FA18_RADAR_STENCIL_DEBUG=1 \
+    "$bin" "${args[@]}" "$tmp/$scenario-new.ppm" "$adf" \
     >"$tmp/$scenario-new.log" 2>&1
   python3 "$repo/tests/check_gl_radar_vector.py" --writer \
     "$tmp/$scenario-new.log" "$frame" "$dot_x" "$dot_y"
+  python3 "$repo/tests/check_gl_radar_vector.py" --stencil \
+    "$tmp/$scenario-new.log" "$frame"
   python3 "$repo/tests/check_gl_radar_vector.py" \
     "$tmp/$scenario-old.ppm" "$tmp/$scenario-new.ppm"
   cmp <(grep '^\[ramhash\]' "$tmp/$scenario-old.log") \
       <(grep '^\[ramhash\]' "$tmp/$scenario-new.log")
+
+  # Diagnostic A/B gate: the old source-pixel stencil recogniser should
+  # select the same radar in settled flight, now without being consulted by
+  # the writer-derived production path.
+  FA18_RADAR_BITMAP_REFERENCE=1 "$bin" "${args[@]}" \
+    "$tmp/$scenario-reference.ppm" "$adf" \
+    >"$tmp/$scenario-reference.log" 2>&1
+  cmp "$tmp/$scenario-new.ppm" "$tmp/$scenario-reference.ppm"
 done
 
 for mode in legacy vector; do
