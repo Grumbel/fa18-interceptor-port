@@ -77,6 +77,19 @@ NativeHudState last_prepared_gpu_hud;
 std::vector<uint32_t> scene_return_pcs;
 uint64_t stat_poly = 0, stat_line = 0;
 
+// In GL mode, the original high-resolution software colour buffer is never
+// displayed: draw_layer() replaces it with the completed GPU scene.  The
+// coverage mask still matters because it distinguishes captured 3D drawing
+// from otherwise unexplained original 2D pixels. Keep the legacy path
+// available for a deterministic mask/pixel comparison.
+bool coverage_only() {
+  static const bool enabled = [] {
+    const char* reference = std::getenv("FA18_GL_COVERAGE_REFERENCE");
+    return !reference || std::strcmp(reference, "0") == 0;
+  }();
+  return enabled && glr::active();
+}
+
 // display plane p is the plane table entry 3-p (entry 3 is the lowest
 // address = BPL1); mask/colour bit b drives display plane b
 inline int plane_of_bit(int b) { return b; }
@@ -183,12 +196,14 @@ void init_from_bitmap(Layer& L) {
   for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
   // With the OpenGL renderer the layer pixels are replaced at the end of
   // the scene: only the low-res base and the coverage are needed.
-  const bool fill_px = !glr::active();
-  L.px.resize(size_t(W * S) * size_t(L.rows * S));
+  const bool fill_px = !coverage_only();
+  if (fill_px) L.px.resize(size_t(W * S) * size_t(L.rows * S));
+  else L.px.clear();
   L.s0.resize(size_t(W) * size_t(L.rows));
   L.cover.assign(size_t(W) * size_t(L.rows), 0);
   L.unexplained.clear();
-  std::vector<uint8_t> wide(size_t(W * S));
+  std::vector<uint8_t> wide;
+  if (fill_px) wide.resize(size_t(W * S));
   for (int y = 0; y < L.rows; ++y) {
     uint8_t* row = &L.s0[size_t(y) * W];
     const uint32_t off = uint32_t(y * 40);
@@ -226,6 +241,7 @@ void draw_line(Layer& L, V2 a, V2 b, const PlaneOps& o);
 void fill_polygon(Layer& L, const std::vector<V2>& pts, const PlaneOps& o) {
   const int S = L.S, Wp = W * S, Hp = L.rows * S;
   if (pts.size() < 3) return;
+  const bool mask_only = coverage_only();
   double ymin = 1e30, ymax = -1e30, xmin = 1e30, xmax = -1e30;
   for (auto& p : pts) {
     ymin = std::min(ymin, p.y);
@@ -252,14 +268,16 @@ void fill_polygon(Layer& L, const std::vector<V2>& pts, const PlaneOps& o) {
     for (size_t k = 0; k + 1 < xs.size(); k += 2) {
       int xa = std::max(0, int(std::floor(xs[k] * S)));
       int xb = std::min(Wp - 1, int(std::ceil(xs[k + 1] * S)) - 1);
-      for (int x = xa; x <= xb; ++x) put(L, x, y, o);
+      if (!mask_only)
+        for (int x = xa; x <= xb; ++x) put(L, x, y, o);
       // the original fills edge pixels our centre-sampling rule leaves out:
       // treat the neighbouring low-res cells as explained too
       if (xb >= xa) {
         int cy = y / S;
         for (int ry = std::max(0, cy - 1); ry <= std::min(L.rows - 1, cy + 1); ++ry)
-          for (int cx = std::max(0, xa / S - 1); cx <= std::min(W - 1, xb / S + 1); ++cx)
-            L.cover[size_t(ry) * W + size_t(cx)] = 1;
+          std::fill_n(&L.cover[size_t(ry) * W + size_t(std::max(0, xa / S - 1))],
+                      size_t(std::min(W - 1, xb / S + 1) - std::max(0, xa / S - 1) + 1),
+                      uint8_t(1));
       }
     }
   }
@@ -267,6 +285,7 @@ void fill_polygon(Layer& L, const std::vector<V2>& pts, const PlaneOps& o) {
 
 void draw_line(Layer& L, V2 a, V2 b, const PlaneOps& o) {
   const int S = L.S, Wp = W * S, Hp = L.rows * S;
+  const bool mask_only = coverage_only();
   double dx = (b.x - a.x) * S, dy = (b.y - a.y) * S;
   int n = int(std::ceil(std::max(std::fabs(dx), std::fabs(dy)))) + 1;
   for (int i = 0; i <= n; ++i) {
@@ -277,6 +296,7 @@ void draw_line(Layer& L, V2 a, V2 b, const PlaneOps& o) {
     for (int ry = std::max(0, py / S - 1); ry <= std::min(L.rows - 1, py / S + 1); ++ry)
       for (int cx = std::max(0, px / S - 1); cx <= std::min(W - 1, px / S + 1); ++cx)
         L.cover[size_t(ry) * W + size_t(cx)] = 1;
+    if (mask_only) continue;
     int bx = px - S / 2, by = py - S / 2;
     for (int yy = 0; yy < S; ++yy)
       for (int xx = 0; xx < S; ++xx) {
@@ -596,8 +616,17 @@ void fill_rect(Layer& L, double cx, double cy, double w, double h, const PlaneOp
   int y0 = int(std::floor((cy - h / 2) * S + 0.5)), y1 = int(std::floor((cy + h / 2) * S + 0.5));
   if (x1 <= x0) x1 = x0 + 1;
   if (y1 <= y0) y1 = y0 + 1;
-  for (int y = std::max(0, y0); y < std::min(Hp, y1); ++y)
-    for (int x = std::max(0, x0); x < std::min(Wp, x1); ++x) put(L, x, y, o);
+  const int xa = std::max(0, x0), xb = std::min(Wp, x1);
+  const int ya = std::max(0, y0), yb = std::min(Hp, y1);
+  if (xa >= xb || ya >= yb) return;
+  if (coverage_only()) {
+    const size_t start = size_t(xa / S), count = size_t((xb - 1) / S - xa / S + 1);
+    for (int y = ya / S; y <= (yb - 1) / S; ++y)
+      std::fill_n(&L.cover[size_t(y) * W + start], count, uint8_t(1));
+    return;
+  }
+  for (int y = ya; y < yb; ++y)
+    for (int x = xa; x < xb; ++x) put(L, x, y, o);
 }
 
 void on_point(int sel) {
@@ -785,6 +814,17 @@ void scene_end() {
   cur->unexplained.assign(cur->snap.size(), 0);
   for (size_t i = 0; i < cur->snap.size(); ++i)
     cur->unexplained[i] = (cur->snap[i] != cur->s0[i]) && !cur->cover[i];
+  if (std::getenv("FA18_GL_COVERAGE_DEBUG") && glr::active()) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    uint32_t count = 0;
+    for (uint8_t value : cur->cover) {
+      hash = (hash ^ value) * UINT64_C(1099511628211);
+      count += value != 0;
+    }
+    std::fprintf(stderr, "gl: coverage frame=%llu rows=%d pixels=%u fnv=%016llx\n",
+                 (unsigned long long)cur->frame, cur->rows, count,
+                 (unsigned long long)hash);
+  }
   // OpenGL renderer: replaces the re-rasterised layer; the coverage of the
   // original's 3D primitives above still decides where 2D drawing done
   // during the scene (target markers) shows through.
