@@ -244,6 +244,17 @@ the previous pixel-ink path for comparison. `tests/check_gl_hud_palette.sh`
 checks pixel-identical bank-flip, flight, Pause and dynamic cockpit screenshots
 and unchanged RAM hashes against that reference mode.
 
+The independent vector **Pause heading** also follows the original game's
+displayed colour: its glyphs use copper palette pen 9 (original Pause frame
+3570: `#884400`), while their geometry is held in a static 960×720 alpha
+texture. The GPU compositor changes only the tint uniform when the copper
+palette fades; the SDL/CPU compositor blends the same per-frame ink. Both
+paths wait for the original title to become visible, rather than displaying
+the native heading as soon as the Pause state begins. The remainder of the
+Pause panel still comes from the original Amiga display. Run
+`tests/check_gl_pause_ink.sh ORIGINAL.adf` to verify original/source colour,
+delayed visibility and emulated RAM parity.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

@@ -157,9 +157,9 @@ before committing. Note limitations explicitly rather than masking them.
   (including copper fades) and paint an antialiased vector heading in a
   separate 960x720 transparent UI texture, centred on the original 4:3
   region. This works in the CPU fallback and the opt-in direct GPU compositor;
-  stats/FPS retain their separate top-left-anchored layer. The new title
-  currently uses a fixed amber rather than tracking the original title's
-  per-frame fade. The rest of the Pause panel and instrument graphics still
+  stats/FPS retain their separate top-left-anchored layer. The title now
+  follows the original scanline's copper pen 9 rather than fixed amber,
+  including palette fades. The rest of the Pause panel and instrument graphics still
   use the original bitplanes. A direct-GPU paused comparison at VBL 3570 had
   one unrelated raster-edge mismatch (160,108) in 85,600 source pixels;
   `tests/check_gl_direct.sh` allows at most two on that transition.
@@ -223,9 +223,8 @@ before committing. Note limitations explicitly rather than masking them.
   CPU composition and direct-GPU presentation draw the same strokes over
   the cleared old pixels. `FA18_HUD_RETICLE_NATIVE=0` restores the legacy
   bitmap, and `tests/check_gl_reticle.sh` verifies both flight and Pause.
-  The direct-GPU Pause heading is also delayed until the original title
-  actually appears, rather than flashing immediately at Pause-state entry.
-  The SDL/CPU Pause-heading path still uses the earlier state-only gate.
+  Both direct-GPU and SDL/CPU Pause headings now wait for the original title
+  to appear, rather than flashing immediately at Pause-state entry.
 - [x] Rasterise the cockpit HUD frame's **top rail and two diagonal chamfers**
   at native corrected 960x720 resolution. The original top/corner pens are
   separately sampled as visibility and *live copper colour* oracles, so the
@@ -337,6 +336,11 @@ before committing. Note limitations explicitly rather than masking them.
   screen bank. Keep the frame/backdrop visibility gates and original-pixel
   fallback for incomplete redraws; verify bank flips, flight, Pause and
   dynamic text against the prior pixel-ink path.
+- [x] Retint the native Pause heading from copper palette pen 9, using the
+  original screen-space title solely as a visibility gate. Keep the cached
+  vector coverage texture on the GPU; apply the pen colour as a uniform and
+  match SDL/CPU blending. `tests/check_gl_pause_ink.sh` checks the exact
+  source colour and that the heading waits for its original first draw.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -125,6 +125,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   non-flight views and transitions retain original pixels.
   `FA18_HUD_PALETTE_REFERENCE=1` restores the earlier pixel-ink lookup;
   `tests/check_gl_hud_palette.sh` verifies matching images and emulated RAM.
+  The native Pause heading has a cached high-resolution coverage texture:
+  colour comes from the live copper palette pen 9 (not hardcoded amber), and
+  the source title's bitplane stencil gates visibility in both SDL/CPU and
+  direct GPU presentation. `tests/check_gl_pause_ink.sh` checks colour and
+  the early Pause transition; `tests/check_gl_direct.sh` checks GPU/CPU parity.
   `FA18_HUD_DIGITS_NATIVE=0` restores all the old HUD glyphs;
   `FA18_HUD_LABELS_NATIVE=0` disables only the labels.
   The compass tape's five alternating major/minor ticks and central index
