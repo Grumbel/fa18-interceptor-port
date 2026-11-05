@@ -237,12 +237,21 @@ background gains bitplane 3 during the glyph write (the G-meter uses pen 12),
 and the displayed ink resolves to **copper palette pen 13**. Once the hook
 has seen a complete redraw for the visible bank, the native HUD derives the
 glyph colour from that scanline's palette entry instead of sampling a glyph
-pixel from the original bitplanes; the background contrast check and original
-HUD-frame visibility gate remain in place. Unobserved and incomplete redraws
+pixel from the original bitplanes. The background contrast test also uses
+the original fixed *backdrop pen indices*, not a sampled source pixel:
+pen 5 for upper HUD text/heading/reticle, pen 12 for the G-meter and left
+unit label, and pen 4 for the right unit label. The contrast computation
+still follows the copper fades independently on each scanline. The original
+HUD-frame visibility gate remains in place. Unobserved and incomplete redraws
 still use original glyph recognition. `FA18_HUD_PALETTE_REFERENCE=1` restores
 the previous pixel-ink path for comparison. `tests/check_gl_hud_palette.sh`
 checks pixel-identical bank-flip, flight, Pause and dynamic cockpit screenshots
 and unchanged RAM hashes against that reference mode.
+`FA18_HUD_BACKDROP_REFERENCE=1` independently restores the previous
+source-background-pixel contrast checks for all captured text, heading and
+reticle. `tests/check_gl_hud_backdrop.sh` compares five scripted scenarios
+and their RAM hashes against that reference. Neither option is required
+to run the game.
 
 The independent vector **Pause heading** also follows the original game's
 displayed colour: its glyphs use copper palette pen 9 (original Pause frame
@@ -591,7 +600,7 @@ the compass from other pixels sharing this routine. An exact set of all
 eleven points, including the fixed centre, is required per redraw and per
 screen buffer; incomplete or unfamiliar commands are rejected. The CPU and
 direct-GL passes share this captured phase and derive its live grayscale ink
-from copper palette pen 13, using the surrounding background as a visibility
+from copper palette pen 13, using the copper pen-5 backing as a visibility
 guard. Until a complete writer capture is available (or when its palette
 contrast check fails), the previous full 8+3-pixel
 stencil decoder remains the fallback. The passes erase only validated source
@@ -616,7 +625,8 @@ other geometry sharing those rasterisers. Both are latched per Amiga screen
 buffer, and the native CPU/direct-GL stroke is enabled only after the
 complete five-command redraw. Once captured and with the source HUD frame
 visible, copper palette pen 10 supplies its faded grayscale ink without
-sampling a reticle pixel. The original backdrop still gates contrast.
+sampling a reticle pixel. The original pen-5 backdrop still gates contrast,
+but its RGB now also comes from the displayed copper palette.
 Until that redraw is known, or when its ink is no longer visible, the old
 multi-pixel stencil gate remains active. Use
 `FA18_HUD_RETICLE_CAPTURE=0` for the old gate alone, and

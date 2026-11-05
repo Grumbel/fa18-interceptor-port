@@ -1845,30 +1845,54 @@ bool pause_screen_active() {
   return state == 0x23b7e || state == 0x23ba8;
 }
 
-// The captured original font writer ORs the glyph into bitplane 3 over the
-// flight HUD's pen-5 background (pen 12 for the G-meter). Both resolve to
-// pen 13 where the original 3x5 stroke is visible. The copper palette is the
-// real colour source, and may fade between scanlines; no glyph pixel needs
-// to be read to recover its ink once the displayed bank has a full redraw.
+// In the original cockpit, each font reference point has a fixed *palette
+// index* beneath it, even though the corresponding copper RGB values fade.
+// These indices were checked against the unmodified screen-bank bitplanes:
+// pen 5 behind upper text and heading, pen 12 behind the left unit/G-meter,
+// and pen 4 beneath the right unit labels. An unknown position cannot act as
+// an oracle; it must keep the original bitmap fallback.
+static int hud_backdrop_pen(int y, int x) {
+  if (y == 53 && (x == 135 || x == 156)) return 5;
+  if (y == 63 && x == 165) return 5;
+  if (y == 73 && x == 165) return 5;
+  if (y == 84 && (x == 94 || x == 215)) return 5;
+  if (y == 91 && x == 94) return 12;
+  if (y == 91 && x == 215) return 4;
+  if (y == 121 && x == 93) return 12;
+  return -1;
+}
+
+// Once the original 68000 font writer has supplied the glyph, its stroke
+// uses copper pen 13. Neither foreground nor backdrop requires a bitmap
+// pixel read on the production capture path.
 static bool hud_font_palette_ink(const amiga::Machine& m, int y, int background_x,
                                  uint32_t& ink) {
-  const uint32_t* rgb = m.frame_rgb();
   const uint32_t* palette = m.frame_row_pal();
-  if (!rgb || !palette || y < 0 || y >= 200 || background_x < 0 || background_x >= W)
-    return false;
+  const int bg_pen = hud_backdrop_pen(y, background_x);
+  if (!palette || bg_pen < 0) return false;
   ink = palette[size_t(y) * 32 + 13] & 0xffffffu;
-  return hud_font::glyph_ink(ink, rgb[y * W + background_x]);
+  uint32_t background = palette[size_t(y) * 32 + size_t(bg_pen)] & 0xffffffu;
+  if (std::getenv("FA18_HUD_BACKDROP_REFERENCE")) {
+    const uint32_t* rgb = m.frame_rgb();
+    if (!rgb) return false;
+    background = rgb[y * W + background_x] & 0xffffffu;
+  }
+  return hud_font::glyph_ink(ink, background);
 }
 
 // The aiming reticle uses pen 10, not the heading/font's pen 13. Its fade
 // reaches 0x111111 in Pause, so use its original >=16 luminance threshold
 // rather than the brighter 3x5 glyph contrast rule.
 static bool hud_reticle_palette_ink(const amiga::Machine& m, uint32_t& ink) {
-  const uint32_t* rgb = m.frame_rgb();
   const uint32_t* palette = m.frame_row_pal();
-  if (!rgb || !palette) return false;
+  if (!palette) return false;
   ink = palette[73 * 32 + 10] & 0xffffffu;
-  const uint32_t background = rgb[73 * W + 165] & 0xffffffu;
+  uint32_t background = palette[73 * 32 + 5] & 0xffffffu;
+  if (std::getenv("FA18_HUD_BACKDROP_REFERENCE")) {
+    const uint32_t* rgb = m.frame_rgb();
+    if (!rgb) return false;
+    background = rgb[73 * W + 165] & 0xffffffu;
+  }
   const uint32_t r = (ink >> 16) & 255u;
   return ink != background && r >= 16 && ink == r * 0x010101u;
 }

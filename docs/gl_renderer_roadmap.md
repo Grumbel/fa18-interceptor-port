@@ -389,6 +389,12 @@ before committing. Note limitations explicitly rather than masking them.
   Preserve the HUD-frame/backdrop visibility gates and original bitmap
   fallback; verify four bank-flip, flight, Pause and dynamic scenes against
   the previous glyph-pixel ink sampling path.
+- [x] Remove the remaining *source-pixel* HUD backdrop probes for completed
+  original writer captures: compare ink with the corresponding copper
+  background pen instead (5 behind upper text/heading/reticle, 12 behind
+  G-meter/left units, 4 behind right unit labels). Keep the HUD-frame gate
+  and early/incomplete source-glyph fallbacks. A reference toggle and a
+  five-scenario screenshot/RAM test guard this migration.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
@@ -403,5 +409,10 @@ before committing. Note limitations explicitly rather than masking them.
   consumes too much GPU memory.
 - [ ] Make the compositor independent of the original HUD bitplanes;
   classify cockpit instrument writes directly (not by comparing bitplanes
-  against the static ILBM) and re-render them at output resolution.
+  against the static ILBM) and re-render them at output resolution. A watch
+  on the original top HUD rail's bitplane-1 word reaches generic blitter
+  paths around `$44856` (write) and `$44a98` (clear), repeatedly during
+  the flight redraw. Their *callers* and draw parameters must be classified
+  before treating them as a frame-presence hook; either PC alone is not a
+  reliable HUD visibility signal.
 - [ ] Validate sustained 120/240 Hz and seam stability on real GPU/monitor.
