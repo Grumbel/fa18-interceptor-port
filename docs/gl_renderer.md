@@ -264,6 +264,28 @@ Pause panel still comes from the original Amiga display. Run
 `tests/check_gl_pause_ink.sh ORIGINAL.adf` to verify original/source colour,
 delayed visibility and emulated RAM parity.
 
+The heading's *visibility* no longer depends on scanning the original Pause
+pixels in settled presentation. A memory watch on the title's bitplane-3
+word found writes at `$47d56`, shared with the flight HUD's character
+renderer, but using a different **5×7 font** from `$52b00`–`$52c10`.
+The original draws two short dashes around `PAUSED` and writes the heading
+progressively into both Amiga screen banks. Each captured row contributes
+its five source-glyph bits to a per-bank coverage mask, suppressing duplicate
+writes. The displayed frame lags the writer by one emulated frame, so the
+compositor uses the count *before* any writes in the current frame.
+The observed ink counts at displayed frames 3552–3558 are respectively
+5, 23, 64, 87, 107, 128 and 133, exactly matching the previous framebuffer
+count. The 24-pixel visibility threshold therefore still turns on at frame
+3554, never at Pause-state entry. Copper pen 9 still supplies the colour.
+
+`FA18_PAUSE_TITLE_BITMAP_REFERENCE=1` forces the old source-pixel visibility
+gate and `FA18_PAUSE_TITLE_CAPTURE_DEBUG=1` prints both values and the
+individual glyph captures. `tests/check_gl_pause_title_capture.sh ORIGINAL.adf`
+compares seven partial and complete title frames pixel-for-pixel, verifies
+emulated RAM hashes, and checks all 21 displayed-frame coverage counts.
+If no original glyph has yet been captured, the old gate remains a fallback;
+leaving Pause invalidates all per-bank title counts.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

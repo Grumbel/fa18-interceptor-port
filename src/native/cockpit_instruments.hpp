@@ -154,4 +154,9 @@ bool captured_reticle_ready(const uint32_t* row_keys);
 // Frame of the last complete five-line HUD outline write in the displayed
 // bank; UINT64_MAX means no verified original frame command sequence yet.
 uint64_t captured_hud_frame(const uint32_t* row_keys);
+// Distinct original 5x7 Pause-heading ink pixels drawn in the displayed bank.
+// The displayed title lags the writer by one Amiga frame; zero before it starts.
+int captured_pause_title_pixels(const uint32_t* row_keys, uint64_t display_frame);
+// Drop title captures after leaving Pause (including rapid pause/resume).
+void observe_pause_title_state(bool paused);
 }  // namespace remaster

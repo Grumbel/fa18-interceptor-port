@@ -30,6 +30,8 @@ constexpr uint32_t kHudFrameSegmentWriter = 0x48eba;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
 constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
+constexpr int kPauseTitleX = 124, kPauseTitleY = 42;
+constexpr int kPauseTitleW = 78, kPauseTitleH = 9;
 
 struct CapturedGlyph {
   int8_t value = -1;
@@ -55,6 +57,13 @@ struct HudFrameBank {
   uint64_t drawing_frame = UINT64_MAX;
   uint64_t complete_frame = UINT64_MAX;
   uint8_t next_segment = 0;
+};
+
+struct PauseTitleBank {
+  std::array<uint8_t, kPauseTitleW * kPauseTitleH> pixels{};
+  int painted = 0;
+  int before_frame = 0;
+  uint64_t last_frame = UINT64_MAX;
 };
 
 struct RadarBank {
@@ -99,6 +108,7 @@ struct FuelBank {
   HeadingBank heading{};
   ReticleBank reticle{};
   HudFrameBank frame{};
+  PauseTitleBank pause_title{};
   RadarBank radar{};
 };
 
@@ -476,10 +486,54 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
   // glyph, A0 its current byte, A3 the double-buffered destination and the
   // low nibble of D2 is the horizontal shift. Record only complete five-row
   // writes to the 17 measured HUD cells, not arbitrary menu lettering.
+  // The same resident writer also draws the Pause banner using a separate
+  // 5x7 font and pen 9. Record its actual source bits and display-bank pixels;
+  // the pause overlay can then wait for the original partial title rather
+  // than scanning the Amiga's displayed bitmap for orange source pixels.
   m.add_pc_hook(kHudGlyphWriter, [&m] {
     const uint32_t dst = m.cpu.a[3] & 0xffffff;
     const uint32_t source = m.cpu.d[4] & 0xffffff;
     const uint32_t src_row = m.cpu.a[0] & 0xffffff;
+    // The Pause banner uses a *different*, seven-row five-pixel font bank
+    // ($52b00-$52c10), not the flight HUD's five-row three-pixel glyphs.
+    // Both use the same bitplane-3 row writer at $47d56. The title writes
+    // pen 9 over the existing pen-5 panel and is built progressively.
+    if (pause_screen_active() && source >= 0x52b00 && source + 7 <= 0x52c10 &&
+        src_row >= source && src_row - source < 7) {
+      const int row = int(src_row - source);
+      if ((m.cpu.d[6] & 0xffff) != uint32_t(6 - row)) return;
+      for (auto& bank : fuel_banks) {
+        if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+        const uint32_t plane3 = bank.row_key - FuelDigits::Y * kRowStride +
+                                3 * kPlaneBytes;
+        if (dst < plane3 || dst >= plane3 + kPlaneBytes) continue;
+        const uint32_t pos = dst - plane3;
+        const int y = int(pos / kRowStride);
+        const int x = int((pos % kRowStride) * 8 + (m.cpu.d[2] & 15));
+        if (x < kPauseTitleX || x + 4 >= kPauseTitleX + kPauseTitleW ||
+            y < kPauseTitleY || y >= kPauseTitleY + kPauseTitleH) return;
+        auto& title = bank.pause_title;
+        if (title.last_frame != m.frame_count()) {
+          title.before_frame = title.painted;
+          title.last_frame = m.frame_count();
+        }
+        const uint8_t pattern = m.r8(src_row);
+        for (int pixel = 0; pixel < 5; ++pixel) {
+          if (!(pattern & (0x80u >> pixel))) continue;
+          const size_t at = size_t(y - kPauseTitleY) * kPauseTitleW +
+                            size_t(x + pixel - kPauseTitleX);
+          if (!title.pixels[at]) {
+            title.pixels[at] = 1;
+            ++title.painted;
+          }
+        }
+        if (std::getenv("FA18_PAUSE_TITLE_CAPTURE_DEBUG") && row == 6)
+          std::fprintf(stderr, "Pause font capture frame=%llu bank=%06x x=%d y=%d pixels=%d\n",
+                       (unsigned long long)m.frame_count(), bank.row_key,
+                       x, y - row, title.painted);
+        return;
+      }
+    }
     if (source < 0x52900 || source + 5 > 0x52b00 ||
         src_row < source || src_row - source >= 5) return;
     const int row = int(src_row - source);
@@ -676,6 +730,23 @@ uint64_t captured_hud_frame(const uint32_t* row_keys) {
     return bank.frame.complete_frame;
   }
   return UINT64_MAX;
+}
+
+int captured_pause_title_pixels(const uint32_t* row_keys, uint64_t display_frame) {
+  if (!row_keys) return 0;
+  for (const auto& bank : fuel_banks)
+    if (bank.known && bank.row_key == row_keys[FuelDigits::Y] &&
+        bank.row_key >= FuelDigits::Y * kRowStride &&
+        bank.row_key - FuelDigits::Y * kRowStride == row_keys[0]) {
+      const auto& title = bank.pause_title;
+      return title.last_frame == display_frame ? title.before_frame : title.painted;
+    }
+  return 0;
+}
+
+void observe_pause_title_state(bool paused) {
+  if (paused) return;
+  for (auto& bank : fuel_banks) bank.pause_title = PauseTitleBank{};
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,

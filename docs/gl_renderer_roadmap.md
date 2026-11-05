@@ -384,6 +384,15 @@ before committing. Note limitations explicitly rather than masking them.
   vector coverage texture on the GPU; apply the pen colour as a uniform and
   match SDL/CPU blending. `tests/check_gl_pause_ink.sh` checks the exact
   source colour and that the heading waits for its original first draw.
+- [x] Recover Pause heading visibility from the original **5×7 font writer**
+  at `$47d56` (a separate source bank from the flight HUD's 3×5 font). Capture
+  both decorative dashes and all six letters per screen bank, counting only
+  newly drawn ink pixels. The Amiga framebuffer presents font writes one
+  frame later, so exclude current-frame writes when evaluating the visible
+  title. The resulting 0/5/23/64/87/…/133 count agrees exactly with the old
+  bitmap scan; preserve it only as an optional reference and for unknown
+  early draws. Test partial and complete titles against source screenshots
+  and memory hashes with `tests/check_gl_pause_title_capture.sh`.
 - [x] Recover the heading ticks' and aiming reticle's displayed ink directly
   from copper palette pens 13 and 10 after complete original writer captures.
   Preserve the HUD-frame/backdrop visibility gates and original bitmap

@@ -1902,17 +1902,30 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
   const uint32_t* rgb = m.frame_rgb();
   if (!rgb) return out;
 
-  if (pause_screen_active()) {
+  const bool paused = pause_screen_active();
+  observe_pause_title_state(paused);
+  if (paused) {
     // The original enters the Pause state a few frames before drawing its
-    // title. A state-only gate flashes the new vector title prematurely.
+    // title. Track its original 3x5 font writes per displayed screen bank;
+    // require the same minimum ink coverage as the previous pixel scan.
+    const int painted = captured_pause_title_pixels(m.frame_row_key(), m.frame_count());
+    const bool from_writer = painted > 0 &&
+                             !std::getenv("FA18_PAUSE_TITLE_BITMAP_REFERENCE");
     int amber_pixels = 0;
-    for (int y = 42; y <= 50; ++y)
-      for (int x = 124; x <= 201; ++x) {
-        const uint32_t c = rgb[y * W + x];
-        const int r = int((c >> 16) & 255), g = int((c >> 8) & 255);
-        if (r >= 32 && g >= 16 && r > g && g > int(c & 255)) ++amber_pixels;
-      }
-    out.pause_title = amber_pixels > 24;
+    if (!from_writer || std::getenv("FA18_PAUSE_TITLE_CAPTURE_DEBUG")) {
+      for (int y = 42; y <= 50; ++y)
+        for (int x = 124; x <= 201; ++x) {
+          const uint32_t c = rgb[y * W + x];
+          const int r = int((c >> 16) & 255), g = int((c >> 8) & 255);
+          if (r >= 32 && g >= 16 && r > g && g > int(c & 255)) ++amber_pixels;
+        }
+    }
+    out.pause_title = (from_writer ? painted : amber_pixels) > 24;
+    if (std::getenv("FA18_PAUSE_TITLE_CAPTURE_DEBUG") &&
+        m.frame_count() >= 3540 && m.frame_count() <= 3590)
+      std::fprintf(stderr, "Pause title capture use frame=%llu writer=%d painted=%d bitmap=%d visible=%d\n",
+                   (unsigned long long)m.frame_count(), int(from_writer),
+                   painted, amber_pixels, int(out.pause_title));
     // The Pause heading's original orange pixels use displayed pen 9 on
     // scanline 44 (verified against the bitplane frame). Keep the original
     // title pixels only as a visibility gate; follow their copper fade using
