@@ -7,11 +7,34 @@
 #include "native/scene_renderer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 
 namespace amiga {
+
+// A debug-only dependency map. A marked byte was last written by the
+// original blitter into a flight-scene bitplane. Keep the marks past scene
+// end: the next frame, the display DMA, or a subsequent blit may consume it.
+// Observing reads is crucial before considering any 3D write suppression.
+struct Machine::RasterAudit {
+  std::vector<uint8_t> marked = std::vector<uint8_t>(RAM_SIZE);
+  std::array<uint32_t, 4> plane = {};
+  uint32_t plane_bytes = 0;
+  bool scene = false;
+  uint64_t scenes = 0, blitter_words = 0, guest_writes = 0;
+  uint64_t marked_bytes = 0, overwritten_bytes = 0;
+  uint64_t reads[4][2] = {};  // source, during/outside scene
+  std::map<uint32_t, uint64_t> guest_sites;
+
+  bool scene_plane(uint32_t addr) const {
+    for (uint32_t base : plane)
+      if (base && addr >= base && addr - base < plane_bytes) return true;
+    return false;
+  }
+};
 
 Machine::Machine() : ram_(RAM_SIZE), fb_(FB_W * FB_H) {
   ram = ram_.data();
@@ -24,10 +47,82 @@ Machine::Machine() : ram_(RAM_SIZE), fb_(FB_W * FB_H) {
     exit_ = true;
     exit_code_ = 100;
   };
+  if (const char* enabled = std::getenv("FA18_GL_RASTER_AUDIT");
+      enabled && std::strcmp(enabled, "0") != 0) {
+    raster_audit_ = std::make_unique<RasterAudit>();
+    ram_access_context = this;
+    ram_access_observer = [](void* ctx, uint32_t addr, uint8_t size, bool write) {
+      static_cast<Machine*>(ctx)->raster_audit_access(addr, size, write);
+    };
+  }
   hle_ = std::make_unique<Hle>(*this);
 }
 
-Machine::~Machine() = default;
+Machine::~Machine() {
+  if (!raster_audit_ || !raster_audit_->scenes) return;
+  const auto& a = *raster_audit_;
+  log("gl-raster-audit: scenes=%llu scene_blitter_words=%llu guest_screen_writes=%llu "
+      "marked_bytes=%llu overwritten_bytes=%llu live_bytes=%llu\n",
+      (unsigned long long)a.scenes, (unsigned long long)a.blitter_words,
+      (unsigned long long)a.guest_writes, (unsigned long long)(a.marked_bytes),
+      (unsigned long long)a.overwritten_bytes,
+      (unsigned long long)std::count(a.marked.begin(), a.marked.end(), uint8_t(1)));
+  const char* names[] = {"guest/host", "blitter", "display DMA", "presenter"};
+  for (int i = 0; i < 4; ++i)
+    log("gl-raster-audit: tagged reads %-12s during=%llu after=%llu\n", names[i],
+        (unsigned long long)a.reads[i][1], (unsigned long long)a.reads[i][0]);
+  // These are candidate guest PCs, not proven game-logic reads: some
+  // host/HLE helpers also use the shared bus, so verify each before bypass.
+  std::vector<std::pair<uint32_t, uint64_t>> sites(a.guest_sites.begin(), a.guest_sites.end());
+  std::sort(sites.begin(), sites.end(), [](auto x, auto y) { return x.second > y.second; });
+  for (size_t i = 0; i < std::min(size_t(8), sites.size()); ++i)
+    log("gl-raster-audit: candidate read pc=%06x hits=%llu\n", sites[i].first,
+        (unsigned long long)sites[i].second);
+}
+
+void Machine::raster_audit_access(uint32_t addr, uint8_t size, bool write) {
+  if (!raster_audit_) return;
+  auto& a = *raster_audit_;
+  if (write) {
+    const bool producer = a.scene && raster_origin_ == RasterSource::Blitter &&
+                          a.scene_plane(addr);
+    if (producer) ++a.blitter_words;
+    else if (a.scene && raster_origin_ == RasterSource::Guest && a.scene_plane(addr))
+      ++a.guest_writes;
+    for (uint32_t i = 0; i < size; ++i) {
+      uint8_t& mark = a.marked[addr + i];
+      if (mark && !producer) ++a.overwritten_bytes;
+      if (producer && !mark) ++a.marked_bytes;
+      mark = uint8_t(producer);
+    }
+    return;
+  }
+  bool dependent = false;
+  for (uint32_t i = 0; i < size; ++i) dependent |= a.marked[addr + i] != 0;
+  if (!dependent) return;
+  ++a.reads[int(raster_origin_)][a.scene ? 1 : 0];
+  if (raster_origin_ == RasterSource::Guest) ++a.guest_sites[cpu.op_pc];
+}
+
+void Machine::raster_audit_scene(bool active) {
+  if (!raster_audit_) return;
+  auto& a = *raster_audit_;
+  if (!active) { a.scene = false; return; }
+  if (a.scene) return;  // game_frame and $2fc14 both announce the scene
+  const uint32_t table = read32(0x5a9ae) & 0x00ffffff;
+  if (table > RAM_SIZE - 16) return;
+  for (int p = 0; p < 4; ++p)
+    a.plane[p] = read32(table + uint32_t(3 - p) * 4) & 0x00ffffff;
+  a.plane_bytes = uint32_t(std::clamp<int>(int(read16(0x5ac7c)) + 1, 1, 200) * 40);
+  a.scene = true;
+  ++a.scenes;
+}
+
+void Machine::raster_audit_reset() {
+  if (!raster_audit_) return;
+  raster_audit_->scene = false;
+  std::fill(raster_audit_->marked.begin(), raster_audit_->marked.end(), 0);
+}
 
 void Machine::log(const char* fmt, ...) {
   va_list ap;
@@ -602,6 +697,7 @@ void Machine::end_of_frame() {
 
 void Machine::set_hires_scale(int s) {
   static bool installed = false;
+  if (s <= 0) raster_audit_scene(false);  // runtime 3D mode switch
   // Hi-res remaster and scene capture share the same PC hooks on draw entries.
   if ((s > 0 || scene::enabled()) && !installed) {
     remaster::install(*this);
@@ -673,7 +769,12 @@ void Machine::execute(int64_t until) {
     }
     if (!pc_hooks_.empty() && !in_reference_) {
       uint32_t hidx = (pc - LOAD_BASE) >> 1;
-      if (hidx < pc_hooks_.size() && pc_hooks_[hidx] && !(pc & 1)) (*pc_hooks_[hidx])();
+      if (hidx < pc_hooks_.size() && pc_hooks_[hidx] && !(pc & 1)) {
+        // Capture hooks often take a complete software bitmap snapshot.
+        // These are host reads, not the original 68000 reading its pixels.
+        RasterAuditScope audit(*this, RasterSource::Presenter);
+        (*pc_hooks_[hidx])();
+      }
     }
     if (native_mode != NativeMode::Off && !in_reference_) {
       uint32_t idx = (pc - LOAD_BASE) >> 1;

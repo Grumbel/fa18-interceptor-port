@@ -130,6 +130,52 @@ unsized RGBA texture path and fallback both use only GL 2.1/GLES2 entry
 points. GLES2 hardware testing remains outstanding. The host Graphics
 submenu can switch 3D mode, widescreen, target FPS, detail and stats live.
 
+## Audit before suppressing the old 3D rasterizer
+
+`FA18_GL_RASTER_AUDIT=1` enables an optional chip-RAM dependency observer.
+It marks original blitter writes to the four active 3D bitplane ranges while
+a GL scene is being captured, then tracks reads of those bytes until the
+next overwrite. At shutdown it reports scene write volume and tagged reads
+by consumer: blitter (during and after scene), display DMA, CPU/HLE/other
+host accesses, and the hi-res presenter. Candidate CPU read PCs are listed
+for disassembly; an address alone does not prove that game logic consumes
+the pixel value. Each marked access is tracked at byte granularity, so
+crossing word/longword reads are counted. This is a diagnostic, not a
+performance option: every original write is still performed.
+
+The trace is conservative in *both* directions. It marks all blitter writes
+inside the scene's screen-plane ranges, including any 2D elements drawn
+before the scene ends, but it does not mark any direct CPU bitplane write.
+The same bus is also used by guest, HLE, and renderer helpers; the category
+`guest/host` needs inspection before being treated as a game-logic read.
+Reads by the Amiga display DMA and later bitplane compositing are expected
+and cannot by themselves justify dropping the original pixels. The
+original 3D rasterizer must not be bypassed until its dependent consumers
+have been replaced or isolated, including blitter read/modify/write and
+HUD/cockpit compositing. A state load invalidates all outstanding marks.
+Use `--native on` or `--native off` for measurements: `--native verify`
+replays the same guest operations for equivalence checking and inflates
+the read counts.
+
+`tests/check_gl_raster_audit.sh ORIGINAL.adf [fa18-executable]` runs the
+same real flight with the observer off/on and compares both the RAM hash
+stream and the displayed screenshot. The stand-alone
+`ram_access_observer_test` checks width, endianness and 24-bit address
+wrapping of the generic memory observer without requiring the original ADF.
+
+On offscreen Mesa, the 3,550-frame `direct_flight.txt` interpreter replay
+observed 147 scenes and 4,353,921 original scene blitter word writes. Of
+the previously marked words, the blitter subsequently read 2,412,492
+during scenes and 43,229 outside them; display DMA read 12,700,305 outside
+scenes. There were also 12,280 `guest/host` reads. Decoding the leading
+candidate PCs with `tools/recomp.py` shows `$47d4a` / `$47d2c` load longwords
+from A3 and `$44456`–`$4445c` perform bitplane read/modify/write operations.
+These are concrete dependencies to classify before removing raster writes.
+The trace does **not** establish that every scene word must remain in RAM;
+many reads are screen presentation or redundant rendering, and many writes
+hit the same word repeatedly. The observer's own overhead is excluded from
+any GL-performance comparison.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

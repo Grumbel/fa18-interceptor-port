@@ -310,9 +310,19 @@ before committing. Note limitations explicitly rather than masking them.
   visibility, and fall back to the original bitmap stencil for unobserved
   redraws. `FA18_HUD_RETICLE_CAPTURE=0` disables the writer latch and
   `tests/check_gl_reticle_capture.sh` verifies flight/Pause parity.
+- [x] Add an opt-in per-byte dependency audit for the original scene
+  blitter's screen-plane writes, tracking subsequent blitter, display DMA,
+  presenter and CPU/HLE reads through the shared bus (including cross-width
+  accesses and later frames). Report candidate read PCs; leave every write
+  intact. `FA18_GL_RASTER_AUDIT=1` and `check_gl_raster_audit.sh` provide
+  the first measurable safety gate for a future writer bypass. See
+  `gl_renderer.md` for what this audit does *not* prove.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
+- [ ] Classify the traced `$47d4a`/`$47d2c` and `$44456`–`$4445c`
+  bitplane reads, then split purely visual read/modify/write operations from
+  stateful guest consumers before attempting any original rasterizer bypass.
 - [ ] Verify residual seam flicker under other transitions (views, terrain,
   Pause/resume) on real GPU hardware, including the 120/240 Hz present loop.
 - [ ] Verify GLES2 render-to-texture completeness on device GPUs and explore

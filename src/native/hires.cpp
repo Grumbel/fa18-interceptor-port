@@ -176,6 +176,8 @@ inline uint32_t rgba_from_ops(const PlaneOps& o) {
 // frame starts and again just before the first primitive: whatever the game
 // did to the view in between (clear, background blits) is part of the base.
 void init_from_bitmap(Layer& L) {
+  amiga::Machine::RasterAuditScope audit(*native::g_machine,
+                                        amiga::Machine::RasterSource::Presenter);
   const int S = L.S;
   uint32_t pl[4];
   for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
@@ -693,6 +695,7 @@ void sky_quad_done(bool ok) {
 }
 
 void reset() {
+  if (native::g_machine) native::g_machine->raster_audit_reset();
   layers.clear();
   reset_cockpit_atlas();
   reset_cockpit_instrument_state();
@@ -713,6 +716,7 @@ static void on_game_frame() {
     // an unfinished bitmap and a blank GL primitive list.
     if (in_scene && cur && !cur->done) {
       glr::cancel_capture();
+      native::g_machine->raster_audit_scene(false);
       in_scene = false;
       cur = nullptr;
       for (auto& l : layers)
@@ -736,11 +740,13 @@ void scene_begin() {
 
 static void do_begin() {
   amiga::Machine& m = *native::g_machine;
+  amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
   // Open a SceneFrame at game_frame so horizon / sky drawn before $2fc14
   // are attributed to this frame (begin_frame is idempotent per frame_id).
   if (scene::enabled()) scene::begin_frame(m.frame_count());
   int S = m.hires_scale;
   if (S <= 0) return;
+  if (glr::active()) m.raster_audit_scene(true);
   uint32_t pl[4];
   for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
   uint32_t base = pl[0];
@@ -767,6 +773,9 @@ static void do_begin() {
 
 void scene_end() {
   if (!in_scene || !cur) return;
+  amiga::Machine& m = *native::g_machine;
+  m.raster_audit_scene(false);
+  amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
   in_scene = false;
   uint32_t pl[4];
   for (int i = 0; i < 4; ++i) pl[i] = plane_ptr(i);
@@ -897,6 +906,7 @@ void install(amiga::Machine& m) {
 }
 
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
+  amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
   const int S = m.hires_scale;
   if (S <= 0) return false;
   // A window/mode switch can leave a deferred GL capture that was never
@@ -1231,6 +1241,7 @@ static const Layer* completed_scene_layer() {
 
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
+  amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
   const Layer* ready = completed_scene_layer();
   if (!glr::active() || !ready || m.hires_scale <= 0 || side < 0)
     return false;

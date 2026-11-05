@@ -251,6 +251,7 @@ void Machine::copper_run_until(int vpos, int hpos) {
 }
 
 void Machine::render_line(int line) {
+  RasterAuditScope audit(*this, RasterSource::Display);
   uint32_t* out = nullptr;
   int fy = line - FB_VSTART;
   if (fy >= 0 && fy < FB_H) out = &fb_[size_t(fy) * FB_W];
@@ -379,6 +380,7 @@ inline uint16_t minterm(uint8_t lf, uint16_t a, uint16_t b, uint16_t c) {
 }  // namespace
 
 void Machine::blit() {
+  RasterAuditScope audit(*this, RasterSource::Blitter);
   uint16_t size = cs_.regs_[0x058 >> 1];
   int h = size >> 6;
   int w = size & 0x3F;

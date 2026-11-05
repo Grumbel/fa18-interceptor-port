@@ -169,6 +169,22 @@ public:
   void add_pc_hook(uint32_t addr, std::function<void()> fn);
 
   uint64_t frame_count() const { return frame_count_; }
+  // Diagnostic-only tracker for original bitmap writes and their later
+  // consumers in GL mode. Does not suppress the blitter or mutate RAM.
+  enum class RasterSource : uint8_t { Guest, Blitter, Display, Presenter };
+  class RasterAuditScope {
+  public:
+    RasterAuditScope(Machine& m, RasterSource source)
+        : machine_(m), previous_(m.raster_origin_) { machine_.raster_origin_ = source; }
+    ~RasterAuditScope() { machine_.raster_origin_ = previous_; }
+    RasterAuditScope(const RasterAuditScope&) = delete;
+    RasterAuditScope& operator=(const RasterAuditScope&) = delete;
+  private:
+    Machine& machine_;
+    RasterSource previous_;
+  };
+  void raster_audit_scene(bool active);
+  void raster_audit_reset();
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
   // Scan-out data of the last rendered frame (see remaster::compose)
   const uint32_t* frame_rgb() const { return fb_.data(); }
@@ -290,6 +306,10 @@ private:
   void hle(int lib, int lvo);
 
   std::vector<uint8_t> ram_;
+  struct RasterAudit;
+  std::unique_ptr<RasterAudit> raster_audit_;
+  RasterSource raster_origin_ = RasterSource::Guest;
+  void raster_audit_access(uint32_t addr, uint8_t size, bool write);
   Host* host_ = nullptr;
   std::unique_ptr<struct Hle> hle_;
   std::unique_ptr<Adf> adf_;
