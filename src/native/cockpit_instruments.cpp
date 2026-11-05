@@ -46,6 +46,15 @@ struct ReticleBank {
   bool ready = false;
 };
 
+struct CapturedReadout {
+  uint16_t x = 0, y = 0;
+  uint8_t ink_pen = 0, background_pen = 0;
+  uint8_t rows = 0;
+  uint32_t source_base = 0;
+  int8_t digit = -1;
+  bool complete = false;
+};
+
 struct FuelBank {
   uint32_t row_key = 0;
   uint32_t value = 0;
@@ -55,6 +64,8 @@ struct FuelBank {
   std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_valid{};
   std::array<uint8_t, FlightReadouts::W * FlightReadouts::H> right_pen{};
   bool right_refreshed = false;
+  std::array<CapturedReadout, 64> right_digits{};
+  uint8_t right_digit_count = 0;
   std::array<CapturedGlyph, kHudDigitSlots.size()> hud_digits{};
   std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
   HeadingBank heading{};
@@ -127,6 +138,40 @@ constexpr uint8_t digit[10][5] = {
   {7, 5, 7, 1, 1},  // 9 (original 3x5 LCD font has no bottom bar)
 };
 
+// The original LCD blitters deliver one row per hook call. Record a digit
+// only after all five consecutive source rows were written to this screen
+// bank; never infer a newly drawn number from a partly updated bitmap.
+void capture_readout(FuelBank& bank, amiga::Machine& m, int x, int top,
+                     int row, uint32_t source, uint8_t ink, uint8_t background) {
+  CapturedReadout* found = nullptr;
+  for (int i = 0; i < bank.right_digit_count; ++i) {
+    auto& candidate = bank.right_digits[std::size_t(i)];
+    if (candidate.x == x && candidate.y == top) {
+      found = &candidate;
+      break;
+    }
+  }
+  if (!found) {
+    if (row != 0 || bank.right_digit_count == bank.right_digits.size()) return;
+    found = &bank.right_digits[bank.right_digit_count++];
+    found->x = uint16_t(x);
+    found->y = uint16_t(top);
+  }
+  if (row == 0) {
+    uint8_t bytes[5]{};
+    for (int i = 0; i < 5; ++i) bytes[i] = m.r8(source + uint32_t(i));
+    found->digit = int8_t(hud_font::source_digit(bytes));
+    found->rows = 0;
+    found->source_base = source;
+    found->ink_pen = ink;
+    found->background_pen = background;
+    found->complete = false;
+  }
+  if (found->source_base != source || found->rows != row ||
+      found->ink_pen != ink || found->background_pen != background) return;
+  if (++found->rows == 5) found->complete = found->digit >= 0;
+}
+
 }  // namespace
 
 void reset_cockpit_instrument_state() {
@@ -169,6 +214,7 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
           bank.right_valid[at] = 1;
           bank.right_pen[at] = (pattern >> (7 - i)) & 1 ? 0 : 5;
         }
+        capture_readout(bank, m, x, top, glyph_row, glyph_base, 0, 5);
         bank.right_refreshed = true;
         if (std::getenv("FA18_COCKPIT_TEXT_DEBUG") && glyph_row == 0)
           std::fprintf(stderr, "cockpit: ECM glyph frame=%llu buffer=%06x x=%d y=%d font=%06x\n",
@@ -222,6 +268,7 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
         bank.right_valid[at] = 1;
         bank.right_pen[at] = (pattern >> (7 - i)) & 1 ? 4 : 0;
       }
+      capture_readout(bank, m, x, top, glyph_row, glyph_base, 4, 0);
       bank.right_refreshed = true;
       if (std::getenv("FA18_COCKPIT_TEXT_DEBUG") && glyph_row == 0)
         std::fprintf(stderr, "cockpit: instrument glyph frame=%llu buffer=%06x x=%d y=%d font=%06x\n",
@@ -518,6 +565,49 @@ FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_ke
         out.rgba[i] = row_palette[size_t(FlightReadouts::Y + y) * 32 +
                                   bank.right_pen[i]];
       }
+    const char* hires = std::getenv("FA18_COCKPIT_READOUTS_HIRES");
+    if (m.hires_scale >= 2 &&
+        (!hires || hires[0] != '0' || hires[1] != '\0')) {
+      for (int i = 0; i < bank.right_digit_count; ++i) {
+        const auto& g = bank.right_digits[std::size_t(i)];
+        if (!g.complete || out.vector_count == out.vectors.size() ||
+            g.x < FlightReadouts::X || g.x + 3 > FlightReadouts::X + FlightReadouts::W ||
+            g.y < FlightReadouts::Y || g.y + 5 > FlightReadouts::Y + FlightReadouts::H)
+          continue;
+        // The live readout may have been overwritten since the last complete
+        // redraw. Replace it only if *all* source-font rows still agree with
+        // the captured digit and both pen identities.
+        bool matches = true;
+        for (int row = 0; row < 5; ++row)
+          for (int col = 0; col < 3; ++col) {
+            const size_t at = size_t(g.y + row - FlightReadouts::Y) * FlightReadouts::W +
+                              size_t(g.x + col - FlightReadouts::X);
+            const bool ink = (hud_font::kDigitRows[g.digit][row] & (4 >> col)) != 0;
+            matches &= bank.right_valid[at] != 0 &&
+                       bank.right_pen[at] == (ink ? g.ink_pen : g.background_pen) &&
+                       out.vector_index[at] == 0;
+          }
+        if (!matches) continue;
+        const uint8_t index = ++out.vector_count;
+        out.vectors[std::size_t(index - 1)] = {
+          g.x, g.y, hud_font::kDigitStrokes[g.digit], g.ink_pen, g.background_pen
+        };
+        for (int row = 0; row < 5; ++row)
+          for (int col = 0; col < 3; ++col) {
+            const size_t at = size_t(g.y + row - FlightReadouts::Y) * FlightReadouts::W +
+                              size_t(g.x + col - FlightReadouts::X);
+            out.vector_index[at] = index;
+          }
+      }
+    }
+    if (std::getenv("FA18_COCKPIT_READOUT_VECTOR_DEBUG")) {
+      static bool printed = false;
+      if (!printed && out.vector_count > 0) {
+        printed = true;
+        std::fprintf(stderr, "cockpit: %u complete native high-resolution readout digits\n",
+                     unsigned(out.vector_count));
+      }
+    }
     out.active = true;
     if (std::getenv("FA18_COCKPIT_TEXT_DEBUG")) {
       static bool reported = false;

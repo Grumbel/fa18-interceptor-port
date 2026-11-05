@@ -387,10 +387,21 @@ void main() {
   vec4 row = texture2D(u_rows, vec2(0.5, (y + 0.5) / 200.0));
   float ehb = 0.0;
   vec3 base_colour;
+  vec4 readout_glyph = vec4(0.0);
   if (centre_x >= 0.0 && centre_x < 320.0) {
     vec4 overlay = texture2D(u_overlay,
       vec2((centre_x + 0.5) / 320.0, (y + 0.5) / 200.0));
     if (overlay.a > 0.5) { base_colour = overlay.rgb; }
+    else if (overlay.a > 0.32) {
+      // Alpha 96/112 distinguishes a completed native 3x5 readout from
+      // opaque source pixels (255) and indexed cockpit artwork (32/48).
+      // RGB contains the stroke mask and the source-cell origin in the
+      // 164x35 readout rectangle. No new sampler or GL extension required.
+      readout_glyph = overlay;
+      float bg_pen = overlay.a > 0.41 ? 5.0 : 0.0;
+      base_colour = texture2D(u_palette,
+        vec2((bg_pen + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+    }
     else if (overlay.a > 0.10) {
       // 32/255 or 48/255 marks a static cockpit pixel. The source is the original
       // ADF ILBM, not a copy of the emulated framebuffer. Its 5-bit colour
@@ -453,6 +464,16 @@ void main() {
     vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
     base_colour = draw_digit(base_colour, p, vec2(104.0 + n * 4.0, 183.0),
                              mask, u_fuel_ink.rgb);
+  }
+  if (readout_glyph.a > 0.32) {
+    vec2 origin = vec2(144.0, 158.0) +
+      floor(readout_glyph.gb * 255.0 + vec2(0.5));
+    float mask = floor(readout_glyph.r * 255.0 + 0.5);
+    float ink_pen = readout_glyph.a > 0.41 ? 0.0 : 4.0;
+    vec3 ink = texture2D(u_palette,
+      vec2((ink_pen + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+    vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
+    base_colour = draw_digit(base_colour, p, origin, mask, ink);
   }
   // Native 4:3-corrected antialiased crosshair, independent of original
   // bitplane glyphs. Alpha is the geometric coverage in 960x720 space.

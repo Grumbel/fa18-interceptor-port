@@ -36,8 +36,18 @@ struct FuelDigits {
 // spans all three clusters but leaves uncaptured pixels untouched.
 struct FlightReadouts {
   static constexpr int X = 144, Y = 158, W = 164, H = 35;
+  struct VectorDigit {
+    uint16_t x = 0, y = 0;
+    uint8_t strokes = 0;
+    uint8_t ink_pen = 0, background_pen = 0;
+  };
   std::array<uint32_t, W * H> rgba{};
   std::array<uint8_t, W * H> valid{};
+  // A one-based index identifies only *complete*, recognised source-font
+  // redraws; partial digits retain the original 3x5 pixel path.
+  std::array<uint8_t, W * H> vector_index{};
+  std::array<VectorDigit, 64> vectors{};
+  uint8_t vector_count = 0;
   bool active = false;
 
   bool contains(int x, int y) const {
@@ -46,6 +56,15 @@ struct FlightReadouts {
   }
   uint32_t pixel(int x, int y) const {
     return rgba[std::size_t(y - Y) * W + std::size_t(x - X)];
+  }
+  const VectorDigit* digit(int x, int y) const {
+    const auto i = vector_index[std::size_t(y - Y) * W + std::size_t(x - X)];
+    return i ? &vectors[std::size_t(i - 1)] : nullptr;
+  }
+  uint32_t backing(int x, int y, const uint32_t* palette) const {
+    if (const VectorDigit* v = digit(x, y))
+      return palette[std::size_t(y) * 32 + v->background_pen];
+    return pixel(x, y);
   }
 };
 

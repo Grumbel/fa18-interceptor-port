@@ -945,6 +945,13 @@ void install(amiga::Machine& m) {
   m.add_pc_hook(0x4389c, [] { on_point(-5); });
 }
 
+namespace {
+void blend_native_fuel_digits(std::vector<uint32_t>& out, int side, int scale,
+                              const FuelDigits& fuel);
+void blend_native_readout_digits(std::vector<uint32_t>& out, int side, int scale,
+                                 const FlightReadouts& readouts, const uint32_t* palette);
+}
+
 bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
   const int S = m.hires_scale;
@@ -988,12 +995,12 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
       uint32_t* o = &out[size_t(y * S + yy) * size_t(Wp)];
       for (int x = 0; x < W; ++x) {
         if (fuel.contains(x, y)) {
-          const uint32_t colour = fuel.pixel(x, y);
+          const uint32_t colour = fuel.backing(x, y);
           for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
           continue;
         }
         if (readouts.contains(x, y)) {
-          const uint32_t colour = readouts.pixel(x, y);
+          const uint32_t colour = readouts.backing(x, y, pal);
           for (int xx = 0; xx < S; ++xx) o[x * S + xx] = colour;
           continue;
         }
@@ -1018,6 +1025,8 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   }
   if (S == 1 && getenv("FA18_HIRES_STATS"))
     std::fprintf(stderr, "[hires-diff] frame %llu mismatch=%d\n", (unsigned long long)m.frame_count(), mismatch);
+  blend_native_fuel_digits(out, 0, S, fuel);
+  blend_native_readout_digits(out, 0, S, readouts, pal);
   return true;
 }
 
@@ -1158,6 +1167,26 @@ void blend_native_fuel_digits(std::vector<uint32_t>& out, int side, int scale,
       blend_hud_pixel(dst, fuel.ink_rgb,
                       hud_digit_coverage(px, py, slot, fuel.stroke_masks[size_t(digit)]));
     }
+}
+
+// Every completed source-font readout has a native seven-stroke replacement.
+// Render only its 3x5 source rectangle, not the surrounding instrument bezel;
+// the pen is resolved against the current copper palette for every row.
+void blend_native_readout_digits(std::vector<uint32_t>& out, int side, int scale,
+                                 const FlightReadouts& readouts, const uint32_t* palette) {
+  const int stride = (W + side * 2) * scale;
+  for (int i = 0; i < readouts.vector_count; ++i) {
+    const auto& v = readouts.vectors[std::size_t(i)];
+    const HudDigitSlot slot{int(v.x), int(v.y), 0, 0};
+    for (int y = int(v.y) * scale; y < (int(v.y) + 5) * scale; ++y)
+      for (int x = int(v.x) * scale; x < (int(v.x) + 3) * scale; ++x) {
+        const float px = (x + .5f) * 3.f / scale;
+        const float py = (y + .5f) * 3.6f / scale;
+        const uint32_t ink = palette[size_t(y / scale) * 32 + v.ink_pen] & 0xffffffu;
+        uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+        blend_hud_pixel(dst, ink, hud_digit_coverage(px, py, slot, v.strokes));
+      }
+  }
 }
 
 float hud_letter_coverage(float px, float py, const HudLetterSlot& slot) {
@@ -1431,7 +1460,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           continue;
         }
         if (readouts.contains(x, y)) {
-          const uint32_t colour = readouts.pixel(x, y);
+          const uint32_t colour = readouts.backing(x, y, pal);
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
           continue;
         }
@@ -1492,6 +1521,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
   blend_native_fuel_digits(out, side, S, fuel);
+  blend_native_readout_digits(out, side, S, readouts, pal);
   blend_native_hud_letters(out, side, S, hud);
   blend_native_heading_marks(out, side, S, hud);
   return true;
@@ -1640,11 +1670,21 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         continue;
       }
       if (readouts.contains(x, y)) {
-        const uint32_t c = readouts.pixel(x, y);
-        p[0] = uint8_t(c >> 16);
-        p[1] = uint8_t(c >> 8);
-        p[2] = uint8_t(c);
-        p[3] = 255;
+        if (const auto* digit = readouts.digit(x, y)) {
+          // The direct GPU presenter decodes this inline token without an
+          // eighth sampler: RGB = stroke mask, local origin X/Y; A = 96 for
+          // green LCD, 112 for black-on-purple ECM backing.
+          p[0] = digit->strokes;
+          p[1] = uint8_t(digit->x - FlightReadouts::X);
+          p[2] = uint8_t(digit->y - FlightReadouts::Y);
+          p[3] = digit->background_pen == 5 ? 112 : 96;
+        } else {
+          const uint32_t c = readouts.pixel(x, y);
+          p[0] = uint8_t(c >> 16);
+          p[1] = uint8_t(c >> 8);
+          p[2] = uint8_t(c);
+          p[3] = 255;
+        }
         continue;
       }
       const size_t cp = size_t(y) * W + x;
