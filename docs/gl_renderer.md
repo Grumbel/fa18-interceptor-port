@@ -495,16 +495,21 @@ ADF-extracted `pix/inst5` artwork to scripted flight frames shows that its
 bezel/background are static, while two 16-pixel diagonals, a four-pixel
 centre marker and a single blue-purple contact are drawn by the game. The
 native code reproduces the guides and marker from geometry, and renders a
-small antialiased contact at the position found in the *displayed* 320×200
-frame (initially `(150,174)`, briefly `(166,160)` during a pull-back).
-This is **not yet independent of the Amiga radar drawing**: the contact's
-position is still read from a strictly bounded source-bitplane recognition
-pass, pending identification of the game's radar object writer. It is not
-guessed from the current physics state, which could be one screen buffer
-ahead. Before replacing source pixels, the recogniser requires the original
-guide/marker stencil and exactly one contact; incomplete redraws, Pause
-transitions and non-cockpit cameras fall back untouched. Colours come from
-the live frame, not hardcoded artwork. CPU and GPU draw directly at 2×–8×
+small antialiased contact at the position captured from the *original pen-5
+pixel writer* `$4446a` (initially `(150,174)`, briefly `(166,160)` during a
+pull-back). Its four instructions OR planes 0 and 2 and AND planes 1 and 3:
+`OR.W D4,(A3); AND.W D1,(A2); OR.W D6,(A1); AND.W D3,(A0)`.
+The plane-0 destination in `A3` and one-hot mask in `D4` identify the
+coordinate and destination bitmap. The capture is latched separately for
+each screen bank; the displayed row pointer selects which contact to show.
+The position is **no longer searched for in the original bitplanes** or
+guessed from physics state; its ink comes from live copper palette pen 5.
+The original guide/marker stencil and one pixel at the captured contact
+remain visibility guards, so incomplete redraws, Pause transitions and
+non-cockpit cameras fall back untouched. This conservative visibility gate
+is the native radar's remaining source-bitmap dependency.
+`FA18_RADAR_WRITER_DEBUG=1` logs original contact positions and bank keys.
+CPU and GPU draw directly at 2×–8×
 with no new GL texture or draw call; 1× stays pixel-exact.
 `FA18_COCKPIT_RADAR_NATIVE=0` restores source radar pixels at every scale.
 `tests/check_gl_radar_vector.sh` covers the two contact locations, bounded

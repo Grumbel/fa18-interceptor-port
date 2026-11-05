@@ -137,10 +137,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `tests/check_gl_readout_vector.sh` verifies changed-pixel bounds and
   unchanged emulated memory. `FA18_COCKPIT_READOUT_VECTOR_DEBUG=1` reports
   the first successful complete digit capture. The central cockpit radar
-  vectors are bounded by the original stencil and a unique blue contact:
+  contact is captured from original pen-5 writer `$4446a` independently
+  for both screen banks, with colour from live copper pen 5. The source
+  guide/marker stencil and a one-pixel check guard incomplete redraws:
   `FA18_COCKPIT_RADAR_NATIVE=0` restores source pixels, while
-  `tests/check_gl_radar_vector.sh` validates moving contact, output bounds,
-  RAM and CPU/direct-GPU parity.
+  `tests/check_gl_radar_vector.sh` validates moving contact, original writer
+  capture in both banks, output bounds, RAM and CPU/direct-GPU parity.
+  `FA18_RADAR_WRITER_DEBUG=1` traces the original contact writes.
   Flight HUD numbers have a separate native antialiased stroke pass. Their
   3x5 source glyph values (and five unit labels: `KT`, `FT`, `G`) are captured
   from the original font writer in both screen banks. Complete redraws take

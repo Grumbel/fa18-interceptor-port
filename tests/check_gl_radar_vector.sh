@@ -33,8 +33,10 @@ for scenario in baseline pull; do
   FA18_COCKPIT_RADAR_NATIVE=0 \
     "$bin" "${args[@]}" "$tmp/$scenario-old.ppm" "$adf" \
     >"$tmp/$scenario-old.log" 2>&1
-  "$bin" "${args[@]}" "$tmp/$scenario-new.ppm" "$adf" \
+  FA18_RADAR_WRITER_DEBUG=1 "$bin" "${args[@]}" "$tmp/$scenario-new.ppm" "$adf" \
     >"$tmp/$scenario-new.log" 2>&1
+  python3 "$repo/tests/check_gl_radar_vector.py" --writer \
+    "$tmp/$scenario-new.log" "$frame" "$dot_x" "$dot_y"
   python3 "$repo/tests/check_gl_radar_vector.py" \
     "$tmp/$scenario-old.ppm" "$tmp/$scenario-new.ppm"
   cmp <(grep '^\[ramhash\]' "$tmp/$scenario-old.log") \

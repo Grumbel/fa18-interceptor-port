@@ -21,6 +21,7 @@ constexpr uint32_t kFuelPixelWriter = 0x4744e;
 constexpr uint32_t kRightGlyphWriter = 0x47476;
 constexpr uint32_t kHudGlyphWriter = 0x47d56;
 constexpr uint32_t kHudPointWriter = 0x444c0;
+constexpr uint32_t kRadarPen5Writer = 0x4446a;
 constexpr uint32_t kReticleVerticalWriter = 0x444a2;
 constexpr uint32_t kReticleHorizontalWriter = 0x44924;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
@@ -47,6 +48,13 @@ struct ReticleBank {
   bool ready = false;
 };
 
+struct RadarBank {
+  int16_t dot_x = -1;
+  int16_t dot_y = -1;
+  uint64_t drawing_frame = UINT64_MAX;
+  bool captured = false;
+};
+
 struct CapturedReadout {
   uint16_t x = 0, y = 0;
   uint8_t ink_pen = 0, background_pen = 0;
@@ -71,6 +79,7 @@ struct FuelBank {
   std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
   HeadingBank heading{};
   ReticleBank reticle{};
+  RadarBank radar{};
 };
 
 std::array<FuelBank, 4> fuel_banks{};
@@ -182,6 +191,30 @@ void reset_cockpit_instrument_state() {
 
 void install_cockpit_instrument_hooks(amiga::Machine& m) {
   reset_cockpit_instrument_state();
+  // The four-plane pixel routine for palette pen 5 starts at $4446a:
+  // OR.W D4,(A3), AND.W D1,(A2), OR.W D6,(A1), AND.W D3,(A0).
+  // Its plane-0 destination and single-bit D4 mask give the exact contact
+  // coordinate in whichever Amiga screen buffer the game is redrawing.
+  m.add_pc_hook(kRadarPen5Writer, [&m] {
+    const uint16_t mask = uint16_t(m.cpu.d[4]);
+    if (!std::has_single_bit(mask)) return;
+    const uint32_t dst = m.cpu.a[3] & 0x00ffffff;
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key < FuelDigits::Y * kRowStride) continue;
+      const uint32_t plane0 = bank.row_key - FuelDigits::Y * kRowStride;
+      if (dst < plane0 || dst >= plane0 + kPlaneBytes) continue;
+      const uint32_t pos = dst - plane0;
+      const int y = int(pos / kRowStride);
+      const int x = int((pos % kRowStride) * 8 + 15 - std::countr_zero(mask));
+      if (x < RadarSymbols::X || x >= RadarSymbols::X + RadarSymbols::W ||
+          y < RadarSymbols::Y || y >= RadarSymbols::Y + RadarSymbols::H) continue;
+      bank.radar = RadarBank{int16_t(x), int16_t(y), m.frame_count(), true};
+      if (std::getenv("FA18_RADAR_WRITER_DEBUG"))
+        std::fprintf(stderr, "radar writer frame=%llu bank=%06x x=%d y=%d mask=%04x a3=%06x\n",
+                     (unsigned long long)m.frame_count(), bank.row_key, x, y, mask, dst);
+      break;
+    }
+  });
   // The 68000 writes the first fuel glyph bitplane-3 word at $4744e.
   // Its destination is the first stack argument. Each screen buffer has
   // a distinct row pointer, so a draw into the hidden back buffer does not
@@ -574,11 +607,13 @@ FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
 }
 
 RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* rgb,
+                                   const uint32_t* row_keys, const uint32_t* row_palette,
                                    bool enabled) {
   RadarSymbols out;
   if (const char* mode = std::getenv("FA18_COCKPIT_RADAR_NATIVE");
       mode && mode[0] == '0' && mode[1] == '\0') return out;
-  if (!enabled || !rgb || m.hires_scale < 2 || m.r8(0x5aa7d) != 0 ||
+  if (!enabled || !rgb || !row_keys || !row_palette || m.hires_scale < 2 ||
+      m.r8(0x5aa7d) != 0 ||
       (m.r8(0x5aa8d) == 0 && !pause_screen_active())) return out;
 
   const auto pixel = [&](int x, int y) { return rgb[std::size_t(y) * 320 + x] & 0xffffffu; };
@@ -593,21 +628,21 @@ RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* rgb,
   if (guides < 31 || pixel(157, 168) != marker ||
       pixel(158, 168) != marker || pixel(159, 168) != marker) return out;
 
-  // The black radar pane contains one purple-blue contact in the original
-  // captures. Reject unexpected multi-contact or partially drawn frames;
-  // never infer an arbitrary dot location from unrelated cockpit pixels.
-  int dots = 0;
-  for (int y = RadarSymbols::Y; y < RadarSymbols::Y + RadarSymbols::H; ++y)
-    for (int x = RadarSymbols::X; x < RadarSymbols::X + RadarSymbols::W; ++x) {
-      const uint32_t c = pixel(x, y);
-      const int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-      if (r < 16 || b <= r + 24 || std::abs(r - g) > 8) continue;
-      if (++dots > 1) return RadarSymbols{};
-      out.dot_x = x;
-      out.dot_y = y;
-      out.dot_rgb = c;
-    }
-  if (dots != 1) return RadarSymbols{};
+  // Choose the contact latched by the *displayed* screen buffer. Its pen
+  // comes from the original copper palette, not from identifying a blue
+  // pixel in the finished image. A single source pixel only confirms that
+  // the captured write has reached the display on partial redraw frames.
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        !bank.radar.captured) continue;
+    out.dot_x = bank.radar.dot_x;
+    out.dot_y = bank.radar.dot_y;
+    out.dot_rgb = row_palette[std::size_t(out.dot_y) * 32 + 5] & 0xffffffu;
+    break;
+  }
+  if (out.dot_x < 0 || pixel(out.dot_x, out.dot_y) != out.dot_rgb)
+    return RadarSymbols{};
 
   out.guide_rgb = guide;
   out.marker_rgb = marker;

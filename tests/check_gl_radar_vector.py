@@ -2,6 +2,7 @@
 """Original-game radar stencil and bounded CPU native-vector replacement."""
 
 from pathlib import Path
+import re
 import sys
 
 
@@ -62,10 +63,39 @@ def bounds(old_path, new_path):
     print(f"PASS: {inside} vector pixels changed inside radar, zero outside")
 
 
+def writer_capture(log_path, screenshot_frame, expected):
+    """The original pen-5 writer must see the contact in BOTH screen banks."""
+    records = {}
+    for line in Path(log_path).read_text().splitlines():
+        match = re.search(r"^radar writer frame=(\d+) bank=([0-9a-f]+) "
+                          r"x=(\d+) y=(\d+) mask=([0-9a-f]+) a3=([0-9a-f]+)", line)
+        if not match:
+            continue
+        frame, bank, x, y, mask, destination = match.groups()
+        frame, x, y, mask, destination = (int(frame), int(x), int(y),
+                                          int(mask, 16), int(destination, 16))
+        if frame > screenshot_frame:
+            continue
+        assert mask.bit_count() == 1, (frame, mask)
+        assert mask == 1 << (15 - x % 16), (frame, x, mask)
+        assert int(bank, 16) == destination - y * 40 - (x // 16) * 2 + 183 * 40, bank
+        records[bank] = (frame, x, y)
+    assert len(records) == 2, f"expected two observed radar banks: {records}"
+    for bank, (frame, x, y) in records.items():
+        assert (x, y) == expected, (bank, (x, y), expected)
+        assert screenshot_frame - frame <= 24, (bank, frame, screenshot_frame)
+    print(f"PASS: pen-5 radar writer captured {expected} in both buffers "
+          f"before frame {screenshot_frame}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 5 and sys.argv[1] == "--original":
         original(sys.argv[2], (int(sys.argv[3]), int(sys.argv[4])))
+    elif len(sys.argv) == 6 and sys.argv[1] == "--writer":
+        writer_capture(sys.argv[2], int(sys.argv[3]),
+                       (int(sys.argv[4]), int(sys.argv[5])))
     elif len(sys.argv) == 3:
         bounds(sys.argv[1], sys.argv[2])
     else:
-        sys.exit("usage: check_gl_radar_vector.py --original 1x.ppm x y | old.ppm new.ppm")
+        sys.exit("usage: check_gl_radar_vector.py --original 1x.ppm x y "
+                 "| --writer original-writes.log frame x y | old.ppm new.ppm")

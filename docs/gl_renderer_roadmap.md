@@ -243,14 +243,17 @@ before committing. Note limitations explicitly rather than masking them.
 - [x] Vectorise the radar's 16-pixel diagonal guides, four-pixel centre
   marker and moving purple contact inside the central cockpit panel. The
   guide/marker geometry is independent native code; contact location is
-  validated from the *displayed* source bitmap because radar object-write
-  tracking is not yet available. A full source stencil and a unique dot are
-  required before clearing any old glyph pixels. GPU composition adds only
+  captured from original pen-5 writer `$4446a` in the displayed bank.
+  The source guide/marker stencil and a one-pixel visibility check still
+  guard incomplete redraws. GPU composition adds only
   uniforms to the existing pass. `tests/check_gl_radar_vector.sh` covers
   baseline/pull-back dot movement, panel bounds, RAM and GPU parity.
-- [ ] Intercept the Amiga radar contact/object writer (both displayed
-  buffers), derive dot coordinates from its parameters or flight state,
-  and eliminate the last source-bitplane dependence of the native radar.
+- [x] Intercept the Amiga radar pen-5 writer in both screen buffers and
+  derive contact coordinates from its destination address and one-hot mask;
+  use live copper palette ink instead of sampling the contact colour.
+- [ ] Remove the remaining radar source-stencil visibility gates after
+  verifying guide/marker redraw writers and Pause transitions, making the
+  radar completely independent of the original screen bitmap.
 - [x] Replace the 5x5 flight HUD aiming cross with native antialiased
   strokes at corrected 4:3 resolution. A small original-screen stencil
   establishes visibility and the live copper pen colour, including the

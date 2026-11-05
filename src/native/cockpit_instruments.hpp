@@ -51,11 +51,11 @@ struct FuelBar {
 };
 
 // Small moving symbols on the central radar screen. The two diagonal guides
-// and centre reference are native geometry. Until the game's radar object
-// writer is isolated, only the contact's *position* is observed from the
-// original displayed bitplane; none of its enlarged pixels are reused.
-// Validate the complete source stencil before replacing any pixels so menu,
-// Pause and intermediate double-buffer redraws remain original.
+// and centre reference are native geometry. The contact's position comes
+// from the original pen-5 pixel-writer hook, latched separately for each
+// Amiga screen buffer; its colour comes from the copper palette. The original
+// guide stencil and contact's single-pixel visibility gate protect menus,
+// Pause and intermediate double-buffer redraws.
 struct RadarSymbols {
   static constexpr int X = 135, Y = 146, W = 47, H = 36;
   bool active = false;
@@ -139,6 +139,7 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
 FuelBar prepare_fuel_bar(const FuelDigits& displayed_fuel,
                          const uint32_t* row_palette, int hires_scale);
 RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* frame_rgb,
+                                   const uint32_t* row_keys, const uint32_t* row_palette,
                                    bool enabled);
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);

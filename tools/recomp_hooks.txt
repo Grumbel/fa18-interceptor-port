@@ -22,6 +22,7 @@
 0438b4
 04397c
 043a56
+04446a  # original pen-5 radar contact point writer, cockpit_instruments.cpp
 0444a2  # per-buffer vertical reticle points, cockpit_instruments.cpp
 0444c0  # per-screen-buffer heading ticks and centre index, cockpit_instruments.cpp
 044924  # per-buffer horizontal reticle bar, cockpit_instruments.cpp

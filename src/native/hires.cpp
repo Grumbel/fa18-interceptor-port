@@ -978,7 +978,7 @@ bool compose(amiga::Machine& m, std::vector<uint32_t>& out) {
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit_atlas(m), key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
-  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, key, pal, cockpit_enabled);
   if (getenv("FA18_HIRES_KEYS") && m.frame_count() % 400 == 0) {
     std::fprintf(stderr, "[hires] frame %llu key0=%06x key50=%06x key100=%06x layers:", (unsigned long long)m.frame_count(), key[0], key[50], key[100]);
     for (auto& l : layers) std::fprintf(stderr, " %06x(rows=%d done=%d)", l.base, l.rows, l.done);
@@ -1425,7 +1425,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, S);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
-  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, key, pal, cockpit_enabled);
   const uint32_t state = native::rd32(0x2a6d4);
   // Some flight transition handlers clear in_flight while they continue to
   // display freshly captured 3D frames. Testing only that flag makes the
@@ -1623,7 +1623,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const FuelBar bar = prepare_fuel_bar(fuel, pal, m.hires_scale);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
-  const RadarSymbols radar = prepare_radar_symbols(m, rgb, cockpit_enabled);
+  const RadarSymbols radar = prepare_radar_symbols(m, rgb, key, pal, cockpit_enabled);
   out.fuel_strokes = fuel.stroke_masks;
   out.fuel_ink_rgb = fuel.ink_rgb;
   out.fuel_vector = fuel.vector_enabled;
