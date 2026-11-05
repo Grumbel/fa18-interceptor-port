@@ -24,5 +24,9 @@ grep -Eq 'gl-raster-audit: scenes=[1-9].*scene_blitter_words=[1-9]' "$tmp/audit.
 grep -Eq 'gl-raster-audit: tagged reads blitter +during=[1-9]' "$tmp/audit.log"
 grep -q 'gl-raster-audit: tagged reads display DMA' "$tmp/audit.log"
 grep -q 'gl-raster-audit: candidate read pc=' "$tmp/audit.log"
+# The original HUD font read and write are separated by multiple register
+# instructions. The profiler must identify both complete RMW pairs.
+grep -Eq 'candidate read pc=047d2c .*rmw=[1-9][0-9]* .*writer=047d34' "$tmp/audit.log"
+grep -Eq 'candidate read pc=047d4a .*rmw=[1-9][0-9]* .*writer=047d56' "$tmp/audit.log"
 grep '^gl-raster-audit:' "$tmp/audit.log"
 echo 'PASS: raster dependency observer changes neither RAM hashes nor pixels'

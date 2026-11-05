@@ -176,6 +176,32 @@ many reads are screen presentation or redundant rendering, and many writes
 hit the same word repeatedly. The observer's own overhead is excluded from
 any GL-performance comparison.
 
+The audit now also reports example bitplane RAM addresses and counts
+read/modify/write pairs on the same instruction or a nearby subsequent
+instruction (no more than `$20` bytes forward, same RAM address and width).
+In a 3,540-frame flight, `$44456`, `$44458`, `$4445a`, and `$4445c` each
+wrote back every tagged word they read (544–560 operations per PC).
+Decoding the HUD font loop revealed that `$47d2c` reads a destination
+longword which `$47d34` updates, while `$47d4a` reads another word whose
+writeback is at `$47d56`: they are also bitmap RMW operations, just spread
+across several 68000 instructions. The trace reports both PCs, the pair
+count and a sample RAM address. The 3,550-frame flight replay matched
+2,986/2,986 and 3,706/3,706 reads to their respective writes. These are
+renderer-originated pixel mutations, not evidence of game logic inspecting
+the scene.
+
+That replay also counted the original blitter's work **inside captured
+scenes**: 6,896,908 area words, 1,087,316 line steps and 1,108,368 fill
+words. The most common BLTCON0 minterms were `00`, `0c`, `f0`, `fc`, `fa`,
+`4a`, and `0a`. These have native Boolean fast paths. Exclusive and
+inclusive area fill use a five-shift prefix XOR instead of testing each of
+the word's sixteen bits in a loop; both forms are exhaustively tested for
+all 65,536 input words and both incoming carries. This accelerates the
+still-required original bitplane writes while preserving the CPU-visible
+blitter state, rather than bypassing writes prematurely. End-to-end
+performance gains remain to be measured on a production Release build and
+real GPU hardware; the deterministic test verifies correctness, not speed.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

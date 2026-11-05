@@ -20,6 +20,11 @@ namespace amiga {
 // end: the next frame, the display DMA, or a subsequent blit may consume it.
 // Observing reads is crucial before considering any 3D write suppression.
 struct Machine::RasterAudit {
+  struct GuestSite {
+    uint64_t hits = 0, read_modify_write = 0, during = 0, after = 0;
+    uint32_t sample_address = 0, sample_write_pc = 0;
+    uint8_t sample_width = 0;
+  };
   std::vector<uint8_t> marked = std::vector<uint8_t>(RAM_SIZE);
   std::array<uint32_t, 4> plane = {};
   uint32_t plane_bytes = 0;
@@ -27,7 +32,11 @@ struct Machine::RasterAudit {
   uint64_t scenes = 0, blitter_words = 0, guest_writes = 0;
   uint64_t marked_bytes = 0, overwritten_bytes = 0;
   uint64_t reads[4][2] = {};  // source, during/outside scene
-  std::map<uint32_t, uint64_t> guest_sites;
+  std::array<uint64_t, 256> minterm_words = {}, minterm_calls = {};
+  uint64_t area_words = 0, line_steps = 0, fill_words = 0;
+  std::map<uint32_t, GuestSite> guest_sites;
+  uint32_t last_guest_address = UINT32_MAX, last_guest_pc = UINT32_MAX;
+  uint8_t last_guest_width = 0;
 
   bool scene_plane(uint32_t addr) const {
     for (uint32_t base : plane)
@@ -73,17 +82,53 @@ Machine::~Machine() {
         (unsigned long long)a.reads[i][1], (unsigned long long)a.reads[i][0]);
   // These are candidate guest PCs, not proven game-logic reads: some
   // host/HLE helpers also use the shared bus, so verify each before bypass.
-  std::vector<std::pair<uint32_t, uint64_t>> sites(a.guest_sites.begin(), a.guest_sites.end());
-  std::sort(sites.begin(), sites.end(), [](auto x, auto y) { return x.second > y.second; });
+  std::vector<std::pair<uint32_t, RasterAudit::GuestSite>> sites(
+      a.guest_sites.begin(), a.guest_sites.end());
+  std::sort(sites.begin(), sites.end(), [](const auto& x, const auto& y) {
+    return x.second.hits > y.second.hits;
+  });
   for (size_t i = 0; i < std::min(size_t(8), sites.size()); ++i)
-    log("gl-raster-audit: candidate read pc=%06x hits=%llu\n", sites[i].first,
-        (unsigned long long)sites[i].second);
+    log("gl-raster-audit: candidate read pc=%06x hits=%llu rmw=%llu "
+        "during=%llu after=%llu sample=%06x/%u writer=%06x\n", sites[i].first,
+        (unsigned long long)sites[i].second.hits,
+        (unsigned long long)sites[i].second.read_modify_write,
+        (unsigned long long)sites[i].second.during,
+        (unsigned long long)sites[i].second.after,
+        sites[i].second.sample_address, unsigned(sites[i].second.sample_width),
+        sites[i].second.sample_write_pc);
+  log("gl-raster-audit: blitter scene workload area_words=%llu line_steps=%llu fill_words=%llu\n",
+      (unsigned long long)a.area_words, (unsigned long long)a.line_steps,
+      (unsigned long long)a.fill_words);
+  std::vector<unsigned> terms;
+  for (unsigned lf = 0; lf < 256; ++lf)
+    if (a.minterm_words[lf]) terms.push_back(lf);
+  std::sort(terms.begin(), terms.end(), [&a](unsigned x, unsigned y) {
+    return a.minterm_words[x] > a.minterm_words[y];
+  });
+  for (size_t i = 0; i < std::min(size_t(8), terms.size()); ++i) {
+    unsigned lf = terms[i];
+    log("gl-raster-audit: minterm=%02x words=%llu calls=%llu\n", lf,
+        (unsigned long long)a.minterm_words[lf],
+        (unsigned long long)a.minterm_calls[lf]);
+  }
 }
 
 void Machine::raster_audit_access(uint32_t addr, uint8_t size, bool write) {
   if (!raster_audit_) return;
   auto& a = *raster_audit_;
   if (write) {
+    // A glyph writer may read one longword, perform a handful of register
+    // operations and write that same longword at a *different* 68000 PC.
+    // Match a nearby forward instruction too, without mistaking unrelated
+    // writes in later loops for part of the read/modify/write operation.
+    if (raster_origin_ == RasterSource::Guest && a.last_guest_pc != UINT32_MAX &&
+        cpu.op_pc >= a.last_guest_pc && cpu.op_pc - a.last_guest_pc <= 0x20 &&
+        a.last_guest_address == addr && a.last_guest_width == size) {
+      auto& site = a.guest_sites[a.last_guest_pc];
+      ++site.read_modify_write;
+      site.sample_write_pc = cpu.op_pc;
+    }
+    a.last_guest_address = a.last_guest_pc = UINT32_MAX;
     const bool producer = a.scene && raster_origin_ == RasterSource::Blitter &&
                           a.scene_plane(addr);
     if (producer) ++a.blitter_words;
@@ -101,7 +146,16 @@ void Machine::raster_audit_access(uint32_t addr, uint8_t size, bool write) {
   for (uint32_t i = 0; i < size; ++i) dependent |= a.marked[addr + i] != 0;
   if (!dependent) return;
   ++a.reads[int(raster_origin_)][a.scene ? 1 : 0];
-  if (raster_origin_ == RasterSource::Guest) ++a.guest_sites[cpu.op_pc];
+  if (raster_origin_ == RasterSource::Guest) {
+    auto& site = a.guest_sites[cpu.op_pc];
+    ++site.hits;
+    ++(a.scene ? site.during : site.after);
+    site.sample_address = addr;
+    site.sample_width = size;
+    a.last_guest_address = addr;
+    a.last_guest_pc = cpu.op_pc;
+    a.last_guest_width = size;
+  }
 }
 
 void Machine::raster_audit_scene(bool active) {
@@ -121,7 +175,18 @@ void Machine::raster_audit_scene(bool active) {
 void Machine::raster_audit_reset() {
   if (!raster_audit_) return;
   raster_audit_->scene = false;
+  raster_audit_->last_guest_address = raster_audit_->last_guest_pc = UINT32_MAX;
   std::fill(raster_audit_->marked.begin(), raster_audit_->marked.end(), 0);
+}
+
+void Machine::raster_audit_blit(uint8_t minterm, uint32_t words, bool line, bool fill) {
+  if (!raster_audit_ || !raster_audit_->scene) return;
+  auto& a = *raster_audit_;
+  a.minterm_words[minterm] += words;
+  ++a.minterm_calls[minterm];
+  if (line) a.line_steps += words;
+  else a.area_words += words;
+  if (!line && fill) a.fill_words += words;
 }
 
 void Machine::log(const char* fmt, ...) {

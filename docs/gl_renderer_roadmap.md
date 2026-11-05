@@ -317,12 +317,19 @@ before committing. Note limitations explicitly rather than masking them.
   intact. `FA18_GL_RASTER_AUDIT=1` and `check_gl_raster_audit.sh` provide
   the first measurable safety gate for a future writer bypass. See
   `gl_renderer.md` for what this audit does *not* prove.
+- [x] Refine dependency tracing to separate guest read/modify/write
+  instructions from read-only consumers, recording sample RAM addresses,
+  during/after-scene counts and a BLTCON0/area/line/fill workload histogram.
+  Move the original blitter's common minterms and area-fill prefix scan to
+  exact native fast paths, with exhaustive Boolean tests and RAM-equivalence
+  regression coverage.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
-- [ ] Classify the traced `$47d4a`/`$47d2c` and `$44456`–`$4445c`
-  bitplane reads, then split purely visual read/modify/write operations from
-  stateful guest consumers before attempting any original rasterizer bypass.
+- [ ] Replace the remaining bitplane read/modify/write dependencies of the
+  HUD writer `$47d2c`→`$47d34`, `$47d4a`→`$47d56` and the point writer
+  `$44456`–`$4445c` with native output layers; ensure screen-bank and
+  copper fade timing before selectively bypassing old raster writes.
 - [ ] Verify residual seam flicker under other transitions (views, terrain,
   Pause/resume) on real GPU hardware, including the 120/240 Hz present loop.
 - [ ] Verify GLES2 render-to-texture completeness on device GPUs and explore

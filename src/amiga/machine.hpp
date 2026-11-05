@@ -185,6 +185,7 @@ public:
   };
   void raster_audit_scene(bool active);
   void raster_audit_reset();
+  void raster_audit_blit(uint8_t minterm, uint32_t words, bool line, bool fill);
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
   // Scan-out data of the last rendered frame (see remaster::compose)
   const uint32_t* frame_rgb() const { return fb_.data(); }
