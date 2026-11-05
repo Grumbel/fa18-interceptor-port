@@ -299,6 +299,9 @@ uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
 uniform vec4 u_pause_ink; // live copper pen 9, visibility from original title
 uniform vec4 u_reticle;  // live source-screen RGB, then visibility
+uniform vec4 u_fuel_strokes0; // first four fuel-LCD seven-stroke masks
+uniform float u_fuel_stroke4;
+uniform vec4 u_fuel_ink; // live LCD foreground RGB and vector visibility
 uniform vec4 u_frame_top, u_frame_corner, u_frame_rail; // live source pen colours
 uniform vec4 u_digits0, u_digits1, u_digits2; // captured seven-stroke masks
 uniform vec4 u_digit_ink0, u_digit_ink1, u_digit_ink2, u_digit_ink3;
@@ -436,6 +439,20 @@ void main() {
     vec4 ui = texture2D(u_pause, vec2((centre_x + fract(v_uv.x * u_dimensions.x)) / 320.0,
                                        v_uv.y));
     base_colour = mix(base_colour, u_pause_ink.rgb, ui.a);
+  }
+  // The fuel LCD's original 19x5 text cells have already been replaced by
+  // native panel backing in u_overlay. Their five captured values are now
+  // resolution-independent seven-stroke digits, not enlarged bitplane dots.
+  if (u_fuel_ink.a > 0.5 && centre_x >= 104.0 && centre_x < 123.0 &&
+      y >= 183.0 && y < 188.0 && mod(floor(centre_x - 104.0), 4.0) < 3.0) {
+    float n = floor((centre_x - 104.0) / 4.0);
+    float mask = n < 0.5 ? u_fuel_strokes0.x :
+                 n < 1.5 ? u_fuel_strokes0.y :
+                 n < 2.5 ? u_fuel_strokes0.z :
+                 n < 3.5 ? u_fuel_strokes0.w : u_fuel_stroke4;
+    vec2 p = vec2((v_uv.x * u_dimensions.x - u_side) * 3.0, v_uv.y * 720.0);
+    base_colour = draw_digit(base_colour, p, vec2(104.0 + n * 4.0, 183.0),
+                             mask, u_fuel_ink.rgb);
   }
   // Native 4:3-corrected antialiased crosshair, independent of original
   // bitplane glyphs. Alpha is the geometric coverage in 960x720 space.
@@ -1626,6 +1643,16 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                float((hud_state.pause_rgb >> 8) & 255) / 255.f,
                float(hud_state.pause_rgb & 255) / 255.f,
                hud_state.pause_title ? 1.f : 0.f);
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_strokes0"),
+               float(layer.fuel_strokes[0]), float(layer.fuel_strokes[1]),
+               float(layer.fuel_strokes[2]), float(layer.fuel_strokes[3]));
+  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_fuel_stroke4"),
+               float(layer.fuel_strokes[4]));
+  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_ink"),
+               float((layer.fuel_ink_rgb >> 16) & 255) / 255.f,
+               float((layer.fuel_ink_rgb >> 8) & 255) / 255.f,
+               float(layer.fuel_ink_rgb & 255) / 255.f,
+               layer.fuel_vector ? 1.f : 0.f);
   gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
                float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
                float((hud_state.reticle_rgb >> 8) & 255) / 255.f,

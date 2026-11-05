@@ -462,10 +462,21 @@ FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,
   uint32_t n = out.value;
   for (int i = 4; i >= 0; --i) {
     digits[i] = n % 10;
+    out.stroke_masks[i] = hud_font::kDigitStrokes[digits[i]];
     n /= 10;
   }
+  out.ink_rgb = row_palette[size_t(FuelDigits::Y) * 32 + foreground] & 0xffffffu;
+  // A single native stroke colour is accurate only while all five scanline
+  // pens agree. Otherwise keep the existing bitplane-exact LCD until a
+  // per-row gradient can be expressed by the vector layer itself.
+  const char* hires = std::getenv("FA18_COCKPIT_FUEL_HIRES");
+  out.vector_enabled = m.hires_scale >= 2 &&
+      (!hires || hires[0] != '0' || hires[1] != '\0');
   for (int y = 0; y < FuelDigits::H; ++y) {
     const int sy = FuelDigits::Y + y;
+    out.background_rgba[size_t(y)] = row_palette[size_t(sy) * 32 + background];
+    if ((row_palette[size_t(sy) * 32 + foreground] & 0xffffffu) != out.ink_rgb)
+      out.vector_enabled = false;
     for (int x = 0; x < FuelDigits::W; ++x) {
       const bool ink = (x % 4 < 3) &&
                        (digit[digits[x / 4]][y] & (4 >> (x % 4)));

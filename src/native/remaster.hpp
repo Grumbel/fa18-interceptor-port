@@ -88,6 +88,11 @@ NativeHudState prepared_gpu_hud_state();
 struct GpuLayers {
   std::vector<uint8_t> overlay, palette, rows;
   int scene_rows = 0;
+  // Five independent source glyph values already latched for the displayed
+  // fuel-LCD bank. The GL pass draws native strokes over their cleared panel.
+  std::array<uint8_t, 5> fuel_strokes{};
+  uint32_t fuel_ink_rgb = 0;
+  bool fuel_vector = false;
 };
 bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out);
 }  // namespace remaster

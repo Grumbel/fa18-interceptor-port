@@ -1138,6 +1138,28 @@ void blend_native_hud_digits(std::vector<uint32_t>& out, int side, int scale,
   }
 }
 
+// The five fuel-LCD values are already sourced from the original player
+// record and latched by the double-buffered font writer. Unlike the tiny
+// 3x5 bitplane glyphs, these native strokes are rasterised at output size.
+// Confine replacement to the LCD's 19x5 source-pixel rectangle so the frame
+// artwork surrounding it remains untouched.
+void blend_native_fuel_digits(std::vector<uint32_t>& out, int side, int scale,
+                              const FuelDigits& fuel) {
+  if (!fuel.vector_enabled) return;
+  const int stride = (W + side * 2) * scale;
+  for (int y = FuelDigits::Y * scale; y < (FuelDigits::Y + FuelDigits::H) * scale; ++y)
+    for (int x = FuelDigits::X * scale; x < (FuelDigits::X + FuelDigits::W) * scale; ++x) {
+      const int digit = (x / scale - FuelDigits::X) / 4;
+      if (digit < 0 || digit >= 5 || (x / scale - FuelDigits::X) % 4 == 3) continue;
+      const HudDigitSlot slot{FuelDigits::X + digit * 4, FuelDigits::Y, 0, 0};
+      const float px = (x + .5f) * 3.f / scale;
+      const float py = (y + .5f) * 3.6f / scale;
+      uint32_t& dst = out[size_t(y) * stride + size_t(side * scale + x)];
+      blend_hud_pixel(dst, fuel.ink_rgb,
+                      hud_digit_coverage(px, py, slot, fuel.stroke_masks[size_t(digit)]));
+    }
+}
+
 float hud_letter_coverage(float px, float py, const HudLetterSlot& slot) {
   const float l = (slot.x + .5f) * 3.f, m = (slot.x + 1.5f) * 3.f;
   const float r = (slot.x + 2.5f) * 3.f;
@@ -1404,7 +1426,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         }
         const uint8_t li = idx[y * W + x];
         if (fuel.contains(x, y)) {
-          const uint32_t colour = fuel.pixel(x, y);
+          const uint32_t colour = fuel.backing(x, y);
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
           continue;
         }
@@ -1469,6 +1491,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
   blend_native_hud_digits(out, side, S, hud);
+  blend_native_fuel_digits(out, side, S, fuel);
   blend_native_hud_letters(out, side, S, hud);
   blend_native_heading_marks(out, side, S, hud);
   return true;
@@ -1488,6 +1511,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);
   const FlightReadouts readouts = prepare_flight_readouts(m, key, pal, cockpit_enabled);
+  out.fuel_strokes = fuel.stroke_masks;
+  out.fuel_ink_rgb = fuel.ink_rgb;
+  out.fuel_vector = fuel.vector_enabled;
 
   // The original 3D view covers only the top of the cockpit, but widescreen
   // must project the world behind the entire uncockpitted side area.
@@ -1606,7 +1632,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         continue;
       }
       if (fuel.contains(x, y)) {
-        const uint32_t c = fuel.pixel(x, y);
+        const uint32_t c = fuel.backing(x, y);
         p[0] = uint8_t(c >> 16);
         p[1] = uint8_t(c >> 8);
         p[2] = uint8_t(c);

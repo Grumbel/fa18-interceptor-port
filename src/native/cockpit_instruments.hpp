@@ -13,11 +13,18 @@ struct CockpitAtlas;
 struct FuelDigits {
   static constexpr int X = 104, Y = 183, W = 19, H = 5;
   std::array<uint32_t, W * H> rgba{};
+  std::array<uint32_t, H> background_rgba{};
+  std::array<uint8_t, 5> stroke_masks{};
   bool active = false;
+  bool vector_enabled = false;
   uint32_t value = 0;
+  uint32_t ink_rgb = 0;
 
   uint32_t pixel(int x, int y) const {
     return rgba[std::size_t(y - Y) * W + std::size_t(x - X)];
+  }
+  uint32_t backing(int x, int y) const {
+    return vector_enabled ? background_rgba[std::size_t(y - Y)] : pixel(x, y);
   }
   bool contains(int x, int y) const {
     return active && x >= X && x < X + W && y >= Y && y < Y + H;
