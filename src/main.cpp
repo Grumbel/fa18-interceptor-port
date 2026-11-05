@@ -1415,8 +1415,12 @@ public:
     const uint32_t* video = fb;
     int vw = w, vh = h, logical_w = amiga::FB_W;
     // Keep SDL compositing for screenshots/stats and for contexts that cannot
-    // present directly. GPU mode is opt-in while cockpit parity is checked.
-    const bool try_gpu = direct_gl && gl_video && !fast &&
+    // present directly. Fast scripted runs normally avoid swapchain work,
+    // but the explicit parity diagnostic must exercise the *real* GPU path
+    // even under --fast; otherwise the headless parity test silently tests
+    // SDL composition instead of the advertised direct renderer.
+    const bool fast_gpu_diagnostic = std::getenv("FA18_GL_DIRECT_COMPARE") != nullptr;
+    const bool try_gpu = direct_gl && gl_video && (!fast || fast_gpu_diagnostic) &&
                          frame_no != screenshot_frame && pending_shot.empty();
     const bool gpu_presented = try_gpu && display_gpu(side, phase(0.f));
     if (!gpu_presented && gl_video && remaster::compose_view(*machine, view_buf, side, phase(0.f),
@@ -1434,7 +1438,8 @@ public:
     // scene, or when the enhanced scene cannot be composited yet.  Otherwise
     // switching unpredictably between SDL_RenderPresent and SDL_GL_SwapWindow
     // can expose an undefined backbuffer on some drivers.
-    const bool bitmap_gpu_presented = !gpu_presented && direct_gl && !fast &&
+    const bool bitmap_gpu_presented = !gpu_presented && direct_gl &&
+        (!fast || fast_gpu_diagnostic) &&
         frame_no != screenshot_frame && pending_shot.empty() &&
         display_gpu_bitmap(video, vw, vh, logical_w);
     if (!gpu_presented && !bitmap_gpu_presented)
