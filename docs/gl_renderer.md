@@ -202,6 +202,21 @@ blitter state, rather than bypassing writes prematurely. End-to-end
 performance gains remain to be measured on a production Release build and
 real GPU hardware; the deterministic test verifies correctness, not speed.
 
+In GL mode, the independent hi-res software rasterizer now keeps only its
+320-column scene coverage mask; it no longer paints an unused high-resolution
+colour buffer alongside the GPU triangles. This does **not** change any
+emulated Amiga bitplane writes, which remain necessary for the HUD, copper
+scan-out and a conservative 2D fallback. The old software path can be enabled
+with `FA18_GL_COVERAGE_REFERENCE=1`, and `FA18_GL_COVERAGE_DEBUG=1` prints
+per-capture FNV-1a coverage hashes. `tests/check_gl_coverage.sh` compares
+every mask, resulting screenshot and emulated RAM stream at 1x and 4x against
+the old path. Non-GL `--hires` retains the full software pixel rasterizer.
+In a 3,550-frame deterministic interpreter replay using `--full-detail
+--gl 4 --gl-direct` on headless Mesa llvmpipe, this reduced wall time from
+27.27 s to 23.76 s (12.9%). That includes emulation, software-GL rendering
+and presentation, not merely the removed raster work; it is not a benchmark
+of native hardware GPU performance.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

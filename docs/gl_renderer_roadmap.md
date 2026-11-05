@@ -323,6 +323,11 @@ before committing. Note limitations explicitly rather than masking them.
   Move the original blitter's common minterms and area-fill prefix scan to
   exact native fast paths, with exhaustive Boolean tests and RAM-equivalence
   regression coverage.
+- [x] Eliminate the redundant high-resolution **software** fill/line pixels
+  while capturing an OpenGL scene; retain and compare the exact low-res
+  coverage mask (including sliver/edge expansion), with a legacy reference
+  toggle for 1x/4x framebuffer and RAM parity checks. The separate **Amiga**
+  blitter still runs for now.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
