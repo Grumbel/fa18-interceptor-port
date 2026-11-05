@@ -1285,7 +1285,8 @@ public:
         fprintf(stderr, "gl: native GPU HUD frame %d stats=%d fps=%d\n",
                 frame_no, int(stats_on), int(fps_on));
     }
-    if (!glr::present_gpu(gpu_layers, side, machine->hires_scale, alpha, dw, dh,
+    if (!glr::present_gpu(gpu_layers, uint64_t(gpu_layers_frame),
+                          side, machine->hires_scale, alpha, dw, dh,
                           new_hud, show_hud,
                           pause_visible ? pause_rgba.data() : nullptr, pause_visible,
                           remaster::cockpit_atlas(*machine).rgba.data()))

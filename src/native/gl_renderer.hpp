@@ -73,7 +73,11 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha = 1
 // Opt-in visible-context presentation: draw into the scene FBO and composite
 // original 2D elements using tiny GL textures. No scene glReadPixels or
 // SDL_UpdateTexture; the host swaps the window after a successful call.
-bool present_gpu(const remaster::GpuLayers& layers, int side, int S, float alpha,
+// `layer_revision` identifies the latest emulated game frame. Multiple
+// interpolated presentations within that frame share identical 2D source
+// layers even when the 3D geometry/camera blend changes.
+bool present_gpu(const remaster::GpuLayers& layers, uint64_t layer_revision,
+                 int side, int S, float alpha,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba = nullptr, bool hud_visible = false,
                  const uint8_t* pause_rgba = nullptr, bool pause_visible = false,

@@ -579,6 +579,7 @@ struct State {
   bool bitmap_failed = false;
   GLuint hud_tex = 0, pause_tex = 0, cockpit_tex = 0;
   bool present_failed = false;
+  uint64_t uploaded_layers_revision = UINT64_MAX;
   bool scene_attached = false;  // scene texture is the FBO colour attachment
   int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
@@ -1484,7 +1485,8 @@ bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   return draw_layer(&px, w, h, S, alpha);
 }
 
-bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
+bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
+                 int side, int S, float alpha,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba, bool hud_visible,
                  const uint8_t* pause_rgba, bool pause_visible,
@@ -1526,19 +1528,25 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
   }
   if (!draw_layer(nullptr, width, height, S, alpha)) return false;
 
-  auto bind_texture = [&](GLuint& tex, int unit, int w, int h, const void* pixels) {
+  auto bind_texture = [&](GLuint& tex, int unit, int w, int h, const void* pixels,
+                          bool upload_pixels = true) {
     gl.ActiveTexture(GL_TEXTURE0 + unit);
     const bool created = !tex;
     if (created) gl.GenTextures(1, &tex);
     gl.BindTexture(GL_TEXTURE_2D, tex);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    if (created || !pixels)
+    if (created) {
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    // A null source explicitly reallocates a render-to-texture fallback
+    // when the viewport dimensions change; it is not a reuse request.
+    if (created || !pixels) {
       gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    else
+    } else if (upload_pixels && pixels) {
       gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    }
   };
   // The ordinary path already rendered into scene_tex as the scene FBO's
   // colour attachment. Only a strict RGBA4 / unsupported-texture fallback
@@ -1559,9 +1567,28 @@ bool present_gpu(const remaster::GpuLayers& layer, int side, int S, float alpha,
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, st.scene_tex);
   }
-  bind_texture(st.overlay_tex, 1, 320, 200, layer.overlay.data());
-  bind_texture(st.palette_tex, 2, 32, 200, layer.palette.data());
-  bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data());
+  const bool upload_layers = layer_revision != st.uploaded_layers_revision ||
+                             !st.overlay_tex || !st.palette_tex || !st.rows_tex ||
+                             std::getenv("FA18_GL_LAYER_UPLOAD_REFERENCE") != nullptr;
+  // Extra high-refresh presents reproject fresh interpolated 3D geometry,
+  // but the Amiga overlay, scanline copper palette and double-buffer row
+  // mapping are already cached by the host for this 60-Hz game frame.
+  // Always *bind* every unit: a bitmap-only transitional frame may have
+  // switched the texture bindings since our previous GL scene present.
+  bind_texture(st.overlay_tex, 1, 320, 200, layer.overlay.data(), upload_layers);
+  bind_texture(st.palette_tex, 2, 32, 200, layer.palette.data(), upload_layers);
+  bind_texture(st.rows_tex, 3, 1, 200, layer.rows.data(), upload_layers);
+  st.uploaded_layers_revision = layer_revision;
+  if (std::getenv("FA18_GL_LAYER_UPLOAD_DEBUG")) {
+    static uint64_t uploaded = 0, reused = 0;
+    if (upload_layers) ++uploaded;
+    else ++reused;
+    if (uploaded + reused <= 6 || (!upload_layers && reused <= 12) ||
+        (uploaded + reused) % 30 == 0)
+      std::fprintf(stderr, "gl: layer textures revision=%llu upload=%d uploaded=%llu reused=%llu\n",
+                   (unsigned long long)layer_revision, int(upload_layers),
+                   (unsigned long long)uploaded, (unsigned long long)reused);
+  }
   if (hud_rgba) bind_texture(st.hud_tex, 4, 960, 720, hud_rgba);
   if (hud_visible && !st.hud_tex) return false;
   // The vector Pause lettering is immutable: retain its own GPU texture
