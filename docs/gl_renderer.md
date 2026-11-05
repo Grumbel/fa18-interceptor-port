@@ -445,8 +445,7 @@ bitmap remains. `FA18_COCKPIT_FUEL_HIRES=0` selects the original 3x5 output
 for pixel-exact comparisons. `tests/check_gl_fuel_vector.sh` confirms that
 only the fuel LCD rectangle can change in flight, Pause and a dynamic throttle
 replay, with matching original emulated RAM hashes. A Pause frame with no
-eligible captured glyph/pen stays pixel-exact. The remaining seven
-cockpit readouts still have pixel-sized native geometry.
+eligible captured glyph/pen stays pixel-exact.
 
 Seven additional numeric fields are now synthesized from the original
 resident 3×5 font without sampling their displayed bitmap pixels. The
@@ -460,6 +459,18 @@ retains its own captured mask until displayed, and the compositor reads the
 live copper palette for every row. `FA18_COCKPIT_READOUTS_NATIVE=0` disables
 only this font-derived layer. `tests/check_gl_cockpit.sh` compares flight,
 Pause and an F10-throttle replay with a nonzero speed against the original.
+
+At 2x–8x, complete five-row digit writes to these readouts also produce
+antialiased 960x720-space seven-stroke digits. The source rows must match a
+recognised numeral *and* the source-font ink/background pens for all 15
+pixels; partial, overwritten and unrecognised glyphs stay pixel-exact.
+Green readouts retain copper pens 4/0 and the purple ECM LCDs retain pens
+0/5. The visible GL compositor stores compact stroke/origin tokens inside
+its existing cockpit overlay instead of allocating another texture or draw
+call. `FA18_COCKPIT_READOUTS_HIRES=0` restores the original 3x5 shapes;
+`FA18_COCKPIT_READOUT_VECTOR_DEBUG=1` logs the first accepted digit bank;
+`tests/check_gl_readout_vector.sh` bounds all changed pixels to the LCDs
+and compares the unchanged game RAM.
 
 The flight HUD's eight numeric glyphs at source positions (140,53),
 (144,53), (160,53), (164,53), (106,84), (226,84), (96,121) and (102,121)

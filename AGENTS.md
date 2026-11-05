@@ -110,7 +110,7 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   seven-stroke shapes over the reconstructed LCD background, in both CPU
   and GPU presentation. `FA18_COCKPIT_FUEL_HIRES=0` restores exact 3x5
   source glyphs; `tests/check_gl_fuel_vector.sh` bounds the changed pixels
-  and checks RAM equivalence. The other cockpit readouts are still 3x5.
+  and checks RAM equivalence.
   Seven cockpit readouts are also reconstructed from the game's resident
   3x5 font, tracking the two Amiga screen buffers independently. The green
   altitude, airspeed, throttle/Mach, miles and magnification fields use
@@ -121,6 +121,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   disables the glyph layers, and `FA18_COCKPIT_TEXT_DEBUG=1` traces them.
   `tests/data/cockpit_dynamic.txt` exercises the new fields with F10
   throttle and nonzero airspeed, checked by `tests/check_gl_cockpit.sh`.
+  Complete, recognised five-row writes for those seven readouts can now use
+  antialiased native strokes at 2x–8x, without sampling source digit pixels.
+  The background and ink remain the active scanline's copper pens (0/4 for
+  green fields, 5/0 for purple/black ECM fields); incomplete/unknown rows
+  retain their 3x5 source art. The GPU compositor encodes the readout
+  strokes in its existing 2D layer, avoiding another texture/draw call.
+  `FA18_COCKPIT_READOUTS_HIRES=0` keeps all seven displays pixel-exact;
+  `tests/check_gl_readout_vector.sh` verifies changed-pixel bounds and
+  unchanged emulated memory. `FA18_COCKPIT_READOUT_VECTOR_DEBUG=1` reports
+  the first successful complete digit capture.
   Flight HUD numbers have a separate native antialiased stroke pass. Their
   3x5 source glyph values (and five unit labels: `KT`, `FT`, `G`) are captured
   from the original font writer in both screen banks. Complete redraws take

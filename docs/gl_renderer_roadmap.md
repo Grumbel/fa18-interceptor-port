@@ -222,6 +222,14 @@ before committing. Note limitations explicitly rather than masking them.
   2391 in the player record; its VBL 3960 cockpit is pixel-exact versus
   the original, as is the stationary VBL 3490 cockpit. The Pause state
   remains a separate parity case in `tests/check_gl_cockpit.sh`.
+- [x] Add high-resolution strokes for complete 3x5 readout digits in the
+  seven remaining cockpit LCD fields. The original two-buffer source-font
+  writer remains the redraw/position oracle, and its 0/4 or 5/0 copper pens
+  provide colours. Partial or unknown digits fall back to exact original
+  pixel-sized native glyphs. Both CPU and direct GPU presentation draw
+  antialiased seven-stroke shapes; the GPU path reuses the existing overlay
+  for stroke tokens. Test the three LCD regions, Pause fallback and unchanged
+  emulated memory with `tests/check_gl_readout_vector.sh`.
 - [x] Replace the 5x5 flight HUD aiming cross with native antialiased
   strokes at corrected 4:3 resolution. A small original-screen stencil
   establishes visibility and the live copper pen colour, including the
