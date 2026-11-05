@@ -332,6 +332,11 @@ before committing. Note limitations explicitly rather than masking them.
   mapping textures between interpolated high-FPS presentations of one game
   frame, including explicit rebinds after a bitmap presenter transition;
   retain a reference upload mode and Pause GPU/RAM parity test.
+- [x] Recover the flight HUD's displayed 3×5 font ink from copper palette
+  pen 13 once its writer has completed a glyph for the selected Amiga
+  screen bank. Keep the frame/backdrop visibility gates and original-pixel
+  fallback for incomplete redraws; verify bank flips, flight, Pause and
+  dynamic text against the prior pixel-ink path.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

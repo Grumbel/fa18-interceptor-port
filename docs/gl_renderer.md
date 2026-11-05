@@ -231,6 +231,19 @@ results with and without caching at Pause (including the bounded 1x title
 sample-centre difference). `tests/check_gl_direct.sh` retains its separate
 tighter 3x Pause parity check.
 
+The flight HUD's double-buffered font hook also gives the native renderer a
+complete 3×5 source glyph for each number and unit label. An Amiga pen-5
+background gains bitplane 3 during the glyph write (the G-meter uses pen 12),
+and the displayed ink resolves to **copper palette pen 13**. Once the hook
+has seen a complete redraw for the visible bank, the native HUD derives the
+glyph colour from that scanline's palette entry instead of sampling a glyph
+pixel from the original bitplanes; the background contrast check and original
+HUD-frame visibility gate remain in place. Unobserved and incomplete redraws
+still use original glyph recognition. `FA18_HUD_PALETTE_REFERENCE=1` restores
+the previous pixel-ink path for comparison. `tests/check_gl_hud_palette.sh`
+checks pixel-identical bank-flip, flight, Pause and dynamic cockpit screenshots
+and unchanged RAM hashes against that reference mode.
+
 ## Pipeline
 
 The original renderer keeps running unchanged (game state is identical

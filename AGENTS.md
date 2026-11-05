@@ -116,11 +116,15 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   disables the glyph layers, and `FA18_COCKPIT_TEXT_DEBUG=1` traces them.
   `tests/data/cockpit_dynamic.txt` exercises the new fields with F10
   throttle and nonzero airspeed, checked by `tests/check_gl_cockpit.sh`.
-  Eight flight HUD numbers have a separate native antialiased stroke pass.
-  Their 3x5 source glyphs are recognised from the active display only while
-  the original HUD frame is visible, so other views and unfinished redraws
-  retain their original pixels. Five unit labels (`KT`, `FT`, `G`) are also
-  recognised as exact 3x5 glyphs before native stroke replacement.
+  Flight HUD numbers have a separate native antialiased stroke pass. Their
+  3x5 source glyph values (and five unit labels: `KT`, `FT`, `G`) are captured
+  from the original font writer in both screen banks. Complete redraws take
+  their ink from the active scanline's copper palette pen 13; incomplete or
+  unobserved redraws fall back to decoding the original bitmap glyphs. The
+  original HUD-frame visibility and background-contrast gates remain, so
+  non-flight views and transitions retain original pixels.
+  `FA18_HUD_PALETTE_REFERENCE=1` restores the earlier pixel-ink lookup;
+  `tests/check_gl_hud_palette.sh` verifies matching images and emulated RAM.
   `FA18_HUD_DIGITS_NATIVE=0` restores all the old HUD glyphs;
   `FA18_HUD_LABELS_NATIVE=0` disables only the labels.
   The compass tape's five alternating major/minor ticks and central index
