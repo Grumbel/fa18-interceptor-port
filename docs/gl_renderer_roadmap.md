@@ -341,6 +341,11 @@ before committing. Note limitations explicitly rather than masking them.
   vector coverage texture on the GPU; apply the pen colour as a uniform and
   match SDL/CPU blending. `tests/check_gl_pause_ink.sh` checks the exact
   source colour and that the heading waits for its original first draw.
+- [x] Recover the heading ticks' and aiming reticle's displayed ink directly
+  from copper palette pens 13 and 10 after complete original writer captures.
+  Preserve the HUD-frame/backdrop visibility gates and original bitmap
+  fallback; verify four bank-flip, flight, Pause and dynamic scenes against
+  the previous glyph-pixel ink sampling path.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

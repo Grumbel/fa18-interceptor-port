@@ -125,6 +125,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   non-flight views and transitions retain original pixels.
   `FA18_HUD_PALETTE_REFERENCE=1` restores the earlier pixel-ink lookup;
   `tests/check_gl_hud_palette.sh` verifies matching images and emulated RAM.
+  Heading ticks and aiming reticle likewise come from complete per-bank
+  writer captures; their colours use copper pens 13 and 10 respectively,
+  not the old source glyph pixels. `FA18_HUD_POINT_PALETTE_REFERENCE=1`
+  restores pixel sampling for A/B checks, and
+  `tests/check_gl_hud_point_palette.sh` verifies flight/Pause/bank parity.
   The native Pause heading has a cached high-resolution coverage texture:
   colour comes from the live copper palette pen 9 (not hardcoded amber), and
   the source title's bitplane stencil gates visibility in both SDL/CPU and

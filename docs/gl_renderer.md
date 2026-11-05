@@ -480,14 +480,14 @@ row of the 12 digit cells and five labels. Capture waits for all five rows
 and associates each result with the correct double-buffered Amiga screen
 base, so refreshing an offscreen bank cannot change the displayed number.
 The native CPU compositor and direct-GL presenter receive the same captured
-values; they sample just one original glyph pixel for the live copper-faded
-gray ink and visibility. Full 3x5 bitplane-stencil decoding now serves as
+values; complete redraws derive their copper-faded gray ink directly from
+the current scanline's palette pen 13. Full 3x5 bitplane-stencil decoding serves as
 the fallback before a buffer has a completed capture, or if the visible
 colour check fails. `FA18_HUD_FONT_CAPTURE=0` restores the previous
 stencil-only logic. `FA18_HUD_CAPTURE_DEBUG=1` reports completed glyphs and
 capture use, and `tests/check_gl_hud_capture.sh` compares flight/Pause
 output against the old renderer pixel-for-pixel. This removes the source
-bitmap as a *value* oracle; broader HUD visibility, line marks and the
+bitmap as a *value or ink* oracle; broader HUD visibility and
 original clears are still mediated by the source bitmap.
 
 The five heading-scale marks beneath the top numerals are now native as well:
@@ -500,9 +500,10 @@ pixel. Its HUD caller context (`A5=$5a966`, pen 5 in upper `D4`) distinguishes
 the compass from other pixels sharing this routine. An exact set of all
 eleven points, including the fixed centre, is required per redraw and per
 screen buffer; incomplete or unfamiliar commands are rejected. The CPU and
-direct-GL passes share this captured phase, using the source bitmap only for
-one live grayscale ink/visibility check. Until a complete writer capture is
-available (or when its live ink check fails), the previous full 8+3-pixel
+direct-GL passes share this captured phase and derive its live grayscale ink
+from copper palette pen 13, using the surrounding background as a visibility
+guard. Until a complete writer capture is available (or when its palette
+contrast check fails), the previous full 8+3-pixel
 stencil decoder remains the fallback. The passes erase only validated source
 pixels and draw narrow antialiased strokes at corrected 960x720 coordinates;
 the shader snaps its coverage to the same 3x source grid for exact GPU/CPU
@@ -523,8 +524,9 @@ the complete five-pixel horizontal bar at y=73. The destination and caller
 registers (`A0`, `D7`, `A4`, `A5`, `D4`) distinguish these draws from the
 other geometry sharing those rasterisers. Both are latched per Amiga screen
 buffer, and the native CPU/direct-GL stroke is enabled only after the
-complete five-command redraw. The original bitmap then supplies only a
-single live, copper-faded grayscale pixel for visibility and colour.
+complete five-command redraw. Once captured and with the source HUD frame
+visible, copper palette pen 10 supplies its faded grayscale ink without
+sampling a reticle pixel. The original backdrop still gates contrast.
 Until that redraw is known, or when its ink is no longer visible, the old
 multi-pixel stencil gate remains active. Use
 `FA18_HUD_RETICLE_CAPTURE=0` for the old gate alone, and
@@ -533,6 +535,10 @@ Keep both writer PCs in `tools/recomp_hooks.txt`. The new
 `tests/check_gl_reticle_capture.sh` compares rendered flight/Pause frames
 pixel-for-pixel with the legacy reticle visibility logic;
 `tests/check_gl_reticle.sh` checks the native reticle's changed region.
+`FA18_HUD_POINT_PALETTE_REFERENCE=1` restores the earlier source-pixel ink
+lookup for both heading and reticle captures; the four-scenario
+`tests/check_gl_hud_point_palette.sh` checks identical images and emulated
+RAM hashes across buffer flips, flight, Pause and changing controls.
 
 ## Open points
 
