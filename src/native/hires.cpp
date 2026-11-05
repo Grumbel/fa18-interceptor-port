@@ -1666,6 +1666,21 @@ bool pause_screen_active() {
   return state == 0x23b7e || state == 0x23ba8;
 }
 
+// The captured original font writer ORs the glyph into bitplane 3 over the
+// flight HUD's pen-5 background (pen 12 for the G-meter). Both resolve to
+// pen 13 where the original 3x5 stroke is visible. The copper palette is the
+// real colour source, and may fade between scanlines; no glyph pixel needs
+// to be read to recover its ink once the displayed bank has a full redraw.
+static bool hud_font_palette_ink(const amiga::Machine& m, int y, int background_x,
+                                 uint32_t& ink) {
+  const uint32_t* rgb = m.frame_rgb();
+  const uint32_t* palette = m.frame_row_pal();
+  if (!rgb || !palette || y < 0 || y >= 200 || background_x < 0 || background_x >= W)
+    return false;
+  ink = palette[size_t(y) * 32 + 13] & 0xffffffu;
+  return hud_font::glyph_ink(ink, rgb[y * W + background_x]);
+}
+
 NativeHudState native_hud_state(const amiga::Machine& m) {
   NativeHudState out;
   const uint32_t* rgb = m.frame_rgb();
@@ -1715,6 +1730,7 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
 
   if (out.frame_crown) {
     const HudFontCapture captured = captured_hud_font(m.frame_row_key());
+    const bool palette_native = std::getenv("FA18_HUD_PALETTE_REFERENCE") == nullptr;
     int captured_digits = 0, captured_letters = 0;
     const char* marks = std::getenv("FA18_HUD_HEADING_NATIVE");
     if (!marks || std::strcmp(marks, "0") != 0) {
@@ -1751,10 +1767,14 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
         uint32_t ink = 0;
         int value = captured.digits[i];
-        if (value >= 0 && value < 10 &&
-            hud_font::live_ink(rgb, kHudDigitSlots[i].x, kHudDigitSlots[i].y,
-                               kHudDigitSlots[i].background_x,
-                               hud_font::kDigitRows[value][0], ink)) {
+        const auto& slot = kHudDigitSlots[i];
+        const bool palette_capture = palette_native && value >= 0 && value < 10 &&
+            hud_font_palette_ink(m, slot.y, slot.background_x, ink);
+        const bool captured_ink = palette_native ? palette_capture :
+            (value >= 0 && value < 10 &&
+             hud_font::live_ink(rgb, slot.x, slot.y, slot.background_x,
+                                hud_font::kDigitRows[value][0], ink));
+        if (captured_ink) {
           ++captured_digits;
         } else {
           value = hud_font::decode_digit(rgb, kHudDigitSlots[i], ink);
@@ -1776,9 +1796,13 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
           uint32_t ink = 0;
           const auto& slot = kHudLetterSlots[i];
           const int glyph = hud_font::letter_index(slot.letter);
-          if (captured.letters[i] && glyph >= 0 &&
-              hud_font::live_ink(rgb, slot.x, slot.y, slot.background_x,
-                                 hud_font::kLetterRows[glyph][0], ink)) {
+          const bool palette_capture = palette_native && captured.letters[i] && glyph >= 0 &&
+              hud_font_palette_ink(m, slot.y, slot.background_x, ink);
+          const bool drawn = palette_native ? palette_capture :
+              (captured.letters[i] && glyph >= 0 &&
+               hud_font::live_ink(rgb, slot.x, slot.y, slot.background_x,
+                                  hud_font::kLetterRows[glyph][0], ink));
+          if (drawn) {
             ++captured_letters;
           } else if (!hud_font::decode_letter(rgb, slot, ink)) {
             continue;

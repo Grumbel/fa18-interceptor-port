@@ -66,10 +66,9 @@ inline bool glyph_ink(uint32_t pixel, uint32_t background) {
          g > int((background >> 8) & 255) + 12;
 }
 
-// With an original 68000 font-writer capture, the glyph value and complete
-// five-row redraw are known independently of the rendered bitplanes. One
-// expected ink pixel is sufficient to recover its current copper-faded pen
-// and confirm that the source text is still visible in this camera.
+// Reference path for an original 68000 font-writer capture: an expected ink
+// pixel supplies the copper-faded colour and confirms glyph visibility.
+// The palette-backed path uses pen 13 without reading this source pixel.
 inline bool live_ink(const uint32_t* rgb, int x, int y, int background_x,
                      uint8_t first_row, uint32_t& ink) {
   for (int col = 0; col < 3; ++col) {
