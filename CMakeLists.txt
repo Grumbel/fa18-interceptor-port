@@ -65,6 +65,8 @@ add_library(amiga STATIC
   src/amiga/machine.cpp
   src/amiga/machine.hpp
   src/amiga/custom.cpp
+  src/amiga/blitter_fill.hpp
+  src/amiga/blitter_minterm.hpp
   src/amiga/savestate.cpp
   src/amiga/ser.hpp
   src/amiga/hle.cpp
@@ -260,6 +262,10 @@ else()
     target_include_directories(gl_hud_glyph_test PRIVATE src)
     add_executable(ram_access_observer_test tests/ram_access_observer.cpp)
     target_include_directories(ram_access_observer_test PRIVATE src)
+    add_executable(blitter_fill_test tests/blitter_fill.cpp)
+    target_include_directories(blitter_fill_test PRIVATE src)
+    add_executable(blitter_minterm_test tests/blitter_minterm.cpp)
+    target_include_directories(blitter_minterm_test PRIVATE src)
     enable_testing()
     add_test(NAME frontend_hotkeys COMMAND frontend_hotkeys_test)
     add_test(NAME control_help COMMAND control_help_test)
@@ -271,6 +277,8 @@ else()
     add_test(NAME gl_line_quad COMMAND gl_line_quad_test)
     add_test(NAME gl_hud_glyph COMMAND gl_hud_glyph_test)
     add_test(NAME ram_access_observer COMMAND ram_access_observer_test)
+    add_test(NAME blitter_fill COMMAND blitter_fill_test)
+    add_test(NAME blitter_minterm COMMAND blitter_minterm_test)
   endif()
   install(TARGETS fa18 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

@@ -1,6 +1,8 @@
 // Custom chip emulation: register file, copper + bitplane display, blitter,
 // Paula audio DMA, joystick/mouse ports and the CIA-A port register.
 #include "amiga/machine.hpp"
+#include "amiga/blitter_fill.hpp"
+#include "amiga/blitter_minterm.hpp"
 #include "amiga/hle.hpp"
 #include "native/scene_renderer.hpp"
 
@@ -364,21 +366,6 @@ void Machine::render_frame() {
 
 // ---- blitter ------------------------------------------------------------------
 
-namespace {
-inline uint16_t minterm(uint8_t lf, uint16_t a, uint16_t b, uint16_t c) {
-  uint16_t r = 0;
-  if (lf & 0x01) r |= ~a & ~b & ~c;
-  if (lf & 0x02) r |= ~a & ~b & c;
-  if (lf & 0x04) r |= ~a & b & ~c;
-  if (lf & 0x08) r |= ~a & b & c;
-  if (lf & 0x10) r |= a & ~b & ~c;
-  if (lf & 0x20) r |= a & ~b & c;
-  if (lf & 0x40) r |= a & b & ~c;
-  if (lf & 0x80) r |= a & b & c;
-  return r;
-}
-}  // namespace
-
 void Machine::blit() {
   RasterAuditScope audit(*this, RasterSource::Blitter);
   uint16_t size = cs_.regs_[0x058 >> 1];
@@ -386,6 +373,9 @@ void Machine::blit() {
   int w = size & 0x3F;
   if (h == 0) h = 1024;
   if (w == 0) w = 64;
+  if (raster_audit_)
+    raster_audit_blit(uint8_t(cs_.bltcon0_), uint32_t((cs_.bltcon1_ & 1) ? h : h * w),
+                      (cs_.bltcon1_ & 1) != 0, (cs_.bltcon1_ & 0x18) != 0);
   if (cs_.bltcon1_ & 1) {
     blit_line();
   } else {
@@ -395,7 +385,7 @@ void Machine::blit() {
     int ash = cs_.bltcon0_ >> 12, bsh = cs_.bltcon1_ >> 12;
     bool desc = cs_.bltcon1_ & 2;
     bool fill = cs_.bltcon1_ & 0x18;
-    bool ife = cs_.bltcon1_ & 0x08, efe = cs_.bltcon1_ & 0x10;
+    bool efe = cs_.bltcon1_ & 0x10;
     int inc = desc ? -2 : 2;
     uint16_t aold = 0, bold = 0;
     bool zero = true;
@@ -422,17 +412,8 @@ void Machine::blit() {
         }
         aold = a;
         bold = cs_.bltdat_[1];
-        uint16_t d = minterm(lf, as, bs, cs_.bltdat_[2]);
-        if (fill) {
-          uint16_t r = 0;
-          for (int bit = 0; bit < 16; ++bit) {
-            uint16_t m = uint16_t(1 << bit);
-            bool v = d & m;
-            if (efe) { fc ^= v; if (fc) r |= m; }
-            else { if (fc || v) r |= m; fc ^= v; }
-          }
-          d = r;
-        }
+        uint16_t d = blitter_minterm(lf, as, bs, cs_.bltdat_[2]);
+        if (fill) d = blitter_fill_word(d, fc, efe);
         if (d) zero = false;
         if (useD) { write16(dpt, d); dpt += uint32_t(inc); }
       }
@@ -477,7 +458,7 @@ void Machine::blit_line() {
     bool draw = !(sing && onedot);
     uint16_t b = ((texture >> bshift) & 1) ? 0xFFFF : 0;
     if (!draw) a = 0;
-    uint16_t d = minterm(lf, a, b, c);
+    uint16_t d = blitter_minterm(lf, a, b, c);
     onedot = true;
     if (d) zero = false;
     uint32_t write_at = dpt;
