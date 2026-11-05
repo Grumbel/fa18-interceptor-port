@@ -26,6 +26,7 @@ constexpr uint32_t kRadarMarkerPen12Writer = 0x444b0;
 constexpr uint32_t kLineBlitterStart = 0x447ee;
 constexpr uint32_t kReticleVerticalWriter = 0x444a2;
 constexpr uint32_t kReticleHorizontalWriter = 0x44924;
+constexpr uint32_t kHudFrameSegmentWriter = 0x48eba;
 constexpr uint32_t kPlaneBytes = CockpitAtlas::W * CockpitAtlas::H / 8;
 constexpr uint32_t kFuelWordOffset = 3 * kPlaneBytes + (FuelDigits::X / 16) * 2;
 constexpr uint32_t kRowStride = CockpitAtlas::W / 8;
@@ -48,6 +49,12 @@ struct ReticleBank {
   uint64_t drawing_frame = UINT64_MAX;
   hud_font::ReticleWrites writes{};
   bool ready = false;
+};
+
+struct HudFrameBank {
+  uint64_t drawing_frame = UINT64_MAX;
+  uint64_t complete_frame = UINT64_MAX;
+  uint8_t next_segment = 0;
 };
 
 struct RadarBank {
@@ -91,6 +98,7 @@ struct FuelBank {
   std::array<CapturedGlyph, kHudLetterSlots.size()> hud_letters{};
   HeadingBank heading{};
   ReticleBank reticle{};
+  HudFrameBank frame{};
   RadarBank radar{};
 };
 
@@ -203,6 +211,58 @@ void reset_cockpit_instrument_state() {
 
 void install_cockpit_instrument_hooks(amiga::Machine& m) {
   reset_cockpit_instrument_state();
+  // The high-level cockpit outline caller issues exactly five original
+  // blitter lines, from the left rail clockwise to the right rail. A2
+  // points to the current screen bank's four descending plane addresses.
+  // Requiring the entire ordered sequence avoids classifying the generic
+  // line-blitter entry ($44686/$44856) as a HUD-specific draw.
+  m.add_pc_hook(kHudFrameSegmentWriter, [&m] {
+    static constexpr std::array<std::array<uint16_t, 4>, 5> segments{{
+      {{85, 144, 85, 45}}, {{85, 45, 93, 36}},
+      {{93, 36, 225, 36}}, {{225, 36, 233, 45}},
+      {{233, 45, 233, 144}}
+    }};
+    const uint32_t table = m.cpu.a[2] & 0x00ffffffu;
+    if (table < 0x5a900 || table > 0x5aa00) return;
+    const uint32_t base = m.r32(table + 12) & 0x00ffffffu;
+    if (!base || base + 4 * kPlaneBytes > amiga::RAM_SIZE) return;
+    for (int plane = 0; plane < 3; ++plane)
+      if ((m.r32(table + 4 * plane) & 0x00ffffffu) !=
+          base + uint32_t(3 - plane) * kPlaneBytes) return;
+
+    int segment = -1;
+    for (int i = 0; i < int(segments.size()); ++i) {
+      if (m.cpu.a[0] != 0x4917cu + 4u * unsigned(i)) continue;
+      bool match = true;
+      for (int n = 0; n < 4; ++n)
+        match &= uint16_t(m.cpu.d[n]) == segments[size_t(i)][size_t(n)];
+      if (match) { segment = i; break; }
+    }
+    if (segment < 0) return;
+    const uint32_t row_key = base + FuelDigits::Y * kRowStride;
+    observe_display_key(row_key);
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key != row_key) continue;
+      auto& frame = bank.frame;
+      if (segment == 0) {
+        frame.drawing_frame = m.frame_count();
+        frame.next_segment = 1;
+      } else if (frame.drawing_frame == m.frame_count() &&
+                 frame.next_segment == segment) {
+        ++frame.next_segment;
+        if (frame.next_segment == segments.size()) {
+          frame.complete_frame = m.frame_count();
+          frame.next_segment = 0;
+          if (std::getenv("FA18_HUD_FRAME_CAPTURE_DEBUG"))
+            std::fprintf(stderr, "HUD frame captured frame=%llu bank=%06x segments=5\n",
+                         (unsigned long long)m.frame_count(), row_key);
+        }
+      } else {
+        frame.next_segment = 0;
+      }
+      break;
+    }
+  });
   // The dark diagonal radar guides are *blitter lines*, not ordinary pen-3
   // CPU pixels. At $447ee the original writes D4 to BLTSIZE; D7 is the
   // bitplane-0 destination, D5's upper nibble is the starting bit position,
@@ -604,6 +664,18 @@ bool captured_reticle_ready(const uint32_t* row_keys) {
     return bank.reticle.ready;
   }
   return false;
+}
+
+uint64_t captured_hud_frame(const uint32_t* row_keys) {
+  if (!row_keys) return UINT64_MAX;
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        bank.row_key < FuelDigits::Y * kRowStride ||
+        bank.row_key - FuelDigits::Y * kRowStride != row_keys[0]) continue;
+    return bank.frame.complete_frame;
+  }
+  return UINT64_MAX;
 }
 
 FuelDigits prepare_fuel_digits(amiga::Machine& m, const CockpitAtlas& cockpit,

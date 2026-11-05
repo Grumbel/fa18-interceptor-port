@@ -151,4 +151,7 @@ HudFontCapture captured_hud_font(const uint32_t* row_keys);
 int captured_heading_phase(const uint32_t* row_keys);
 // True after both original reticle drawing operations completed in this bank.
 bool captured_reticle_ready(const uint32_t* row_keys);
+// Frame of the last complete five-line HUD outline write in the displayed
+// bank; UINT64_MAX means no verified original frame command sequence yet.
+uint64_t captured_hud_frame(const uint32_t* row_keys);
 }  // namespace remaster

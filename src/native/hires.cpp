@@ -1923,33 +1923,61 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
     }
   }
 
-  // Top and corner strokes are two different original pens. Their source
-  // stencils establish visibility and both current copper-faded colours.
-  // External camera and transitional frames retain their old bitplanes.
+  // Top and corner strokes are two different original pens. A recently
+  // completed five-line outline draw establishes visibility for the active
+  // screen bank; the copper palette supplies its faded colours. External
+  // camera, partial redraw and transitional frames keep the pixel stencil.
   const char* native_frame = std::getenv("FA18_HUD_FRAME_NATIVE");
   if (!native_frame || std::strcmp(native_frame, "0") != 0) {
-    const uint32_t top = rgb[37 * W + 159] & 0xffffffu;
-    const uint32_t corner = rgb[38 * W + 92] & 0xffffffu;
-    const uint8_t r = uint8_t(top >> 16);
-    out.frame_crown = r >= 16 && top == (uint32_t(r) * 0x010101u) &&
-                      top != (rgb[36 * W + 159] & 0xffffffu) &&
-                      (rgb[37 * W + 94] & 0xffffffu) == top &&
-                      (rgb[37 * W + 200] & 0xffffffu) == top &&
-                      (rgb[38 * W + 226] & 0xffffffu) == corner &&
-                      (rgb[45 * W + 85] & 0xffffffu) == corner &&
-                      (rgb[45 * W + 233] & 0xffffffu) == corner;
-    out.frame_top_rgb = top;
-    out.frame_corner_rgb = corner;
+    const uint64_t drawn = captured_hud_frame(m.frame_row_key());
+    const uint32_t* row_palette = m.frame_row_pal();
+    const bool fresh = drawn != UINT64_MAX && m.frame_count() >= drawn &&
+                       m.frame_count() - drawn <= 16;
+    const bool use_writer = std::getenv("FA18_HUD_FRAME_BITMAP_REFERENCE") == nullptr &&
+                            fresh && row_palette &&
+                            (native::rd8(0x5aa8d) != 0 || pause_screen_active());
+    if (use_writer) {
+      const uint32_t top = row_palette[37 * 32 + 10] & 0xffffffu;
+      const uint32_t corner = row_palette[38 * 32 + 8] & 0xffffffu;
+      const uint32_t backdrop = row_palette[36 * 32 + 5] & 0xffffffu;
+      const uint8_t r = uint8_t(top >> 16);
+      out.frame_crown = r >= 16 && top == uint32_t(r) * 0x010101u &&
+                        top != backdrop;
+      out.frame_top_rgb = top;
+      out.frame_corner_rgb = corner;
+    } else {
+      const uint32_t top = rgb[37 * W + 159] & 0xffffffu;
+      const uint32_t corner = rgb[38 * W + 92] & 0xffffffu;
+      const uint8_t r = uint8_t(top >> 16);
+      out.frame_crown = r >= 16 && top == (uint32_t(r) * 0x010101u) &&
+                        top != (rgb[36 * W + 159] & 0xffffffu) &&
+                        (rgb[37 * W + 94] & 0xffffffu) == top &&
+                        (rgb[37 * W + 200] & 0xffffffu) == top &&
+                        (rgb[38 * W + 226] & 0xffffffu) == corner &&
+                        (rgb[45 * W + 85] & 0xffffffu) == corner &&
+                        (rgb[45 * W + 233] & 0xffffffu) == corner;
+      out.frame_top_rgb = top;
+      out.frame_corner_rgb = corner;
+    }
     const char* rails = std::getenv("FA18_HUD_RAILS_NATIVE");
     if (out.frame_crown && (!rails || std::strcmp(rails, "0") != 0)) {
-      const uint32_t ink = rgb[55 * W + 85] & 0xffffffu;
-      out.frame_rails = (rgb[55 * W + 233] & 0xffffffu) == ink &&
-                        (rgb[100 * W + 85] & 0xffffffu) == ink &&
-                        (rgb[100 * W + 233] & 0xffffffu) == ink &&
-                        (rgb[140 * W + 85] & 0xffffffu) == ink &&
-                        (rgb[140 * W + 233] & 0xffffffu) == ink;
+      const uint32_t ink = use_writer ? row_palette[55 * 32] & 0xffffffu :
+                                        rgb[55 * W + 85] & 0xffffffu;
+      out.frame_rails = use_writer ?
+          ((row_palette[100 * 32] & 0xffffffu) == ink &&
+           (row_palette[140 * 32] & 0xffffffu) == ink) :
+          ((rgb[55 * W + 233] & 0xffffffu) == ink &&
+           (rgb[100 * W + 85] & 0xffffffu) == ink &&
+           (rgb[100 * W + 233] & 0xffffffu) == ink &&
+           (rgb[140 * W + 85] & 0xffffffu) == ink &&
+           (rgb[140 * W + 233] & 0xffffffu) == ink);
       out.frame_rail_rgb = ink;
     }
+    if (std::getenv("FA18_HUD_FRAME_CAPTURE_DEBUG") &&
+        m.frame_count() % 400 == 0)
+      std::fprintf(stderr, "HUD frame capture use frame=%llu writer=%d visible=%d rails=%d\n",
+                   (unsigned long long)m.frame_count(), int(use_writer),
+                   int(out.frame_crown), int(out.frame_rails));
   }
 
   if (out.frame_crown) {

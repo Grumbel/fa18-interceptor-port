@@ -395,6 +395,15 @@ before committing. Note limitations explicitly rather than masking them.
   G-meter/left units, 4 behind right unit labels). Keep the HUD-frame gate
   and early/incomplete source-glyph fallbacks. A reference toggle and a
   five-scenario screenshot/RAM test guard this migration.
+- [x] Identify the HUD frame outline's **high-level original caller** at
+  `$48eba`, rather than relying on generic bitmap blitter write/clear PCs.
+  Its five ordered segments trace the left rail, left chamfer, crown, right
+  chamfer, and right rail. Recover the current bank from the `A2` bitplane
+  table, and latch only complete five-command sequences per bank. For recent
+  redraws, infer outline visibility and ink from copper pens 10/8/0 (pen 5
+  backdrop) with no sampled HUD-outline pixels. Retain bitmap recognition
+  during transitions and before the first verified redraw; compare bit-exact
+  images and RAM hashes in `tests/check_gl_hud_frame_capture.sh`.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
@@ -409,10 +418,9 @@ before committing. Note limitations explicitly rather than masking them.
   consumes too much GPU memory.
 - [ ] Make the compositor independent of the original HUD bitplanes;
   classify cockpit instrument writes directly (not by comparing bitplanes
-  against the static ILBM) and re-render them at output resolution. A watch
-  on the original top HUD rail's bitplane-1 word reaches generic blitter
-  paths around `$44856` (write) and `$44a98` (clear), repeatedly during
-  the flight redraw. Their *callers* and draw parameters must be classified
-  before treating them as a frame-presence hook; either PC alone is not a
-  reliable HUD visibility signal.
+  against the static ILBM) and re-render them at output resolution. The
+  original top HUD rail's generic blitter paths at `$44856` (write) and
+  `$44a98` (clear) are now traced to the specific `$48eba` outline caller.
+  Finish migrating other HUD/cockpit writers and transitions; even with the
+  outline captured, unknown and stale banks intentionally use the bitmap.
 - [ ] Validate sustained 120/240 Hz and seam stability on real GPU/monitor.

@@ -640,6 +640,42 @@ lookup for both heading and reticle captures; the four-scenario
 `tests/check_gl_hud_point_palette.sh` checks identical images and emulated
 RAM hashes across buffer flips, flight, Pause and changing controls.
 
+### Original HUD frame outline commands
+
+A watch on the original HUD crown's bitplane words showed writes and clears
+through the generic `$44856`/`$44a98` raster paths. The distinctive caller is
+**`$48eba`**: it dispatches five ordered line draws to `$44686`, with
+`(D0,D1)` as the start and `(D2,D3)` as the end:
+
+1. `(85,144)` to `(85,45)` — left rail
+2. `(85,45)` to `(93,36)` — left chamfer
+3. `(93,36)` to `(225,36)` — crown
+4. `(225,36)` to `(233,45)` — right chamfer
+5. `(233,45)` to `(233,144)` — right rail
+
+The matching `A0` values are consecutive entries beginning at `$4917c`.
+`A2` identifies the current screen's four-entry bitplane table, descending
+in 8,000-byte increments. The last entry identifies bitplane zero and the
+existing per-bank instrument capture key. The hook in
+`cockpit_instruments.cpp` verifies all five original segments **in order**
+before latching an outline redraw for that bank; this avoids false positives
+from the generic blitter and from partial frame writes.
+
+When the displayed bank has a complete recent outline, the native HUD checks
+the foreground crown, chamfer and rail colours from live copper pens
+**10, 8 and 0**, respectively, with pen **5** as the background contrast
+check. The bitmap is no longer inspected for frame visibility or ink in
+this settled-flight path. Transitional, absent and stale-bank captures keep
+the original bitmap gate, so a native HUD cannot appear before the original
+frame has been drawn. `FA18_HUD_FRAME_BITMAP_REFERENCE=1` forces the old
+source-pixel gate for comparison; `FA18_HUD_FRAME_CAPTURE_DEBUG=1` reports
+completed bank writes and the selected visibility path.
+
+`tests/check_gl_hud_frame_capture.sh ORIGINAL.adf [fa18-executable]`
+compares screenshots and emulated RAM hashes with the source-pixel reference
+across bank flip, settled flight, Pause, dynamic controls and maneuvering,
+and checks both bank captures and an active writer path in settled flight.
+
 ## Open points
 
 
