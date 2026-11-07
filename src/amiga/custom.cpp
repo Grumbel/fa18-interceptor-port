@@ -376,6 +376,7 @@ void Machine::blit() {
   if (raster_audit_)
     raster_audit_blit(uint8_t(cs_.bltcon0_), uint32_t((cs_.bltcon1_ & 1) ? h : h * w),
                       (cs_.bltcon1_ & 1) != 0, (cs_.bltcon1_ & 0x18) != 0);
+  if (panel_blit_trace_) panel_blit_trace_begin();
   if (cs_.bltcon1_ & 1) {
     blit_line();
   } else {
@@ -415,7 +416,11 @@ void Machine::blit() {
         uint16_t d = blitter_minterm(lf, as, bs, cs_.bltdat_[2]);
         if (fill) d = blitter_fill_word(d, fc, efe);
         if (d) zero = false;
-        if (useD) { write16(dpt, d); dpt += uint32_t(inc); }
+        if (useD) {
+          if (panel_blit_trace_) panel_blit_trace_word(dpt, d, false, lf);
+          write16(dpt, d);
+          dpt += uint32_t(inc);
+        }
       }
       if (useA) apt += uint32_t(desc ? -cs_.bltmod_[0] : cs_.bltmod_[0]);
       if (useB) bpt += uint32_t(desc ? -cs_.bltmod_[1] : cs_.bltmod_[1]);
@@ -473,7 +478,10 @@ void Machine::blit_line() {
     else { if (aul) decy(); else incy(); }
     sign = err < 0;
     bshift = (bshift - 1) & 15;
-    if ((cs_.bltcon0_ & 0x100) && draw) write16(write_at, d);
+    if ((cs_.bltcon0_ & 0x100) && draw) {
+      if (panel_blit_trace_) panel_blit_trace_word(write_at, d, true, lf);
+      write16(write_at, d);
+    }
     dpt = cpt;
   }
   cs_.bltpt_[0] = (cs_.bltpt_[0] & 0xFFFF0000) | uint16_t(err);

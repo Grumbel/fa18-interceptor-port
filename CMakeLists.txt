@@ -67,6 +67,7 @@ add_library(amiga STATIC
   src/amiga/custom.cpp
   src/amiga/blitter_fill.hpp
   src/amiga/blitter_minterm.hpp
+  src/amiga/panel_blit_trace.hpp
   src/amiga/savestate.cpp
   src/amiga/ser.hpp
   src/amiga/hle.cpp
@@ -274,6 +275,8 @@ else()
     target_include_directories(gl_cockpit_panel_test PRIVATE src)
     add_executable(gl_cockpit_dynamic_audit_test tests/gl_cockpit_dynamic_audit.cpp)
     target_include_directories(gl_cockpit_dynamic_audit_test PRIVATE src)
+    add_executable(panel_blit_trace_test tests/panel_blit_trace.cpp)
+    target_include_directories(panel_blit_trace_test PRIVATE src)
     add_executable(gl_scene_rows_test tests/gl_scene_rows.cpp)
     target_include_directories(gl_scene_rows_test PRIVATE src)
     add_executable(ram_access_observer_test tests/ram_access_observer.cpp)
@@ -299,6 +302,7 @@ else()
     add_test(NAME gl_cockpit_front COMMAND gl_cockpit_front_test)
     add_test(NAME gl_cockpit_panel COMMAND gl_cockpit_panel_test)
     add_test(NAME gl_cockpit_dynamic_audit COMMAND gl_cockpit_dynamic_audit_test)
+    add_test(NAME panel_blit_trace COMMAND panel_blit_trace_test)
     add_test(NAME gl_scene_rows COMMAND gl_scene_rows_test)
     add_test(NAME ram_access_observer COMMAND ram_access_observer_test)
     add_test(NAME blitter_fill COMMAND blitter_fill_test)

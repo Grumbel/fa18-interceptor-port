@@ -209,6 +209,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `tests/check_gl_cockpit_dynamic_audit.sh` check the classification and
   unchanged renderer/game RAM.
   The full ADF-backed replay is not yet verified in this environment.
+  For the next moving-horizon investigation,
+  `FA18_COCKPIT_BLIT_TRACE=1` attributes original area/line blitter writes
+  to their `BLTSIZE` PC, drawing/display bank, bitplane and exact changed
+  pixels in the left-attitude, horizon-globe and far-right status zones.
+  It is read-only and intentionally does not replace the moving instrument.
+  `panel_blit_trace_test` checks edge-word bit attribution;
+  `tests/check_gl_cockpit_blit_trace.sh ORIGINAL.adf` checks that enabling
+  the trace leaves framebuffer and RAM hashes unchanged.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

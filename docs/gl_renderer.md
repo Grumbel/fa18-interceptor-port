@@ -246,6 +246,25 @@ This is diagnostic only, never a render-path gate. To compare screenshots
 and emulated memory with the audit disabled, run
 `tests/check_gl_cockpit_dynamic_audit.sh ORIGINAL.adf`.
 
+`FA18_COCKPIT_BLIT_TRACE=1` provides the next level of attribution for
+**moving** instrument artwork. Each original Amiga area or line blit into
+the left-attitude, red/blue horizon globe or status zone records the 68000
+program counter at `BLTSIZE`, minterm, destination bitplane, screen-bank
+base, word count, changed-bit count, first/last frame and affected pixels.
+The observer uses the current drawing-buffer pointer plus the displayed
+row's plane-0 address; it tracks recently used banks to cover flips. Only
+changed bits inside a zone count toward a writer's bounds, including partial
+16-pixel blitter words at zone edges. The summary is sorted by changed bits
+and printed when the emulator exits (top eight sites **per zone**, so a
+dominant writer cannot hide a smaller instrument); it does not alter
+blitter operations.
+Use `tests/check_gl_cockpit_blit_trace.sh ORIGINAL.adf` to compare original
+and traced screenshots and RAM hashes. This trace only sees **blitter**
+writes: a zero-count region may instead be drawn by the 68000 CPU. The PC
+sites are candidate writers, not yet a verified native reconstruction of
+the artificial horizon. The ADF-backed replay still needs a build with
+SDL/OpenGL available.
+
 The CPU and direct GPU now share the same mapping from each Amiga display
 scanline to the most recent completed 3D bank. A matching completed scene
 row remains eligible for widescreen extension even during the handful of

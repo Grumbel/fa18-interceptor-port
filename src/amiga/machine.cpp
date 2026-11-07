@@ -1,5 +1,6 @@
 // Machine: memory map, loader, scheduler and 68k<->host call glue.
 #include "amiga/machine.hpp"
+#include "amiga/panel_blit_trace.hpp"
 #include "amiga/hle.hpp"
 #include "amiga/hunk.hpp"
 #include "native/runtime.hpp"
@@ -64,10 +65,42 @@ Machine::Machine() : ram_(RAM_SIZE), fb_(FB_W * FB_H) {
       static_cast<Machine*>(ctx)->raster_audit_access(addr, size, write);
     };
   }
+  if (const char* enabled = std::getenv("FA18_COCKPIT_BLIT_TRACE");
+      enabled && std::strcmp(enabled, "0") != 0)
+    panel_blit_trace_ = std::make_unique<panel_blit_trace::Trace>();
   hle_ = std::make_unique<Hle>(*this);
 }
 
 Machine::~Machine() {
+  if (panel_blit_trace_) {
+    const auto sites = panel_blit_trace_->ranked();
+    log("cockpit-blit: attributed sites=%zu (top 8 per zone by changed bits)\n",
+        sites.size());
+    for (size_t zone = 0; zone < panel_blit_trace::zones.size(); ++zone) {
+      size_t count = 0;
+      uint64_t bits = 0;
+      for (const auto& [key, site] : sites) {
+        if (key.zone != zone) continue;
+        ++count;
+        bits += site.changed_bits;
+      }
+      log("cockpit-blit: zone=%s sites=%zu changed_bits=%llu\n",
+          panel_blit_trace::zones[zone].name, count, (unsigned long long)bits);
+      size_t shown = 0;
+      for (const auto& [key, s] : sites) {
+        if (key.zone != zone || shown++ >= 8) continue;
+        log("cockpit-blit: zone=%s pc=%06x bank=%06x plane=%u %s minterm=%02x "
+          "words=%llu changed=%llu bits=%llu first=%06x frames=%llu..%llu "
+          "bounds=%d,%d..%d,%d\n",
+          panel_blit_trace::zones[key.zone].name, key.pc, key.bank,
+          unsigned(key.plane), key.line ? "line" : "area", unsigned(key.minterm),
+          (unsigned long long)s.words, (unsigned long long)s.changed_words,
+          (unsigned long long)s.changed_bits, s.first_address,
+          (unsigned long long)s.first_frame, (unsigned long long)s.last_frame,
+          s.min_x, s.min_y, s.max_x, s.max_y);
+      }
+    }
+  }
   if (!raster_audit_ || !raster_audit_->scenes) return;
   const auto& a = *raster_audit_;
   log("gl-raster-audit: scenes=%llu scene_blitter_words=%llu guest_screen_writes=%llu "
@@ -111,6 +144,45 @@ Machine::~Machine() {
         (unsigned long long)a.minterm_words[lf],
         (unsigned long long)a.minterm_calls[lf]);
   }
+}
+
+void Machine::panel_blit_trace_begin() {
+  if (!panel_blit_trace_) return;
+  // This observer must never add guest-bus reads. Decode the little table
+  // of big-endian guest pointers directly from chip RAM instead.
+  const auto raw_be32 = [this](uint32_t addr) {
+    return (uint32_t(ram_[addr]) << 24) | (uint32_t(ram_[addr + 1]) << 16) |
+           (uint32_t(ram_[addr + 2]) << 8) | uint32_t(ram_[addr + 3]);
+  };
+  // Last displayed bank, valid even if the game is currently drawing into
+  // its alternate back buffer. Both addresses use plane 0 as their base.
+  constexpr uint32_t row_offset = 183 * panel_blit_trace::ROW_BYTES;
+  if (row_key_.size() == FB_H && row_key_[183] >= row_offset)
+    panel_blit_trace_->observe_bank(row_key_[183] - row_offset);
+  // Current drawing buffer from the original screen-pointer table. This
+  // catches writes into a back buffer before it has ever been displayed.
+  const uint32_t table = raw_be32(0x5a9ae) & 0x00ffffffu;
+  if (table && table <= RAM_SIZE - 16) {
+    const uint32_t base = raw_be32(table + 12) & 0x00ffffffu;
+    // This game allocates the four 8,000-byte bitplanes contiguously; the
+    // pointer table lists them in reverse order. Validate that layout so a
+    // stale pointer during menus cannot be mistaken for a cockpit bank.
+    bool complete = true;
+    for (int p = 0; p < 3; ++p)
+      complete &= (raw_be32(table + 4u * uint32_t(p)) & 0x00ffffffu) ==
+                  base + uint32_t(3 - p) * panel_blit_trace::PLANE_BYTES;
+    if (complete) panel_blit_trace_->observe_bank(base);
+  }
+}
+
+void Machine::panel_blit_trace_word(uint32_t addr, uint16_t value,
+                                   bool line, uint8_t minterm) {
+  if (!panel_blit_trace_ || addr >= RAM_SIZE - 1) return;
+  // Look at the raw chip-RAM word *before* the original write. Avoid an
+  // additional bus access (and any read-side effects in other audit modes).
+  const uint16_t before = uint16_t((uint16_t(ram_[addr]) << 8) | ram_[addr + 1]);
+  panel_blit_trace_->write(cpu.op_pc, addr, before, value,
+                           line, minterm, frame_count_);
 }
 
 void Machine::raster_audit_access(uint32_t addr, uint8_t size, bool write) {

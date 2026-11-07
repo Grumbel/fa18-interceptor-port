@@ -21,6 +21,7 @@
 #include <vector>
 
 namespace native { struct Def; }
+namespace amiga::panel_blit_trace { class Trace; }
 
 namespace amiga { class Machine; }
 namespace remaster {
@@ -288,6 +289,9 @@ private:
   void custom_write(uint32_t reg, uint16_t v);
   void blit();
   void blit_line();
+  void panel_blit_trace_begin();
+  void panel_blit_trace_word(uint32_t addr, uint16_t value,
+                             bool line, uint8_t minterm);
   void render_frame();
   void copper_reset();
   void copper_run_until(int vpos, int hpos);
@@ -309,6 +313,7 @@ private:
   std::vector<uint8_t> ram_;
   struct RasterAudit;
   std::unique_ptr<RasterAudit> raster_audit_;
+  std::unique_ptr<panel_blit_trace::Trace> panel_blit_trace_;
   RasterSource raster_origin_ = RasterSource::Guest;
   void raster_audit_access(uint32_t addr, uint8_t size, bool write);
   Host* host_ = nullptr;
