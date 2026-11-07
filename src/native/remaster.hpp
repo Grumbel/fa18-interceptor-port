@@ -55,6 +55,10 @@ inline constexpr std::array<HudLetterSlot, 5> kHudLetterSlots{{
 // colour; the digit cells additionally decode the old glyph shape into a
 // native seven-stroke digit. The reticle tracks the copper Pause fade.
 struct NativeHudState {
+  // Comparing the captured HUD state lets the GL compositor retain its
+  // uniforms across intermediate high-refresh presentations. The arrays and
+  // palette colours are part of the identity, not just the visible flags.
+  bool operator==(const NativeHudState&) const = default;
   bool pause_title = false;
   uint32_t pause_rgb = 0;
   bool reticle = false;

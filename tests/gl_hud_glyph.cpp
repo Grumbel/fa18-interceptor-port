@@ -22,6 +22,37 @@ void draw(Screen& screen, int x, int y, const uint8_t (&rows)[5], uint32_t ink =
 } // namespace
 
 int main() {
+  // The GL presenter skips HUD uniform updates on high-refresh subframes
+  // only when the complete captured UI state is unchanged. In particular,
+  // a palette fade or a redraw in the opposite screen bank must invalidate
+  // that cache even if the visible glyph masks happen to match.
+  const NativeHudState blank{};
+  NativeHudState state = blank;
+  assert(state == blank);
+  state.reticle_rgb = 0x414141;
+  assert(state != blank);
+  state = blank;
+  state.digit_strokes[11] = 0x7f;
+  assert(state != blank);
+  state = blank;
+  state.digit_colours[3] = 0x777777;
+  assert(state != blank);
+  state = blank;
+  state.letter_visible[4] = 1;
+  assert(state != blank);
+  state = blank;
+  state.letter_colours[4] = 0x666666;
+  assert(state != blank);
+  state = blank;
+  state.heading_first_x = 150;
+  assert(state != blank);
+  state = blank;
+  state.frame_rails = true;
+  assert(state != blank);
+  state = blank;
+  state.pause_rgb = 0xaa6622;
+  assert(state != blank);
+
   Screen screen{};
   screen.fill(kBackground);
   uint32_t ink = 0;

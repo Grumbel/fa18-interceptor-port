@@ -98,6 +98,19 @@ path; the experimental `--gl-direct` compositor renders to the visible GL
 window without the per-presentation CPU readback (see below and
 `docs/gl_renderer_roadmap.md`).
 
+The direct compositor resolves its shader uniform locations once per program,
+retains the fullscreen quad in a dedicated static GL buffer, and skips native
+HUD geometry/ink uniform uploads when the complete captured HUD state is
+unchanged (including font values, screen-bank fades, Pause ink and heading
+phase). Newer fuel-LCD, fuel-bar and radar vector uniforms reuse the
+captured game-frame revision during high-refresh interpolation.
+The scene geometry is still re-uploaded for interpolated presentations.
+`FA18_GL_PRESENT_CACHE_DEBUG=1` counts updated/reused HUD uniform sets;
+`FA18_GL_PRESENT_CACHE_REFERENCE=1` forces the legacy uniform uploads as a
+visual oracle. `tests/check_gl_present_cache.sh` compares direct GPU pixels
+and emulated RAM through flight and Pause at 120 Hz. These avoid unnecessary
+driver calls; no hardware FPS gain is claimed without on-device profiling.
+
 Full-detail baseline on the bundled free1 replay (3,700 deterministic,
 fast-forwarded frames, native mode, offscreen Mesa/llvmpipe): original
 320x200 took **7.5 s**, software `--hires 3` took **19.1 s**, and

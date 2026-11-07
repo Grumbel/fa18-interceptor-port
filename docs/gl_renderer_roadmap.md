@@ -419,6 +419,18 @@ before committing. Note limitations explicitly rather than masking them.
   independent bitmap reference switches and verify the native paths against
   five Pause-entry/progressive/settled screenshots and unchanged RAM hashes in
   `tests/check_gl_pause_panel_copper.sh`.
+- [x] Remove redundant visible-compositor GL driver work at high refresh:
+  cache all shader uniform locations at link time (sampler bindings only
+  need setting once), reuse one immutable fullscreen quad VBO instead of
+  replacing the streamed scene buffer every present, and update the native
+  HUD's vector/colour uniforms only when its complete captured state
+  changes. The newer native fuel gauge, LCD and radar uniforms also reuse
+  their captured game-frame revision across interpolated presents.
+  The original dynamic 2D overlay/scanline upload and 3D scene
+  paths are unchanged. `FA18_GL_PRESENT_CACHE_DEBUG=1` reports HUD uniform
+  updates and reuses; `FA18_GL_PRESENT_CACHE_REFERENCE=1` forces the old
+  every-presentation update for comparison. Use
+  `tests/check_gl_present_cache.sh` for flight/Pause GPU pixel and RAM parity.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

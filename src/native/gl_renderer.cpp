@@ -19,8 +19,10 @@
 #include "native/terrain.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <optional>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -62,7 +64,7 @@ constexpr GLenum GL_STENCIL_ATTACHMENT = 0x8D20, GL_DEPTH24_STENCIL8 = 0x88F0;
 constexpr GLenum GL_DEPTH_COMPONENT16 = 0x81A5, GL_STENCIL_INDEX8 = 0x8D48;
 constexpr GLenum GL_FRAMEBUFFER_COMPLETE = 0x8CD5, GL_RGBA8 = 0x8058, GL_RGBA4 = 0x8056;
 constexpr GLenum GL_RGBA = 0x1908, GL_UNSIGNED_BYTE = 0x1401, GL_FLOAT = 0x1406;
-constexpr GLenum GL_ARRAY_BUFFER = 0x8892, GL_STREAM_DRAW = 0x88E0;
+constexpr GLenum GL_ARRAY_BUFFER = 0x8892, GL_STREAM_DRAW = 0x88E0, GL_STATIC_DRAW = 0x88E4;
 constexpr GLenum GL_VERTEX_SHADER = 0x8B31, GL_FRAGMENT_SHADER = 0x8B30;
 constexpr GLenum GL_COMPILE_STATUS = 0x8B81, GL_LINK_STATUS = 0x8B82;
 constexpr GLenum GL_PACK_ALIGNMENT = 0x0D05, GL_PROGRAM_POINT_SIZE = 0x8642;
@@ -139,6 +141,113 @@ struct GL {
 GL gl;
 decltype(GL::DrawArrays) raw_draw_arrays = nullptr;
 uint64_t frame_draw_calls = 0, frame_draw_vertices = 0;
+
+// Program uniform locations are stable for a linked GL program. In
+// particular, high-refresh presentation must not ask the driver to resolve
+// thirty-plus string names again for each interpolated frame.
+struct PresentUniforms {
+  GLint scene = -1, overlay = -1, palette = -1, rows = -1, hud = -1;
+  GLint pause = -1, cockpit = -1;
+  GLint hud_visible = -1, pause_visible = -1;
+  GLint pause_ink = -1;
+  GLint fuel_strokes = -1, fuel_stroke4 = -1, fuel_ink = -1;
+  GLint fuel_bar = -1, fuel_bar_rows = -1;
+  GLint radar_guide = -1, radar_marker = -1, radar_contact = -1;
+  GLint radar_dot_pos = -1, radar_stencil_pos = -1;
+  GLint reticle = -1, frame_top = -1, frame_corner = -1, frame_rail = -1;
+  GLint digits[3]{-1, -1, -1}, digit_ink[4]{-1, -1, -1, -1};
+  GLint labels = -1, label_g = -1, label_ink[5]{-1, -1, -1, -1, -1};
+  GLint heading_ink = -1, heading_x = -1;
+  GLint dimensions = -1, side = -1, scale = -1;
+
+  void query(GLuint program) {
+    auto get = [&](const char* name) { return gl.GetUniformLocation(program, name); };
+    scene = get("u_scene"); overlay = get("u_overlay");
+    palette = get("u_palette"); rows = get("u_rows");
+    hud = get("u_hud"); pause = get("u_pause"); cockpit = get("u_cockpit");
+    hud_visible = get("u_hud_visible"); pause_visible = get("u_pause_visible");
+    pause_ink = get("u_pause_ink");
+    fuel_strokes = get("u_fuel_strokes0"); fuel_stroke4 = get("u_fuel_stroke4");
+    fuel_ink = get("u_fuel_ink"); fuel_bar = get("u_fuel_bar");
+    fuel_bar_rows = get("u_fuel_bar_rows");
+    radar_guide = get("u_radar_guide"); radar_marker = get("u_radar_marker");
+    radar_contact = get("u_radar_contact");
+    radar_dot_pos = get("u_radar_dot_pos");
+    radar_stencil_pos = get("u_radar_stencil_pos");
+    reticle = get("u_reticle"); frame_top = get("u_frame_top");
+    frame_corner = get("u_frame_corner"); frame_rail = get("u_frame_rail");
+    for (int i = 0; i < 3; ++i) {
+      const char* names[] = {"u_digits0", "u_digits1", "u_digits2"};
+      digits[i] = get(names[i]);
+    }
+    for (int i = 0; i < 4; ++i) {
+      const char* names[] = {"u_digit_ink0", "u_digit_ink1", "u_digit_ink2", "u_digit_ink3"};
+      digit_ink[i] = get(names[i]);
+    }
+    labels = get("u_labels0"); label_g = get("u_label_g");
+    for (int i = 0; i < 5; ++i) {
+      const char* names[] = {"u_label_ink0", "u_label_ink1", "u_label_ink2",
+                             "u_label_ink3", "u_label_ink4"};
+      label_ink[i] = get(names[i]);
+    }
+    heading_ink = get("u_heading_ink"); heading_x = get("u_heading_x");
+    dimensions = get("u_dimensions"); side = get("u_side"); scale = get("u_scale");
+  }
+};
+
+void upload_hud_uniforms(const PresentUniforms& u, const remaster::NativeHudState& hud) {
+  auto colour = [](uint32_t rgb) {
+    return std::array<float, 3>{float((rgb >> 16) & 255) / 255.f,
+                                float((rgb >> 8) & 255) / 255.f,
+                                float(rgb & 255) / 255.f};
+  };
+  auto ink = [&](GLint location, uint32_t rgb, bool visible) {
+    const auto c = colour(rgb);
+    gl.Uniform4f(location, c[0], c[1], c[2], visible ? 1.f : 0.f);
+  };
+  ink(u.reticle, hud.reticle_rgb, hud.reticle);
+  ink(u.frame_top, hud.frame_top_rgb, hud.frame_crown);
+  ink(u.frame_corner, hud.frame_corner_rgb, hud.frame_crown);
+  ink(u.frame_rail, hud.frame_rail_rgb, hud.frame_rails);
+  ink(u.pause_ink, hud.pause_rgb, hud.pause_title);
+  for (int group = 0; group < 3; ++group) {
+    const auto& m = hud.digit_strokes;
+    gl.Uniform4f(u.digits[group],
+                 float(m[size_t(group * 4)]), float(m[size_t(group * 4 + 1)]),
+                 float(m[size_t(group * 4 + 2)]), float(m[size_t(group * 4 + 3)]));
+  }
+  for (int group = 0; group < 4; ++group)
+    ink(u.digit_ink[group], hud.digit_colours[size_t(group)],
+        hud.digit_colours[size_t(group)] != 0);
+  gl.Uniform4f(u.labels, float(hud.letter_visible[0]), float(hud.letter_visible[1]),
+               float(hud.letter_visible[2]), float(hud.letter_visible[3]));
+  gl.Uniform1f(u.label_g, float(hud.letter_visible[4]));
+  for (int letter = 0; letter < 5; ++letter)
+    ink(u.label_ink[letter], hud.letter_colours[size_t(letter)],
+        hud.letter_colours[size_t(letter)] != 0);
+  ink(u.heading_ink, hud.heading_rgb, hud.heading_marks);
+  gl.Uniform1f(u.heading_x, float(hud.heading_first_x));
+}
+
+void upload_cockpit_uniforms(const PresentUniforms& u, const remaster::GpuLayers& layer) {
+  gl.Uniform4f(u.fuel_strokes, float(layer.fuel_strokes[0]), float(layer.fuel_strokes[1]),
+               float(layer.fuel_strokes[2]), float(layer.fuel_strokes[3]));
+  gl.Uniform1f(u.fuel_stroke4, float(layer.fuel_strokes[4]));
+  auto ink = [&](GLint location, uint32_t c, bool visible) {
+    gl.Uniform4f(location, float((c >> 16) & 255) / 255.f,
+                 float((c >> 8) & 255) / 255.f, float(c & 255) / 255.f,
+                 visible ? 1.f : 0.f);
+  };
+  ink(u.fuel_ink, layer.fuel_ink_rgb, layer.fuel_vector);
+  ink(u.fuel_bar, layer.fuel_bar_ink_rgb, layer.fuel_bar_vector);
+  gl.Uniform1f(u.fuel_bar_rows, float(layer.fuel_bar_rows));
+  ink(u.radar_guide, layer.radar_guide_rgb, layer.radar_vector);
+  ink(u.radar_marker, layer.radar_marker_rgb, layer.radar_vector);
+  ink(u.radar_contact, layer.radar_dot_rgb, layer.radar_vector);
+  gl.Uniform2f(u.radar_dot_pos, float(layer.radar_dot_x), float(layer.radar_dot_y));
+  gl.Uniform4f(u.radar_stencil_pos, float(layer.radar_guide_y),
+               float(layer.radar_marker_x), float(layer.radar_marker_y), 0.f);
+}
 
 void counted_draw_arrays(GLenum mode, GLint first, GLsizei count) {
   ++frame_draw_calls;
@@ -650,13 +759,18 @@ struct State {
   bool deferred_scene_readback = false;
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
+  GLuint quad_vbo = 0;  // immutable fullscreen triangle pair, not the scene stream
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
+  PresentUniforms present_u;
+  std::optional<remaster::NativeHudState> presented_hud;
   GLuint bitmap_prog = 0, bitmap_tex = 0;
+  GLint bitmap_u_image = -1;
   int bitmap_tex_w = 0, bitmap_tex_h = 0;
   bool bitmap_failed = false;
   GLuint hud_tex = 0, pause_tex = 0, cockpit_tex = 0;
   bool present_failed = false;
   uint64_t uploaded_layers_revision = UINT64_MAX;
+  uint64_t uploaded_cockpit_uniform_revision = UINT64_MAX;
   bool scene_attached = false;  // scene texture is the FBO colour attachment
   int scene_tex_w = 0, scene_tex_h = 0;
   int fb_w = 0, fb_h = 0;
@@ -689,6 +803,13 @@ struct State {
 };
 
 State st;
+
+void bind_present_quad() {
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.quad_vbo);
+  gl.DisableVertexAttribArray(1);
+  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+}
 
 // An original game tick may request a centre-size readback and a different
 // widescreen presentation size. A single FBO would recreate *all* its colour,
@@ -1000,6 +1121,13 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.u_coloured = gl.GetUniformLocation(st.prog, "u_coloured");
   st.u_water_class = gl.GetUniformLocation(st.prog, "u_water_class");
   gl.GenBuffers(1, &st.vbo);
+  // The scene renderer streams vertices through st.vbo on every capture.
+  // Sharing that buffer with the presenter's quad previously forced a new
+  // BufferData even on otherwise unchanged intermediate presentations.
+  static constexpr float quad[12] = {-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1};
+  gl.GenBuffers(1, &st.quad_vbo);
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.quad_vbo);
+  gl.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
   build_terrain();
   st.debug = std::getenv("FA18_GL_DEBUG") != nullptr;
   std::fprintf(stderr, "gl: %s / %s, %zu water triangles\n",
@@ -1602,6 +1730,16 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
       st.present_failed = true;
       return false;
     }
+    st.present_u.query(st.present_prog);
+    gl.UseProgram(st.present_prog);
+    const auto& u = st.present_u;
+    gl.Uniform1i(u.scene, 0);
+    gl.Uniform1i(u.overlay, 1);
+    gl.Uniform1i(u.palette, 2);
+    gl.Uniform1i(u.rows, 3);
+    gl.Uniform1i(u.hud, 4);
+    gl.Uniform1i(u.pause, 5);
+    gl.Uniform1i(u.cockpit, 6);
   }
   if (!draw_layer(nullptr, width, height, S, alpha)) return false;
 
@@ -1685,129 +1823,61 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
   const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
   gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
   gl.Disable(GL_SCISSOR_TEST);
+  gl.Disable(GL_DEPTH_TEST);
+  gl.Disable(GL_STENCIL_TEST);
   gl.Disable(GL_BLEND);
   gl.Disable(GL_CULL_FACE);
   gl.UseProgram(st.present_prog);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_scene"), 0);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_overlay"), 1);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_palette"), 2);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_rows"), 3);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_hud"), 4);
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_hud_visible"), hud_visible ? 1.f : 0.f);
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_pause"), 5);
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_pause_visible"),
+  const auto& u = st.present_u;
+  gl.Uniform1f(u.hud_visible, hud_visible ? 1.f : 0.f);
+  gl.Uniform1f(u.pause_visible,
                pause_visible && hud_state.pause_title ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_pause_ink"),
-               float((hud_state.pause_rgb >> 16) & 255) / 255.f,
-               float((hud_state.pause_rgb >> 8) & 255) / 255.f,
-               float(hud_state.pause_rgb & 255) / 255.f,
-               hud_state.pause_title ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_strokes0"),
-               float(layer.fuel_strokes[0]), float(layer.fuel_strokes[1]),
-               float(layer.fuel_strokes[2]), float(layer.fuel_strokes[3]));
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_fuel_stroke4"),
-               float(layer.fuel_strokes[4]));
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_ink"),
-               float((layer.fuel_ink_rgb >> 16) & 255) / 255.f,
-               float((layer.fuel_ink_rgb >> 8) & 255) / 255.f,
-               float(layer.fuel_ink_rgb & 255) / 255.f,
-               layer.fuel_vector ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_fuel_bar"),
-               float((layer.fuel_bar_ink_rgb >> 16) & 255) / 255.f,
-               float((layer.fuel_bar_ink_rgb >> 8) & 255) / 255.f,
-               float(layer.fuel_bar_ink_rgb & 255) / 255.f,
-               layer.fuel_bar_vector ? 1.f : 0.f);
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_fuel_bar_rows"),
-               float(layer.fuel_bar_rows));
-  const auto radar_ink = [&](const char* uniform, uint32_t c) {
-    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, uniform),
-                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
-                 float(c & 255) / 255.f, layer.radar_vector ? 1.f : 0.f);
-  };
-  radar_ink("u_radar_guide", layer.radar_guide_rgb);
-  radar_ink("u_radar_marker", layer.radar_marker_rgb);
-  radar_ink("u_radar_contact", layer.radar_dot_rgb);
-  gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_radar_dot_pos"),
-               float(layer.radar_dot_x), float(layer.radar_dot_y));
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_radar_stencil_pos"),
-               float(layer.radar_guide_y), float(layer.radar_marker_x),
-               float(layer.radar_marker_y), 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_reticle"),
-               float((hud_state.reticle_rgb >> 16) & 255) / 255.f,
-               float((hud_state.reticle_rgb >> 8) & 255) / 255.f,
-               float(hud_state.reticle_rgb & 255) / 255.f,
-               hud_state.reticle ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_frame_top"),
-               float((hud_state.frame_top_rgb >> 16) & 255) / 255.f,
-               float((hud_state.frame_top_rgb >> 8) & 255) / 255.f,
-               float(hud_state.frame_top_rgb & 255) / 255.f,
-               hud_state.frame_crown ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_frame_corner"),
-               float((hud_state.frame_corner_rgb >> 16) & 255) / 255.f,
-               float((hud_state.frame_corner_rgb >> 8) & 255) / 255.f,
-               float(hud_state.frame_corner_rgb & 255) / 255.f,
-               hud_state.frame_crown ? 1.f : 0.f);
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_frame_rail"),
-               float((hud_state.frame_rail_rgb >> 16) & 255) / 255.f,
-               float((hud_state.frame_rail_rgb >> 8) & 255) / 255.f,
-               float(hud_state.frame_rail_rgb & 255) / 255.f,
-               hud_state.frame_rails ? 1.f : 0.f);
-  for (int group = 0; group < 3; ++group) {
-    const auto& m = hud_state.digit_strokes;
-    const char* name = group == 0 ? "u_digits0" :
-                       group == 1 ? "u_digits1" : "u_digits2";
-    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
-                 float(m[size_t(group * 4)]), float(m[size_t(group * 4 + 1)]),
-                 float(m[size_t(group * 4 + 2)]), float(m[size_t(group * 4 + 3)]));
+  // Cockpit digits, fuel gauge and radar are captured once per game frame.
+  // Reuse their program uniforms throughout interpolated presentations.
+  const bool cockpit_changed = std::getenv("FA18_GL_PRESENT_CACHE_REFERENCE") ||
+                               layer_revision != st.uploaded_cockpit_uniform_revision;
+  if (cockpit_changed) {
+    upload_cockpit_uniforms(u, layer);
+    st.uploaded_cockpit_uniform_revision = layer_revision;
   }
-  for (int group = 0; group < 4; ++group) {
-    const uint32_t c = hud_state.digit_colours[size_t(group)];
-    const char* name = group == 0 ? "u_digit_ink0" : group == 1 ? "u_digit_ink1" :
-                       group == 2 ? "u_digit_ink2" : "u_digit_ink3";
-    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
-                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
-                 float(c & 255) / 255.f, c ? 1.f : 0.f);
+  if (std::getenv("FA18_GL_PRESENT_CACHE_DEBUG")) {
+    static uint64_t cockpit_updates = 0, cockpit_reuses = 0;
+    if (cockpit_changed) ++cockpit_updates;
+    else ++cockpit_reuses;
+    if (cockpit_updates + cockpit_reuses <= 4 ||
+        (cockpit_updates + cockpit_reuses) % 240 == 0)
+      std::fprintf(stderr, "gl: present cockpit uniforms updated=%llu reused=%llu\n",
+                   (unsigned long long)cockpit_updates,
+                   (unsigned long long)cockpit_reuses);
   }
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_labels0"),
-               float(hud_state.letter_visible[0]), float(hud_state.letter_visible[1]),
-               float(hud_state.letter_visible[2]), float(hud_state.letter_visible[3]));
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_label_g"),
-               float(hud_state.letter_visible[4]));
-  for (int letter = 0; letter < 5; ++letter) {
-    const char* name = letter == 0 ? "u_label_ink0" : letter == 1 ? "u_label_ink1" :
-                       letter == 2 ? "u_label_ink2" : letter == 3 ? "u_label_ink3" :
-                                     "u_label_ink4";
-    const uint32_t c = hud_state.letter_colours[size_t(letter)];
-    gl.Uniform4f(gl.GetUniformLocation(st.present_prog, name),
-                 float((c >> 16) & 255) / 255.f, float((c >> 8) & 255) / 255.f,
-                 float(c & 255) / 255.f, c ? 1.f : 0.f);
+  // Source HUD colours and writer latches may change independently of the
+  // scene, so compare the complete captured state rather than a frame ID.
+  const bool hud_changed = std::getenv("FA18_GL_PRESENT_CACHE_REFERENCE") ||
+                           !st.presented_hud || *st.presented_hud != hud_state;
+  if (hud_changed) {
+    upload_hud_uniforms(u, hud_state);
+    st.presented_hud = hud_state;
   }
-  const uint32_t heading = hud_state.heading_rgb;
-  gl.Uniform4f(gl.GetUniformLocation(st.present_prog, "u_heading_ink"),
-               float((heading >> 16) & 255) / 255.f,
-               float((heading >> 8) & 255) / 255.f,
-               float(heading & 255) / 255.f,
-               hud_state.heading_marks ? 1.f : 0.f);
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_heading_x"),
-               float(hud_state.heading_first_x));
+  if (std::getenv("FA18_GL_PRESENT_CACHE_DEBUG")) {
+    static uint64_t hud_updates = 0, hud_reuses = 0;
+    if (hud_changed) ++hud_updates;
+    else ++hud_reuses;
+    if (hud_updates + hud_reuses <= 4 || (hud_updates + hud_reuses) % 240 == 0)
+      std::fprintf(stderr, "gl: present HUD uniforms updated=%llu reused=%llu\n",
+                   (unsigned long long)hud_updates, (unsigned long long)hud_reuses);
+  }
   if (std::getenv("FA18_HUD_RETICLE_DEBUG")) {
     static int reports = 0;
     if (reports++ == 0)
       std::fprintf(stderr, "HUD shader loc=%d reticle=%d colour=%06x\n",
-                   gl.GetUniformLocation(st.present_prog, "u_reticle"), int(hud_state.reticle),
+                   u.reticle, int(hud_state.reticle),
                    hud_state.reticle_rgb);
   }
-  gl.Uniform1i(gl.GetUniformLocation(st.present_prog, "u_cockpit"), 6);
-  gl.Uniform2f(gl.GetUniformLocation(st.present_prog, "u_dimensions"), float(wide),
+  gl.Uniform2f(u.dimensions, float(wide),
                float(layer.scene_rows));
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_side"), float(side));
-  gl.Uniform1f(gl.GetUniformLocation(st.present_prog, "u_scale"), float(S));
-  static const float quad[12] = {-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1};
-  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
-  gl.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
-  gl.DisableVertexAttribArray(1);
-  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
-  gl.EnableVertexAttribArray(0);
+  gl.Uniform1f(u.side, float(side));
+  gl.Uniform1f(u.scale, float(S));
+  bind_present_quad();
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
   if (std::getenv("FA18_GL_DIRECT_DEBUG")) {
     static int errors = 0;
@@ -1851,6 +1921,9 @@ bool present_bitmap_gpu(const uint32_t* pixels, int width, int height,
       st.bitmap_failed = true;
       return false;
     }
+    st.bitmap_u_image = gl.GetUniformLocation(st.bitmap_prog, "u_image");
+    gl.UseProgram(st.bitmap_prog);
+    gl.Uniform1i(st.bitmap_u_image, 0);
   }
 
   // Upload only the 2D bitmap, never the old 3D scene. Normal flight uses
@@ -1866,13 +1939,16 @@ bool present_bitmap_gpu(const uint32_t* pixels, int width, int height,
   }
   auto upload = [&](GLuint& tex, int unit, int w, int h, const uint8_t* data, bool resize) {
     gl.ActiveTexture(GL_TEXTURE0 + unit);
-    if (!tex) gl.GenTextures(1, &tex);
+    const bool created = !tex;
+    if (created) gl.GenTextures(1, &tex);
     gl.BindTexture(GL_TEXTURE_2D, tex);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    if (resize) gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    if (created) {
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    if (resize || created) gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     else gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
   };
   upload(st.bitmap_tex, 0, width, height, rgba.data(),
@@ -1895,13 +1971,7 @@ bool present_bitmap_gpu(const uint32_t* pixels, int width, int height,
   const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
 
   gl.UseProgram(st.bitmap_prog);
-  gl.Uniform1i(gl.GetUniformLocation(st.bitmap_prog, "u_image"), 0);
-  static const float quad[12] = {-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1};
-  gl.BindBuffer(GL_ARRAY_BUFFER, st.vbo);
-  gl.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
-  gl.DisableVertexAttribArray(1);
-  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
-  gl.EnableVertexAttribArray(0);
+  bind_present_quad();
   gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
 
