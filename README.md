@@ -92,7 +92,8 @@ Keys are passed to the game as on the Amiga (see `manual.txt`):
 | `[` `]` | Zoom |
 | P, Esc, Shift-Esc | Pause, restart, back to mission selection |
 
-Front end keys: **Ctrl+F9** or **Insert** debug menu, **Ctrl+F10** mesh
+Front end keys: **Ctrl+B** toggles original Amiga blitter drawing for a
+native-graphics comparison, **Ctrl+F9** or **Insert** debug menu, **Ctrl+F10** mesh
 viewer, **Ctrl+F11** switches between original 320×200 and the last enhanced
 graphics setting (OpenGL/software, including its scale; the first switch from
 original defaults to 3× OpenGL, or software if GL is unavailable), **F11**
@@ -202,7 +203,17 @@ selected at startup because the visible window needs an OpenGL context.
 - **Back** (keyboard: Insert) opens the debug menu. **Graphics >** contains
   3D renderer and scale (original/software/OpenGL), widescreen, render FPS
   (60/120/180/240, only effective in OpenGL), full detail, stats overlay,
-  and FPS counter.
+  FPS counter, and an **Amiga blitter** on/off switch.
+  **Ctrl+B** switches it instantly while playing, with a visible red
+  `AMIGA BLITTER OFF` label and a window-title warning. The blitter's
+  destination writes (including line/area blits) stop, but its registers,
+  completion interrupt and cycle accounting continue so gameplay can still
+  advance. This is a deliberately destructive *visual debugging* mode:
+  source bitmap pixels can remain stale, menus or original overlays can
+  disappear, and game RAM no longer matches a normal replay. It is **not**
+  a completed replacement of the original renderer. Start in this mode
+  with `--no-amiga-blitter`; scripted runs accept `blitter off`/`blitter on`.
+  `tests/check_amiga_blitter_toggle.sh ORIGINAL.adf` exercises this switch.
   **Controls >** contains analog-stick steering and the controller/keyboard
   reference; **Extras >** contains Mesh Viewer and text pacing. The main
   menu retains Resume, Save/Load states, Send ESC and Quit. Press Esc/B to

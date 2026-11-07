@@ -26,7 +26,7 @@ inline constexpr std::array<std::array<std::string_view, 14>, 2> pages{{
       "Keypad: look around  KP Enter: outside",
       "P: pause  Esc: back  Shift+Esc: select",
       "Insert/Ctrl+F9 menu  Ctrl+F11 gfx",
-      "Ctrl+F10 models  F11 full  F12 mouse"}},
+      "Ctrl+B blitter Ctrl+F10 mesh F11 full F12 mouse"}},
     {{"GAME CONTROLLER",
       "Left stick / D-pad: pitch and roll",
       "A: fire    B: select weapon",

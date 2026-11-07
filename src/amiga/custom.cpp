@@ -417,8 +417,10 @@ void Machine::blit() {
         if (fill) d = blitter_fill_word(d, fc, efe);
         if (d) zero = false;
         if (useD) {
-          if (panel_blit_trace_) panel_blit_trace_word(dpt, d, false, lf);
-          write16(dpt, d);
+          blitter_write_gate_.write(dpt, d, [&](uint32_t address, uint16_t value) {
+            if (panel_blit_trace_) panel_blit_trace_word(address, value, false, lf);
+            write16(address, value);
+          });
           dpt += uint32_t(inc);
         }
       }
@@ -479,8 +481,10 @@ void Machine::blit_line() {
     sign = err < 0;
     bshift = (bshift - 1) & 15;
     if ((cs_.bltcon0_ & 0x100) && draw) {
-      if (panel_blit_trace_) panel_blit_trace_word(write_at, d, true, lf);
-      write16(write_at, d);
+      blitter_write_gate_.write(write_at, d, [&](uint32_t address, uint16_t value) {
+        if (panel_blit_trace_) panel_blit_trace_word(address, value, true, lf);
+        write16(address, value);
+      });
     }
     dpt = cpt;
   }

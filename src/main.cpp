@@ -41,6 +41,7 @@ namespace {
 //   mouse <dx> <dy>   lmb|rmb <0|1>   shot <file.ppm>   quit
 //   poke <hexaddr> <hexvalue> [b|w|l]   (force a game variable)
 //   stats on|off   (statistics overlay; "shot" then also writes FILE.stats.ppm)
+//   blitter on|off   (suppress original Amiga blitter destination writes)
 struct ScriptEvent {
   int frame;
   std::string cmd;
@@ -161,6 +162,7 @@ public:
   int pad_prev_hat = -1;      // pie menu: last direction while a shoulder is held (-1 none, 8 neutral)
   int pad_throttle_cd = 0;    // frames until next throttle step
   FrontendHotkeys debug_hotkeys;
+  bool blitter_hotkey_held = false;
   GraphicsToggle graphics_toggle;
   bool pad_held_key[128] = {};
   bool pad_blocked[SDL_CONTROLLER_BUTTON_MAX] = {};  // swallowed until released
@@ -192,7 +194,9 @@ public:
     const int win_h = amiga::FB_H * scale * 6 / 5;
     const int win_w = widescreen ? win_h * 16 / 9 : amiga::FB_W * scale;
     const Uint32 window_flags = SDL_WINDOW_RESIZABLE | (direct_gl ? SDL_WINDOW_OPENGL : 0);
-    win = SDL_CreateWindow("F/A-18 Interceptor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    win = SDL_CreateWindow(machine->original_blitter_writes() ?
+                           "F/A-18 Interceptor" : "F/A-18 Interceptor [AMIGA BLITTER OFF]",
+                           SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            win_w, win_h, window_flags);
     if (!win) return false;
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
@@ -253,6 +257,17 @@ public:
     set_graphics_mode(mode.scale, mode.opengl);
   }
 
+  void set_original_blitter_writes(bool enabled) {
+    if (machine->original_blitter_writes() == enabled) return;
+    machine->set_original_blitter_writes(enabled);
+    SDL_SetWindowTitle(win, enabled ? "F/A-18 Interceptor" :
+                                     "F/A-18 Interceptor [AMIGA BLITTER OFF]");
+    hud_frame = -1;
+    fprintf(stderr, "graphics: original Amiga blitter writes %s (Ctrl+B, %llu suppressed)\n",
+            enabled ? "ON" : "OFF",
+            (unsigned long long)machine->suppressed_blitter_words());
+  }
+
   void handle_events() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -262,6 +277,17 @@ public:
         case SDL_KEYUP: {
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
+          // Ctrl+B is a host-side comparison switch, never a guest B key.
+          // Remember the down event in case Ctrl is released before B.
+          if (sc == SDL_SCANCODE_B &&
+              ((e.key.keysym.mod & KMOD_CTRL) || blitter_hotkey_held)) {
+            if (down && !e.key.repeat) {
+              blitter_hotkey_held = true;
+              set_original_blitter_writes(!machine->original_blitter_writes());
+            }
+            if (!down) blitter_hotkey_held = false;
+            break;
+          }
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
           if (sc == SDL_SCANCODE_INSERT && down) {
             menu_request = true;
@@ -812,7 +838,7 @@ public:
     auto item_count = [&] {
       switch (page) {
         case Page::Main: return 8;
-        case Page::Graphics: return 7;
+        case Page::Graphics: return 8;
         case Page::Controls: return 3;
         case Page::Extras: return 3;
       }
@@ -953,6 +979,7 @@ public:
           case 4: machine->full_detail = !machine->full_detail; break;
           case 5: stats_on = !stats_on; break;
           case 6: fps_on = !fps_on; break;
+          case 7: set_original_blitter_writes(!machine->original_blitter_writes()); break;
         }
       } else if (page == Page::Controls) {
         switch (item) {
@@ -1092,7 +1119,9 @@ public:
                    "Render FPS: " + std::to_string(render_fps) + " (OpenGL)",
                    std::string("Full detail: ") + (machine->full_detail ? "on" : "off"),
                    std::string("Stats overlay: ") + (stats_on ? "on" : "off"),
-                   std::string("FPS counter: ") + (fps_on ? "on" : "off")};
+                   std::string("FPS counter: ") + (fps_on ? "on" : "off"),
+                   std::string("Amiga blitter: ") +
+                     (machine->original_blitter_writes() ? "on" : "OFF (debug)")};
           break;
         case Page::Controls:
           heading = "CONTROLS";
@@ -1234,7 +1263,7 @@ public:
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
-    if (stats_on || fps_on) draw_stats(logical_w);
+    if (stats_on || fps_on || !machine->original_blitter_writes()) draw_stats(logical_w);
     SDL_RenderPresent(ren);
     report_presentation();
   }
@@ -1269,7 +1298,7 @@ public:
     }
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
-    const bool show_hud = stats_on || fps_on;
+    const bool show_hud = stats_on || fps_on || !machine->original_blitter_writes();
     const bool pause_visible = remaster::pause_screen_active();
     if (pause_visible) prepare_pause_ui();
     const uint8_t* new_hud = nullptr;
@@ -1356,7 +1385,7 @@ public:
     if (!direct_gl || !glr::ready()) return false;
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
-    const bool show_hud = stats_on || fps_on;
+    const bool show_hud = stats_on || fps_on || !machine->original_blitter_writes();
     if (show_hud && hud_frame != frame_no) {
       prepare_hud();
       hud_rgba.resize(stats_buf.size() * 4);
@@ -1556,6 +1585,9 @@ public:
         stats_on = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "fps") {  // fps on | fps off
         fps_on = !e.args.empty() && e.args[0] == "on";
+      } else if (e.cmd == "blitter" && !e.args.empty()) {  // blitter on | off
+        if (e.args[0] == "on" || e.args[0] == "off")
+          set_original_blitter_writes(e.args[0] == "on");
       } else if (e.cmd == "textpace") {  // textpace on | textpace off
         machine->text_pace = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "fast") {  // fast on | fast off (timing tests)
@@ -1614,8 +1646,11 @@ public:
   // Its origin is the *window* top-left, not the old centred 4:3 viewport.
   void prepare_hud() {
     stats_buf.assign(size_t(STATS_W) * STATS_H, 0);
-    const auto lines = stats_on ? stats_overlay::build(*machine) :
-                                   std::vector<stats_overlay::Line>{};
+    auto lines = stats_on ? stats_overlay::build(*machine) :
+                            std::vector<stats_overlay::Line>{};
+    if (!machine->original_blitter_writes())
+      lines.insert(lines.begin(), stats_overlay::Line{"AMIGA BLITTER OFF (Ctrl+B)",
+                                                      0xFFFF6060u});
     if (lines.empty() && !fps_on) return;
     const int lh = font6x10::H, pad = 4;
     size_t cols = 0;
@@ -1775,8 +1810,10 @@ void usage() {
           "  --vbl-time       use video-blank timing\n"
           "  --ram-hash N     log emulated RAM hashes every N frames\n"
           "  --ram-dump N FILE  dump emulated RAM at frame N\n"
+          "  --no-amiga-blitter suppress original Amiga blitter drawing (debug)\n"
           "\n"
-          "keys: Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
+          "keys: Ctrl+B toggle original Amiga blitter drawing,\n"
+          "      Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
           "      Ctrl+F11 original/enhanced graphics toggle,\n"
           "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
           "      Pause fast-forward.  Game controller (see README):\n"
@@ -1845,6 +1882,7 @@ int main(int argc, char** argv) {
   double speed = 4.0;  // game caps itself at 15 fps; 1.0 = stock A500
   bool verbose = false, trace = false, fast = false, protection = false, analog = false;
   bool full_detail = false, stats = false, fps = false, text_pace = false, widescreen = false;
+  bool disable_amiga_blitter = false;
   bool gl_direct = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
@@ -1868,6 +1906,7 @@ int main(int argc, char** argv) {
     else if (a == "--fast") fast = true;
     else if (a == "--analog") analog = true;
     else if (a == "--full-detail") full_detail = true;
+    else if (a == "--no-amiga-blitter") disable_amiga_blitter = true;
     else if (a == "--text-pace") text_pace = true;
     else if (a == "--stats") stats = true;
     else if (a == "--fps") fps = true;
@@ -2025,6 +2064,7 @@ int main(int argc, char** argv) {
   machine.analog_enabled = analog;
   machine.full_detail = full_detail;
   machine.text_pace = text_pace;
+  machine.set_original_blitter_writes(!disable_amiga_blitter);
   machine.set_hires_scale(std::max(0, std::min(8, hires)));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
@@ -2078,6 +2118,8 @@ int main(int argc, char** argv) {
 
   fprintf(stderr, "%s\n", machine.recomp_active() ? "running recompiled code"
                                                    : "running in interpreter mode");
+  if (disable_amiga_blitter)
+    fprintf(stderr, "graphics: original Amiga blitter writes OFF (--no-amiga-blitter)\n");
   if (!misses_path.empty()) machine.track_recomp_misses(true);
 
   SdlHost host;

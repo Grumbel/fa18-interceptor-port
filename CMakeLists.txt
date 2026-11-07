@@ -67,6 +67,7 @@ add_library(amiga STATIC
   src/amiga/custom.cpp
   src/amiga/blitter_fill.hpp
   src/amiga/blitter_minterm.hpp
+  src/amiga/blitter_write_gate.hpp
   src/amiga/panel_blit_trace.hpp
   src/amiga/savestate.cpp
   src/amiga/ser.hpp
@@ -285,6 +286,8 @@ else()
     target_include_directories(blitter_fill_test PRIVATE src)
     add_executable(blitter_minterm_test tests/blitter_minterm.cpp)
     target_include_directories(blitter_minterm_test PRIVATE src)
+    add_executable(blitter_write_gate_test tests/blitter_write_gate.cpp)
+    target_include_directories(blitter_write_gate_test PRIVATE src)
     enable_testing()
     add_test(NAME frontend_hotkeys COMMAND frontend_hotkeys_test)
     add_test(NAME control_help COMMAND control_help_test)
@@ -307,6 +310,7 @@ else()
     add_test(NAME ram_access_observer COMMAND ram_access_observer_test)
     add_test(NAME blitter_fill COMMAND blitter_fill_test)
     add_test(NAME blitter_minterm COMMAND blitter_minterm_test)
+    add_test(NAME blitter_write_gate COMMAND blitter_write_gate_test)
   endif()
   install(TARGETS fa18 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

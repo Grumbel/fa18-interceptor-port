@@ -1,0 +1,4 @@
+# Switch before the first large cockpit blit (~frame 377), then resume.
+0 blitter off
+390 blitter on
+430 quit

@@ -265,6 +265,21 @@ sites are candidate writers, not yet a verified native reconstruction of
 the artificial horizon. The ADF-backed replay still needs a build with
 SDL/OpenGL available.
 
+For visual isolation rather than parity checking, press **Ctrl+B** in the
+running game (or use the Graphics > Amiga blitter switch). All subsequent
+Amiga area/line blitter **destination writes** are discarded while their
+source reads, internal register updates, blitter-completion IRQ and cycle
+cost remain. The red `AMIGA BLITTER OFF (Ctrl+B)` HUD label appears in both
+the SDL and direct GPU compositors; the window title also announces the
+state. Press Ctrl+B again to resume normal writes. Use
+`--no-amiga-blitter` to start with them disabled, or script `blitter off`
+and `blitter on` to capture a controlled replay. See
+`tests/check_amiga_blitter_toggle.sh ORIGINAL.adf`. In this mode previously
+drawn bitplanes are not cleared, and original UI/3D dependencies can fail;
+the changed guest RAM makes normal native-vs-interpreter checks meaningless.
+This switch reveals **what remains without the original blitter**, not a
+completed native renderer.
+
 The CPU and direct GPU now share the same mapping from each Amiga display
 scanline to the most recent completed 3D bank. A matching completed scene
 row remains eligible for widescreen extension even during the handful of

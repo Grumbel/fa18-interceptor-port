@@ -6,6 +6,7 @@
 #include "m68k/cpu.hpp"
 #include "recomp/recomp.hpp"
 #include "amiga/adf.hpp"
+#include "amiga/blitter_write_gate.hpp"
 #include "amiga/regs_probe.hpp"
 
 #include <array>
@@ -187,6 +188,13 @@ public:
   void raster_audit_scene(bool active);
   void raster_audit_reset();
   void raster_audit_blit(uint8_t minterm, uint32_t words, bool line, bool fill);
+  // Debug-only visual isolation. Suppress every Amiga blitter destination
+  // write, while retaining source reads, pointer updates, DMA timing,
+  // BLTZERO and completion interrupts so the original game can progress.
+  // Unlike normal graphics options, this deliberately changes guest RAM.
+  void set_original_blitter_writes(bool enabled) { blitter_write_gate_.enabled = enabled; }
+  bool original_blitter_writes() const { return blitter_write_gate_.enabled; }
+  uint64_t suppressed_blitter_words() const { return blitter_write_gate_.suppressed_words; }
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
   // Scan-out data of the last rendered frame (see remaster::compose)
   const uint32_t* frame_rgb() const { return fb_.data(); }
@@ -314,6 +322,7 @@ private:
   struct RasterAudit;
   std::unique_ptr<RasterAudit> raster_audit_;
   std::unique_ptr<panel_blit_trace::Trace> panel_blit_trace_;
+  BlitterWriteGate blitter_write_gate_;
   RasterSource raster_origin_ = RasterSource::Guest;
   void raster_audit_access(uint32_t addr, uint8_t size, bool write);
   Host* host_ = nullptr;

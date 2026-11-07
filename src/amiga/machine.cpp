@@ -72,6 +72,10 @@ Machine::Machine() : ram_(RAM_SIZE), fb_(FB_W * FB_H) {
 }
 
 Machine::~Machine() {
+  if (blitter_write_gate_.suppressed_words)
+    log("blitter-debug: suppressed %llu destination words (currently %s)\n",
+        (unsigned long long)blitter_write_gate_.suppressed_words,
+        blitter_write_gate_.enabled ? "ON" : "OFF");
   if (panel_blit_trace_) {
     const auto sites = panel_blit_trace_->ranked();
     log("cockpit-blit: attributed sites=%zu (top 8 per zone by changed bits)\n",

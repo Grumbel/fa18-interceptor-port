@@ -217,6 +217,15 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `panel_blit_trace_test` checks edge-word bit attribution;
   `tests/check_gl_cockpit_blit_trace.sh ORIGINAL.adf` checks that enabling
   the trace leaves framebuffer and RAM hashes unchanged.
+  The debugging-only **Ctrl+B** / Graphics > Amiga blitter switch suppresses
+  all original area/line blitter destination writes (or set
+  `--no-amiga-blitter` at launch). It retains pointer shifts, minterm
+  computation, cycle accounting, BLTZERO and blitter IRQ so the game can
+  advance; the original bitmaps will become stale. This intentionally
+  changes emulated RAM and must **never** be used for native parity gates.
+  It renders a red status line via both SDL and direct GPU, and a window
+  title warning. Script `blitter off|on` and
+  `tests/check_amiga_blitter_toggle.sh ORIGINAL.adf` exercise it.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,
