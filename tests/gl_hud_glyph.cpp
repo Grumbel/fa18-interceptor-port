@@ -95,6 +95,33 @@ int main() {
   assert(!writer_digit_pixel(10, 3, 0));
   assert(!writer_digit_pixel(10, 0, 5));
 
+  // A constant-time source-cell lookup replaces scanning all HUD slots for
+  // every original 320x200 pixel during CPU/GPU overlay composition.
+  const auto& cells = source_text_cells();
+  assert(cells.digit_at(-1, 53) == -1 && cells.digit_at(320, 53) == -1);
+  assert(cells.digit_at(140, 200) == -1 && cells.label_at(320, 91) == -1);
+  int digit_cells = 0, letter_cells = 0;
+  for (int y = 0; y < 200; ++y)
+    for (int x = 0; x < 320; ++x) {
+      const int digit = cells.digit_at(x, y);
+      const int letter = cells.label_at(x, y);
+      assert(digit < 0 || letter < 0); // never overlapping cell types
+      if (digit >= 0) {
+        const auto& slot = kHudDigitSlots[size_t(digit)];
+        assert(x >= slot.x && x < slot.x + 3 &&
+               y >= slot.y && y < slot.y + 5);
+        ++digit_cells;
+      }
+      if (letter >= 0) {
+        const auto& slot = kHudLetterSlots[size_t(letter)];
+        assert(x >= slot.x && x < slot.x + 3 &&
+               y >= slot.y && y < slot.y + 5);
+        ++letter_cells;
+      }
+    }
+  assert(digit_cells == int(kHudDigitSlots.size() * 15));
+  assert(letter_cells == int(kHudLetterSlots.size() * 15));
+
   // Exact capture-derived original ink footprints, independent of pixels.
   // Every origin/end point is inclusive; neighbouring UI pixels stay intact.
   using namespace remaster::hud_erase;

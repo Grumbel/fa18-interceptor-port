@@ -480,6 +480,20 @@ before committing. Note limitations explicitly rather than masking them.
   routine, with geometry unit coverage and a five-scenario screenshot/RAM plus
   direct-GL parity gate in `tests/check_gl_hud_text_erase.sh`. ADF replay
   validation is still pending on a machine with CMake/SDL/OpenGL installed.
+- [x] Reconstruct the original front cockpit **behind the HUD rails** at
+  x=85/233, y=138–144 from opaque `pix/frnt5` indices decoded at runtime,
+  using each scanline's current copper palette instead of averaging adjacent
+  Amiga pixels. Verified writer captures opt into this native asset backdrop;
+  unknown banks and missing assets use the previous average. Reference toggle
+  `FA18_HUD_RAIL_ART_BITMAP_REFERENCE=1`, focused unit test and a bounded
+  screenshot/direct-GPU/RAM gate in `tests/check_gl_hud_rail_art.sh`.
+  Actual GL/ADF replay remains unverified in this environment.
+- [x] Replace the per-source-pixel 12-digit/5-label linear scans in both
+  compositors with a one-time immutable owner lookup. This keeps the exact
+  source geometry and visibility gates while removing 17 slot comparisons
+  from the common 320×200 overlay scan. `gl_hud_glyph_test` covers all 255
+  occupied source cells and every unassigned location; hardware speedup has
+  not yet been measured.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

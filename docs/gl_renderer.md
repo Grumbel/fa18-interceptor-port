@@ -527,6 +527,25 @@ capture instrument writes directly and make the interface independent of
 that classification. Afterwards, the original bitmap artwork can be
 replaced with higher-resolution or fully 3D cockpit parts.
 
+The two HUD outline rails pass in front of `pix/frnt5` at screen columns
+**85 and 233**, rows **138–144**. Both columns contain opaque pixels in the
+original ADF image. For a verified full frame-writer capture, the low-resolution
+rail ink is now removed by restoring the underlying **native ILBM
+palette index**, resolved through the *current row's copper palette*.
+Previously the compositor averaged two neighbouring screen pixels, losing
+fine detail along the cockpit lip. Unobserved screen banks, disabled native
+cockpit art, missing ILBM pixels and all rails over the 3D view keep the
+existing fallback/scene-reveal logic. Both CPU and direct-GL compositors
+select the same native asset pixel; no additional texture or draw call is
+needed. The 68000 writer still executes unchanged.
+
+`FA18_HUD_RAIL_ART_BITMAP_REFERENCE=1` restores the neighbour-average
+background for A/B checks. `FA18_HUD_RAIL_ART_DEBUG=1` reports the number
+of reconstructed rail pixels. `tests/check_gl_hud_rail_art.sh ORIGINAL.adf`
+compares five scenarios, limits permissible colour differences to just the
+two rail footprints, checks unchanged emulated RAM and checks direct GPU/CPU
+parity. Real-device parity and timing remain to be verified.
+
 The first **dynamic** instrument is also reproduced natively:
 `src/native/cockpit_instruments.cpp` reads player fuel from record +114,
 formats the five-digit LCD at screen coordinates (104,183)–(122,187), and
@@ -722,6 +741,13 @@ compares bank-flip, flight, Pause and maneuver screenshots, RAM hashes and
 direct GPU/CPU parity. `FA18_HUD_TEXT_ERASE_DEBUG=1` reports how many captured
 digits/labels and whether the compass use writer-derived erasure at frame 4000.
 Hardware and full ADF replay parity still need testing.
+
+The compositor also constructs a single, immutable 320×200 lookup of the
+digit and label source-cell owners. Previously every pixel tested all twelve
+digit cells and five unit-label cells; CPU and direct-GPU overlay preparation
+now use two indexed lookups, while retaining the identical visibility flags,
+source coordinates, glyph masks and fallback. The standalone HUD glyph unit
+test checks every occupied cell, non-overlap and out-of-range coordinates.
 
 The five heading-scale marks beneath the top numerals are now native as well:
 three two-pixel major ticks alternate with two single-pixel minor ticks,

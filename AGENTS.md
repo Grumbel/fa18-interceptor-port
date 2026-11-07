@@ -164,6 +164,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   backdrop. Unknown/partial captures retain the old source-colour stencil;
   `FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores it for flight/Pause CPU and
   GPU/RAM parity in `tests/check_gl_hud_erase.sh`.
+  Where the rails cross `pix/frnt5` at rows 138–144, complete writer capture
+  restores the ADF's original opaque cockpit palette indices through the live
+  copper palette, without reading the two neighbouring framebuffer pixels.
+  Unobserved screen banks retain the fallback. Set
+  `FA18_HUD_RAIL_ART_BITMAP_REFERENCE=1` to recover the neighbour average and
+  run `tests/check_gl_hud_rail_art.sh` to check the bounded changes and RAM.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

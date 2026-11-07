@@ -6,6 +6,8 @@
 #include "native/remaster.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace remaster::hud_font {
@@ -25,6 +27,45 @@ inline constexpr uint8_t kLetterRows[4][5] = {
 };
 // Strokes A,B,C,D,E,F,G (1 is a centre stem, not a right-side seven).
 inline constexpr uint8_t kDigitStrokes[10] = {63, 128, 91, 79, 102, 109, 125, 7, 127, 103};
+
+// Each source-screen cell belongs to at most one native HUD digit or label.
+// Populate this once, then perform two O(1) lookups per compositor pixel
+// instead of rescanning all seventeen 3x5 slots at 120/240 Hz.
+struct SourceTextCells {
+  std::array<int8_t, 320 * 200> digits{};
+  std::array<int8_t, 320 * 200> labels{};
+
+  SourceTextCells() {
+    digits.fill(-1);
+    labels.fill(-1);
+    for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
+      const auto& slot = kHudDigitSlots[i];
+      for (int y = slot.y; y < slot.y + 5; ++y)
+        for (int x = slot.x; x < slot.x + 3; ++x)
+          digits[size_t(y) * 320 + x] = int8_t(i);
+    }
+    for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
+      const auto& slot = kHudLetterSlots[i];
+      for (int y = slot.y; y < slot.y + 5; ++y)
+        for (int x = slot.x; x < slot.x + 3; ++x)
+          labels[size_t(y) * 320 + x] = int8_t(i);
+    }
+  }
+
+  int digit_at(int x, int y) const {
+    return x >= 0 && x < 320 && y >= 0 && y < 200 ?
+        digits[size_t(y) * 320 + x] : -1;
+  }
+  int label_at(int x, int y) const {
+    return x >= 0 && x < 320 && y >= 0 && y < 200 ?
+        labels[size_t(y) * 320 + x] : -1;
+  }
+};
+
+inline const SourceTextCells& source_text_cells() {
+  static const SourceTextCells cells;
+  return cells;
+}
 
 // The exact original 3x5 font footprint, used for clearing the old writer's
 // ink under native strokes. Zero value_plus_one denotes an unobserved bank.

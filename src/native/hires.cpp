@@ -16,6 +16,7 @@
 #include "native/gl_renderer.hpp"
 #include "native/hud_erase.hpp"
 #include "native/hud_glyph.hpp"
+#include "native/cockpit_rail.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
 #include "native/remaster.hpp"
@@ -1332,21 +1333,13 @@ void blend_native_heading_marks(std::vector<uint32_t>& out, int side, int scale,
 }
 
 int hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
-  for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
-    const auto& slot = kHudDigitSlots[i];
-    if (hud.digit_strokes[i] && x >= slot.x && x < slot.x + 3 &&
-        y >= slot.y && y < slot.y + 5) return int(i);
-  }
-  return -1;
+  const int slot = hud_font::source_text_cells().digit_at(x, y);
+  return slot >= 0 && hud.digit_strokes[size_t(slot)] ? slot : -1;
 }
 
 int hud_original_letter_cell(int x, int y, const NativeHudState& hud) {
-  for (size_t i = 0; i < kHudLetterSlots.size(); ++i) {
-    const auto& slot = kHudLetterSlots[i];
-    if (hud.letter_visible[i] && x >= slot.x && x < slot.x + 3 &&
-        y >= slot.y && y < slot.y + 5) return int(i);
-  }
-  return -1;
+  const int slot = hud_font::source_text_cells().label_at(x, y);
+  return slot >= 0 && hud.letter_visible[size_t(slot)] ? slot : -1;
 }
 
 bool hud_original_heading_pixel(int x, int y, const NativeHudState& hud) {
@@ -1495,8 +1488,11 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       std::getenv("FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE") == nullptr;
   const bool frame_writer_erase = native_erase && hud.frame_from_writer;
   const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
+  const bool rail_asset_enabled = frame_writer_erase && cockpit_enabled &&
+      std::getenv("FA18_HUD_RAIL_ART_BITMAP_REFERENCE") == nullptr;
   const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
+  int rail_asset_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
@@ -1570,7 +1566,10 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
             for (int xx = 0; xx < S; ++xx)
               dst[left + x * S + xx] = pal[size_t(y) * 32 + (src[xx] & 15)];
           } else {
-            const uint32_t bg = frame_rail_cockpit_background(rgb, x, y);
+            const auto asset = rail_asset_enabled ?
+                cockpit_rail::asset_background(cockpit, pal, x, y) : std::nullopt;
+            const uint32_t bg = asset ? *asset : frame_rail_cockpit_background(rgb, x, y);
+            if (asset && yy == 0) ++rail_asset_pixels;
             for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           }
           continue;
@@ -1648,6 +1647,14 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                    (unsigned long long)m.frame_count(), static_pixels, dynamic_pixels);
     }
   }
+  if (std::getenv("FA18_HUD_RAIL_ART_DEBUG") && m.frame_count() % 400 == 0) {
+    static uint64_t reported = UINT64_MAX;
+    if (reported != m.frame_count()) {
+      reported = m.frame_count();
+      std::fprintf(stderr, "HUD rail art CPU frame=%llu pixels=%d\n",
+                   (unsigned long long)m.frame_count(), rail_asset_pixels);
+    }
+  }
   blend_native_reticle(out, side, S, hud);
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
@@ -1710,6 +1717,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       std::getenv("FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE") == nullptr;
   const bool frame_writer_erase = native_erase && hud.frame_from_writer;
   const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
+  const bool rail_asset_enabled = frame_writer_erase && cockpit_enabled &&
+      std::getenv("FA18_HUD_RAIL_ART_BITMAP_REFERENCE") == nullptr;
   last_prepared_gpu_hud = hud;
   if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
@@ -1720,6 +1729,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
   int static_pixels = 0, dynamic_pixels = 0;
+  int rail_asset_pixels = 0;
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
     int ly = -1;
@@ -1812,7 +1822,10 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
           // lookup as every other scene-backed pixel in the GPU presenter.
           p[0] = p[1] = p[2] = p[3] = 0;
         } else {
-          const uint32_t bg = frame_rail_cockpit_background(rgb, x, y);
+          const auto asset = rail_asset_enabled ?
+              cockpit_rail::asset_background(cockpit, pal, x, y) : std::nullopt;
+          const uint32_t bg = asset ? *asset : frame_rail_cockpit_background(rgb, x, y);
+          if (asset) ++rail_asset_pixels;
           p[0] = uint8_t(bg >> 16);
           p[1] = uint8_t(bg >> 8);
           p[2] = uint8_t(bg);
@@ -1881,6 +1894,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       reported = true;
       std::fprintf(stderr, "cockpit: frame %llu native static=%d dynamic/fallback=%d\n",
                    (unsigned long long)m.frame_count(), static_pixels, dynamic_pixels);
+    }
+  }
+  if (std::getenv("FA18_HUD_RAIL_ART_DEBUG") && m.frame_count() % 400 == 0) {
+    static uint64_t reported = UINT64_MAX;
+    if (reported != m.frame_count()) {
+      reported = m.frame_count();
+      std::fprintf(stderr, "HUD rail art GPU frame=%llu pixels=%d\n",
+                   (unsigned long long)m.frame_count(), rail_asset_pixels);
     }
   }
   return true;
