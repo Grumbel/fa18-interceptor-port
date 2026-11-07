@@ -208,7 +208,18 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   read-only. `gl_cockpit_dynamic_audit_test` and
   `tests/check_gl_cockpit_dynamic_audit.sh` check the classification and
   unchanged renderer/game RAM.
-  The full ADF-backed replay is not yet verified in this environment.
+  The full ADF-backed dynamic-audit replay has not yet been verified here.
+  An **experimental, opt-in** artificial-horizon layer now captures the
+  original `$44de4` projected sea polygon for each framebuffer bank. Set
+  `FA18_COCKPIT_GLOBE_NATIVE=1` to repaint only the original 358-cell
+  red/blue ADF stencil using the captured integer edge and displayed-row
+  copper pens 1/5; `FA18_COCKPIT_GLOBE_DEBUG=1` logs redraws. The original
+  globe remains the default, because up to two outline-edge cells differ
+  in the measured rolling/touchdown replay and inverted attitudes remain
+  unverified. Keep `$44de4` in `tools/recomp_hooks.txt`; verify the source
+  blit independently via `tests/check_globe_writer_probe.sh ORIGINAL.adf`,
+  and check the masked native compositor via
+  `tests/check_gl_globe_native.sh ORIGINAL.adf`.
   For the next moving-horizon investigation,
   `FA18_COCKPIT_BLIT_TRACE=1` attributes original area/line blitter writes
   to their `BLTSIZE` PC, drawing/display bank, bitplane and exact changed

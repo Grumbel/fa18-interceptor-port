@@ -1525,6 +1525,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const bool panel_asset_enabled = cockpit_enabled &&
       cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
       std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
+  const CapturedGlobe globe = panel_asset_enabled ? captured_globe(key) : CapturedGlobe{};
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
@@ -1645,6 +1646,14 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
             for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = *colour;
             continue;
           }
+        }
+        // Experimental native 68k-projected artificial horizon. Only the
+        // original ADF fill stencil is recoloured; marks and bezel pixels
+        // retain the preceding compositor. The copper supplies live colours.
+        if (const auto pen = projected_globe_pen(globe, cockpit, x, y)) {
+          const uint32_t colour = pal[size_t(y) * 32 + *pen];
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = colour;
+          continue;
         }
         // Fixed structural regions of inst5 are independently sourced from
         // the user's ADF. The panel's black pixels are opaque, unlike the
@@ -1802,6 +1811,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const bool panel_asset_enabled = cockpit_enabled &&
       cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
       std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
+  const CapturedGlobe globe = panel_asset_enabled ? captured_globe(key) : CapturedGlobe{};
   last_prepared_gpu_hud = hud;
   if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
@@ -1959,6 +1969,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[0] = p[1] = p[2] = 0;
         p[3] = 32;
         ++front_asset_pixels;
+        continue;
+      }
+      if (const auto pen = projected_globe_pen(globe, cockpit, x, y)) {
+        const uint32_t c = pal[size_t(y) * 32 + *pen];
+        p[0] = uint8_t(c >> 16);
+        p[1] = uint8_t(c >> 8);
+        p[2] = uint8_t(c);
+        p[3] = 255;
         continue;
       }
       if (panel_asset_enabled && cockpit_panel::painted(cockpit, x, y)) {

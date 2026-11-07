@@ -1,7 +1,7 @@
 // Experimental native geometry for the moving red/blue attitude globe.
-// No renderer uses this yet: it deliberately has no dependency on SDL,
-// OpenGL, the emulator, or the copyrighted ADF pixels. Its input mask is
-// supplied by the original pix/inst5 palette indices at integration time.
+// The cockpit compositor can opt into this approximation, but the geometry
+// itself has no dependency on SDL, OpenGL, the emulator or copyrighted ADF
+// pixels. Its fill stencil comes from pix/inst5 at integration time.
 #pragma once
 
 #include <algorithm>
@@ -40,6 +40,27 @@ constexpr ProjectedPoint project_sky_point(uint16_t x, uint16_t y,
     int16_t(uint16_t((uint32_t(x) * 24u) >> 8) + uint16_t(193 + offset_x)),
     int16_t(uint16_t((uint32_t(y) * 31u) >> 8) + uint16_t(162 + offset_y)),
   };
+}
+
+// First experimental *integer* raster model for the usual four-vertex sky
+// quad. The original 68000 places its two visible edge vertices at x=193
+// and x=222, then writes a two-word-wide 32-pixel temporary bitmap. In
+// recorded banked flight a word-aligned interpolation over x=192..223,
+// including the upper edge row, matches 356..358 of the 358 visible ILBM
+// fill cells. Do not use this approximation for other polygon layouts or
+// claim it reproduces the original blitter's edge stepping in every pose.
+constexpr bool supported_horizon(ProjectedPoint left, ProjectedPoint right) {
+  return left.x == 193 && right.x == 222 &&
+         left.y >= 140 && left.y <= 195 &&
+         right.y >= 140 && right.y <= 195;
+}
+
+constexpr bool projected_sky_pixel(ProjectedPoint left, ProjectedPoint right,
+                                   int x, int y) {
+  // Avoid floating point and retain the same deterministic edge decision on
+  // the CPU and for future high-resolution GLSL interpolation.
+  return int64_t(y - left.y - 1) * 31 <
+         int64_t(right.y - left.y) * (x - 192);
 }
 
 constexpr bool within_globe(int x, int y) {

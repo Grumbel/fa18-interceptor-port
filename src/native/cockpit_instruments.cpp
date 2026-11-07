@@ -110,6 +110,7 @@ struct FuelBank {
   HudFrameBank frame{};
   PauseTitleBank pause_title{};
   RadarBank radar{};
+  CapturedGlobe globe{};
 };
 
 std::array<FuelBank, 4> fuel_banks{};
@@ -221,6 +222,56 @@ void reset_cockpit_instrument_state() {
 
 void install_cockpit_instrument_hooks(amiga::Machine& m) {
   reset_cockpit_instrument_state();
+  // The original $44da4 worker has already transformed $42f62's projected
+  // sky quad into cockpit coordinates at this instruction. Capture the
+  // geometry *per destination bank*, before its blits, rather than sampling
+  // the globe's red/blue pixels from the original framebuffer. The normal
+  // renderer still uses those original pixels unless explicitly opted in.
+  m.add_pc_hook(0x44de4, [&m] {
+    const uint32_t descriptor = m.cpu.a[2] & 0x00ffffffu;
+    if (descriptor != 0x5a966 && descriptor != 0x5a976) return;
+    if (m.native_mode == amiga::Machine::NativeMode::Off) {
+      bool from_globe = false;
+      for (int i = 0; i < 7; ++i) {
+        const uint32_t a = m.cpu.a[7] + 4u * unsigned(i);
+        if (a < amiga::RAM_SIZE - 4 && m.r32(a) == 0x213ae) {
+          from_globe = true;
+          break;
+        }
+      }
+      if (!from_globe) return;
+    }
+    if (m.r16(0x60684) != 4) return;
+    CapturedGlobe candidate;
+    for (int i = 0; i < 4; ++i) {
+      const uint32_t a = 0x60686 + 4u * unsigned(i);
+      candidate.vertices[std::size_t(i)] = {
+        int16_t(m.r16(a)), int16_t(m.r16(a + 2))};
+    }
+    if (!cockpit::globe::supported_horizon(candidate.vertices[0],
+                                           candidate.vertices[1]) ||
+        candidate.vertices[2].y > candidate.vertices[1].y ||
+        candidate.vertices[3].y > candidate.vertices[0].y) return;
+    candidate.offset_x = int16_t(m.r16(0x5ac80));
+    candidate.offset_y = int16_t(m.r16(0x5abd0));
+    const uint32_t base = m.r32(descriptor + 12) & 0x00ffffffu;
+    if (base < 0x10000 || base > amiga::RAM_SIZE - 200 * kRowStride) return;
+    observe_display_key(base + FuelDigits::Y * kRowStride);
+    for (auto& bank : fuel_banks) {
+      if (!bank.known || bank.row_key != base + FuelDigits::Y * kRowStride)
+        continue;
+      candidate.active = true;
+      bank.globe = candidate;
+      if (std::getenv("FA18_COCKPIT_GLOBE_DEBUG"))
+        std::fprintf(stderr, "globe capture: frame=%llu bank=%06x "
+                     "edge=(%d,%d)-(%d,%d) shift=(%d,%d)\n",
+                     (unsigned long long)m.frame_count(), base,
+                     candidate.vertices[0].x, candidate.vertices[0].y,
+                     candidate.vertices[1].x, candidate.vertices[1].y,
+                     candidate.offset_x, candidate.offset_y);
+      return;
+    }
+  });
   // The high-level cockpit outline caller issues exactly five original
   // blitter lines, from the left rail clockwise to the right rail. A2
   // points to the current screen bank's four descending plane addresses.
@@ -690,6 +741,37 @@ HudFontCapture captured_hud_font(const uint32_t* row_keys) {
     break;
   }
   return out;
+}
+
+CapturedGlobe captured_globe(const uint32_t* row_keys) {
+  const char* opt = std::getenv("FA18_COCKPIT_GLOBE_NATIVE");
+  if (!row_keys || !opt || opt[0] != '1' || opt[1] != '\0') return {};
+  observe_display_key(row_keys[FuelDigits::Y]);
+  for (const auto& bank : fuel_banks) {
+    if (!bank.known || bank.row_key != row_keys[FuelDigits::Y] ||
+        bank.row_key < FuelDigits::Y * kRowStride ||
+        bank.row_key - FuelDigits::Y * kRowStride != row_keys[0]) continue;
+    return bank.globe;
+  }
+  return {};
+}
+
+std::optional<uint8_t> projected_globe_pen(const CapturedGlobe& globe,
+                                            const CockpitAtlas& cockpit,
+                                            int x, int y) {
+  if (!globe.active) return std::nullopt;
+  // The source artwork's red/blue cells define the fixed 358-cell stencil.
+  // Shift the stencil by the original *independent* touchdown/panel offset;
+  // the projected quad already includes that same offset in its coordinates.
+  const int source_x = x - globe.offset_x;
+  const int source_y = y - globe.offset_y;
+  if (!cockpit::globe::within_globe(source_x, source_y)) return std::nullopt;
+  const size_t p = size_t(source_y) * CockpitAtlas::W + size_t(source_x);
+  if (!cockpit.valid[p] || !cockpit::globe::is_fill_pen(cockpit.index[p]))
+    return std::nullopt;
+  return cockpit::globe::projected_sky_pixel(globe.vertices[0], globe.vertices[1],
+                                             x, y) ? cockpit::globe::kFlightBluePen
+                                                   : cockpit::globe::kFlightRedPen;
 }
 
 int captured_heading_phase(const uint32_t* row_keys) {

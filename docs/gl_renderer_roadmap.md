@@ -601,8 +601,8 @@ before committing. Note limitations explicitly rather than masking them.
   drives `$5ac10` through `-40,+40,0,0` screen-byte offsets. The original
   `$39ade` table shows modes 1/3 share this animation; 2/4 invert it.
   The test verifies the binary table and original runtime values. The
-  native compositor still needs to track this camera motion independently
-  of globe geometry and respect the per-bank presentation timing.
+  experimental globe path now captures the geometry and independent camera
+  offset per screen bank, though full-panel native motion remains.
 - [x] Separate the original lower-panel base rewrite from the rolling
   attitude-boundary draw by sampling both *live four-plane source banks* at
   each 68000 cockpit call boundary. `$45368` updates 268/282 panel bits in
@@ -613,9 +613,16 @@ before committing. Note limitations explicitly rather than masking them.
   The touchdown camera's -40/+40/0 blitter inputs at code frames 4480/
   4484/4488 move the `$44c42` destination `D1` from its normal 158 to
   157/159/158, and reach the displayed panel at frames 4488/4492/4496. A replay
-  regression checks both buffer phases. Neither stage reveals the upstream
-  original angle calculation yet; leave the globe's native-GL integration
-  gated on that producer.
+  regression checks both buffer phases. The upstream path is now known as
+  attitude matrix (`$42bbe`) → sea projection (`$42f62`) → copied polygon
+  (`$44b36`) → integer instrument scaling (`$44de4`). The opt-in native
+  globe captures the scaled quad per display bank and recolours only the
+  ADF mask with live copper pens; its word-aligned edge matches all but
+  at most two pixels in five tested redraw/display pairs. Exact
+  inverted-flight and fast-transition parity are outstanding, so
+  original-bitplane rendering remains the default.
+  `tests/check_gl_globe_native.sh ORIGINAL.adf` verifies 2× source-pixel
+  fill survival with the old globe selectively hidden and unchanged RAM.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

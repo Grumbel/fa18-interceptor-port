@@ -480,6 +480,13 @@ int main(int argc, char** argv) {
             std::printf("globe-poly-offsets: frame=%d x=%d y=%d\n",
                         frame, int16_t(machine.r16(0x5ac80)),
                         int16_t(machine.r16(0x5abd0)));
+            const uint32_t descriptor = machine.cpu.a[2] & 0x00ffffffu;
+            if (descriptor == 0x5a966 || descriptor == 0x5a976) {
+              const uint32_t base = machine.r32(descriptor + 12) & 0x00ffffffu;
+              std::printf("globe-poly-bank: frame=%d desc=%06x base=%06x "
+                          "display=%06x\n", frame, descriptor, base,
+                          machine.frame_row_key()[170] - 170u * 40u);
+            }
           } else if (pc == 0x44b36) {
             // $422f8 builds the cockpit attitude matrix $5aee2 from
             // player-record +102/+104/+106. Snapshot the matrix actually

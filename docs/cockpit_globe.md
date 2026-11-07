@@ -441,7 +441,47 @@ The same explicit map frames also print `globe-view-sequence` with the
 original event mode, sequence step, camera offsets, ground-state bit,
 altitude and speed, all read directly from interpreter RAM.
 
-## Reusable geometry, not yet wired
+## Experimental native capture and compositor
+
+The native cockpit hooks now capture the **actual scaled** four-vertex sky
+polygon at `$44de4`, including the original `$5ac80` and `$5abd0` screen
+offsets. `A2` identifies descriptor `$5a966` or `$5a976`; its fourth
+longword provides the drawing framebuffer's base address. The captured
+bank key must match the displayed scanout row pointers before rendering.
+`tools/recomp_hooks.txt` includes `$44de4`, so this observation can also
+fire during recompiled execution.
+
+The first opt-in renderer uses a **word-aligned 32-pixel integer edge**
+between the projected left and right horizon points. In five measured
+original redraw/display pairs, the test bounds errors against the 358-cell
+source mask to **at most 1, 0, 2, 0 and 0 pixels**, respectively. The
+source stencil moves independently with the original temporary panel
+offset; that displacement is not inferred from bank angle.
+
+Set `FA18_COCKPIT_GLOBE_NATIVE=1` for this experimental path in either
+the CPU or direct-GPU cockpit compositor, and
+`FA18_COCKPIT_GLOBE_DEBUG=1` to log per-bank geometry captures. It repaints
+only ADF indices 17/21 as live copper pens 1/5. The bezel and all other
+artwork retain the prior compositor. Unsupported polygons, unobserved
+screen banks and inactive panel ownership fall back to source bitplanes.
+The original path remains the **default** pending exact raster-edge,
+inverted-flight and transition verification. The full ADF replay in
+`tests/check_globe_writer_probe.sh ORIGINAL.adf` is independent of the
+native renderer; SDL screenshots and unchanged emulated RAM are separate
+integration gates. `tests/check_gl_globe_native.sh ORIGINAL.adf` repeats a
+4700-frame CPU-compositor replay with the original scanout present/hidden,
+checks the complete 358-cell fill against the normal screenshot at 2×,
+confirms both bank captures, and compares emulated RAM hashes.
+The same `$44de4` captures have also been observed with `--native on` in
+the level-flight interpreter-backed runtime, rather than only with
+`--native off` in the original-code replay.
+An additional `FA18_GL_DIRECT_COMPARE=1` run with `--gl 2 --gl-direct
+--render-fps 120` produced the **same 30 per-frame CPU/GPU difference
+counts** with the globe flag both on and off. That bounds the new layer's
+GPU impact in the tested level-flight sequence, but does not resolve the
+pre-existing whole-frame GPU differences or prove a pixel-exact GPU port.
+
+## Reusable geometry
 
 `src/cockpit/globe_model.hpp` is a pure C++ model of the moving colour
 boundary. It takes a signed vertical offset in source pixels and an angle in
@@ -458,8 +498,9 @@ The geometry's 0-degree, 0-offset split agrees with all 358 fill cells in
 the ADF level image **and the running interpreter at frame 3500**.
 `tests/globe_model.cpp` verifies angle wrapping, bank rotation, all three
 observed horizontal boundary locations, two samples from the measured
-rolled pose, AA coverage and bezel/mark exclusion. The pure geometry model
-deliberately does not implement the **whole-panel** movement at 4488/4492.
+rolled pose, AA coverage and bezel/mark exclusion. The older angle-based
+geometry model deliberately does not implement the **whole-panel** movement
+at 4488/4492; the new polygon capture handles the displaced fill stencil.
 
 To view an experimental pose outside the game (no SDL/Nix required), run:
 
@@ -505,5 +546,5 @@ or the level-only displacement for the original code-frame polygon latch.
    moving-angle source bounds and unchanged RAM hashes. Run the complete
    `tests/check_native.sh` gate before committing changes in `src/native/`.
 
-The current model and its tests are an independently verified building block,
-**not** a claim that the moving instrument has already been replaced.
+The current model and its tests are an independently verified experimental
+alternative, **not** a completed pixel-exact replacement of the original.

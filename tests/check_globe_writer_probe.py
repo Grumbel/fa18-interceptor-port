@@ -33,6 +33,7 @@ def main() -> None:
     disk = Adf(sys.argv[1])
     entries = {p: h for p, h, size in disk.walk() if size is not None}
     width, height, source, _ = indexed_ilbm(disk.read_file(entries["pix/inst5"]))
+    asset_pixels = source  # `source` also names a bank pointer in later checks.
     assert (width, height) == (320, 55)
     log = Path(sys.argv[2]).read_text()
     rows = read_maps(log)
@@ -265,14 +266,14 @@ def main() -> None:
                          roll_log, re.MULTILINE), frame
         selection = "0001" if i % 2 == 0 else "0000"
         second = "0005a99a" if i % 2 == 0 else "0005a986"
-        for pc, address, width, value in (
+        for pc, address, write_width, value in (
             ("0283d2", "05a964", 2, selection),
             ("04417c", "05a9ae", 4, source),
             ("044182", "05a9b2", 4, second),
         ):
             assert re.search(
                 rf"^globe-source-write: frame={frame} pc={pc} "
-                rf"address={address} width={width} value={value}$",
+                rf"address={address} width={write_width} value={value}$",
                 roll_log, re.MULTILINE), (frame, pc, address, value)
 
     # The $451ac input mask is selected from executable Hunk 62 rather than
@@ -419,6 +420,46 @@ def main() -> None:
     roll_angles, roll_matrix = polygon_attitude(roll_log, 4480)
     assert level_angles[2] == 0 and roll_angles[2] > 0
     assert level_matrix != roll_matrix
+
+    # The original transformed quad is associated with the A2 descriptor's
+    # plane-0 base, not with whichever bank happens to be displayed later.
+    # This is the authoritative bank key for the optional native capture.
+    for frame, desc, base in ((4476, "05a966", "0a5a18"),
+                              (4480, "05a976", "06a098"),
+                              (4484, "05a966", "0a5a18"),
+                              (4488, "05a976", "06a098"),
+                              (4693, "05a966", "0a5a18")):
+        assert re.search(rf"^globe-poly-bank: frame={frame} desc={desc} "
+                         rf"base={base} display={base}$", roll_log, re.MULTILINE), frame
+
+    # Compare the *original* game's rendered colour indices with the first
+    # native integer edge model. The source atlas is a 358-cell stencil;
+    # clip its y coordinates independently for the touchdown panel shift.
+    # Word-aligned x=192..223 interpolation matches the steady roll without
+    # errors, with at most two edge pixels different on intermediate poses.
+    for code_frame, display_frame, shift, max_errors in (
+        (4476, 4484, 0, 1),
+        (4480, 4488, -1, 0),
+        (4484, 4492, 1, 2),
+        (4488, 4496, 0, 0),
+        (4693, 4700, 0, 0),
+    ):
+        poly = globe_poly(roll_log, code_frame, "scaled")
+        x0, y0, x1, y1 = poly[1:5]
+        assert (x0, x1) == (193, 222)
+        checked = errors = 0
+        for y in range(163, 184):
+            for x in range(198, 221):
+                source_y = y - shift
+                if (not 163 <= source_y <= 183 or
+                        asset_pixels[(source_y - 145) * width + x] not in (17, 21)):
+                    continue
+                expected_blue = (y - y0 - 1) * 31 < (y1 - y0) * (x - 192)
+                actual_blue = roll_rows[display_frame][y][x - 198] == "B"
+                errors += expected_blue != actual_blue
+                checked += 1
+        assert checked == (358 if shift == 0 else 351), (display_frame, checked)
+        assert errors <= max_errors, (display_frame, errors, max_errors)
 
     for frame in (4476, 4480, 4484, 4488):
         for trace in (roll_log, level_log):

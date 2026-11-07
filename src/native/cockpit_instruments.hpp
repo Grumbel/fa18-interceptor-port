@@ -2,9 +2,12 @@
 // Generated from game state, with redraws latched per original screen buffer.
 #pragma once
 
+#include "cockpit/globe_model.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace amiga { class Machine; }
 namespace remaster {
@@ -131,6 +134,17 @@ struct HudFontCapture {
   std::array<uint8_t, 5> letters{};
 };
 
+// The *original 68000* has already projected the sky quad into instrument
+// pixels. This is latched independently for each cockpit framebuffer, then
+// selected using the actually displayed row pointer. It is available only
+// for the supported four-vertex, two-word raster layout; unknown geometry
+// continues through the original Amiga bitmap path.
+struct CapturedGlobe {
+  std::array<cockpit::globe::ProjectedPoint, 4> vertices{};
+  int16_t offset_x = 0, offset_y = 0;
+  bool active = false;
+};
+
 // Observe the original digit writer so the displayed value tracks the
 // double-buffered cockpit refresh instead of the current physics value.
 void install_cockpit_instrument_hooks(amiga::Machine& m);
@@ -147,6 +161,10 @@ RadarSymbols prepare_radar_symbols(amiga::Machine& m, const uint32_t* frame_rgb,
 FlightReadouts prepare_flight_readouts(amiga::Machine& m, const uint32_t* row_keys,
                                        const uint32_t* row_palette, bool enabled);
 HudFontCapture captured_hud_font(const uint32_t* row_keys);
+CapturedGlobe captured_globe(const uint32_t* row_keys);
+std::optional<uint8_t> projected_globe_pen(const CapturedGlobe& globe,
+                                            const CockpitAtlas& cockpit,
+                                            int x, int y);
 // -1 when the active bank has not completed a recognisable compass redraw.
 int captured_heading_phase(const uint32_t* row_keys);
 // True after both original reticle drawing operations completed in this bank.

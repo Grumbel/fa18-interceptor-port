@@ -31,6 +31,7 @@
 044994
 044b00
 044b50
+044de4  # per-screen-bank projected artificial-horizon polygon, cockpit_instruments.cpp
 044dfe
 044f46
 04506e

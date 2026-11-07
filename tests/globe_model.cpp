@@ -26,6 +26,18 @@ int main() {
   static_assert(project_sky_point(0, 46, 0, 1).y == 168);
   static_assert(project_sky_point(319, 132, 0, 1).y == 178);
 
+  // At game-code frame 4693 the source quad's scaled edge is
+  // (193,167)->(222,178). The two-word-aligned experimental fill model
+  // reproduces the sampled boundary at both ends of the 358-cell stencil.
+  static_assert(supported_horizon({193, 167}, {222, 178}));
+  static_assert(!supported_horizon({194, 167}, {222, 178}));
+  static_assert(projected_sky_pixel({193, 167}, {222, 178}, 198, 170));
+  static_assert(!projected_sky_pixel({193, 167}, {222, 178}, 198, 171));
+  static_assert(projected_sky_pixel({193, 167}, {222, 178}, 217, 176));
+  static_assert(!projected_sky_pixel({193, 167}, {222, 178}, 217, 177));
+  static_assert(projected_sky_pixel({193, 172}, {222, 172}, 209, 172));
+  static_assert(!projected_sky_pixel({193, 172}, {222, 172}, 209, 173));
+
   assert(degrees(0) == 0 && degrees(7200) == 90);
   assert(degrees(14400) == -180 && degrees(28800) == 0);
   assert(degrees(-7200) == -90 && degrees(36000) == 90);
