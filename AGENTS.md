@@ -262,6 +262,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the `$44c42` rectangle routine once per four frames in a bank-only replay;
   its low-level stack, source alternation and displayed row keys are checked.
   `FA18_GLOBE_WRITER_REGS=4470:4490:80` enables read-only register tracing.
+  `FA18_GLOBE_SOURCE_WATCH=4420:4500:128` traces the `$283d2` screen-bank
+  selector toggles and `$4417c`/`$44182` pointer updates; these are **not**
+  the producer of the moving attitude pattern.
+  The rolling replay also proves a transient -1/+1 pixel shift of the
+  *entire* fill stencil at frames 4488/4492; the boundary-fitting tool
+  aligns these 351 visible cells rather than treating them as occlusions.
   See `docs/cockpit_globe.md` for the
   evidence and unresolved full-roll timing/angle mapping. Validate the pure
   C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and

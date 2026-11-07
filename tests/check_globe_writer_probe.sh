@@ -12,8 +12,9 @@ FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_PROBE_BIN="$tmp/probe" \
   bash "$repo/tools/run_globe_writer_probe.sh" "$1" \
     "$repo/tests/data/cockpit_radar_maneuver.txt" 4700 100 > "$tmp/replay.log" 2>&1
 # Reuse the compiled no-SDL probe; isolate bank while pitch is zero.
-FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_MAP_FRAMES=3500,4480,4500,4700 \
+FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_MAP_FRAMES=3500,4480,4488,4492,4500,4700 \
   FA18_GLOBE_WRITER_REGS=4472:4488:20 \
+  FA18_GLOBE_SOURCE_WATCH=4472:4488:24 \
   "$tmp/probe" "$1" \
     "$repo/tests/data/cockpit_globe_roll.txt" 4700 20 > "$tmp/roll.log" 2>&1
 python3 -B "$repo/tests/check_globe_writer_probe.py" "$1" \

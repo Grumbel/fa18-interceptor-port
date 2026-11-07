@@ -8,8 +8,12 @@ This is a measurement tool, not the game's original pitch/bank formula:
       tests/data/cockpit_globe_roll.txt 4750 20 > /tmp/roll.log
   python3 tools/fit_globe_boundary.py ORIGINAL.adf /tmp/roll.log
 
-Only the original ADF's 358 coloured fill cells are used. Marks, lettering
-and the mechanical bezel never enter the fit. No asset data is checked in.
+Only the original ADF's 358 coloured fill cells are candidates for the fit.
+The live 68k occasionally moves the fill stencil vertically by one pixel;
+align it with the displayed pixels before fitting its boundary. Any
+remaining missing or unexpected cells are reported as stencil mismatches.
+Marks, lettering and the mechanical bezel never enter the fit. No asset
+data is checked in.
 """
 
 import math
@@ -65,6 +69,27 @@ def fit(cells: list[tuple[int, int, bool]]) -> tuple[int, float, float, float, f
     return best[0], best[1], best[2], math.nan, math.nan
 
 
+def align_stencil(source_mask: set[tuple[int, int]],
+                  visible: set[tuple[int, int]]) -> tuple[int, set[tuple[int, int]],
+                                                               set[tuple[int, int]]]:
+    """Match visible fill to the original shape, allowing a small Y shift.
+
+    Pixels clipped by the 21-row capture window do not count as missing.
+    Compare *both* missing and extra coloured cells so a moving mask cannot
+    silently be mistaken for occluding foreground ink.
+    """
+    candidates = []
+    for shift_y in range(-2, 3):
+        expected = {(x, y + shift_y) for x, y in source_mask
+                    if 163 <= y + shift_y <= 183}
+        missing = expected - visible
+        extra = visible - expected
+        candidates.append((len(missing) + len(extra), abs(shift_y),
+                           shift_y, missing, extra))
+    _, _, shift_y, missing, extra = min(candidates)
+    return shift_y, missing, extra
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         sys.exit("usage: fit_globe_boundary.py ORIGINAL.adf PROBE.log")
@@ -72,6 +97,10 @@ def main() -> None:
     entries = {p: h for p, h, size in disk.walk() if size is not None}
     width, _, source, _ = indexed_ilbm(disk.read_file(entries["pix/inst5"]))
     log = Path(sys.argv[2]).read_text()
+    source_mask = {(x, y) for y in range(163, 184) for x in range(198, 221)
+                   if source[(y - 145) * width + x] in (17, 21)}
+    if len(source_mask) != 358:
+        raise ValueError(f"unexpected original globe fill size: {len(source_mask)}")
     rows: dict[int, dict[int, str]] = {}
     for frame, y, indices in re.findall(
             r"^globe-map: frame=(\d+) y=(\d+) ([.RB]{23})$", log, re.MULTILINE):
@@ -79,19 +108,17 @@ def main() -> None:
     for frame in sorted(rows):
         if len(rows[frame]) != 21:
             raise ValueError(f"frame {frame}: incomplete map")
-        cells = []
-        for y in range(163, 184):
-            for x in range(198, 221):
-                if source[(y - 145) * width + x] not in (17, 21):
-                    continue
-                colour = rows[frame][y][x - 198]
-                if colour not in ("R", "B"):
-                    raise ValueError(f"frame {frame}: missing fill at {x},{y}")
-                cells.append((x - 209, y - 173, colour == "B"))
+        visible = {(x, y) for y in range(163, 184) for x in range(198, 221)
+                   if rows[frame][y][x - 198] in ("R", "B")}
+        shift_y, missing, extra = align_stencil(source_mask, visible)
+        cells = [(x - 209, y - (173 + shift_y),
+                  rows[frame][y][x - 198] == "B")
+                 for x, y in sorted(visible - extra)]
         red = sum(not blue for _, _, blue in cells)
         blue = len(cells) - red
         if min(red, blue) == 0:
-            print(f"frame={frame} fully-clipped red={red} blue={blue}")
+            print(f"frame={frame} unfit red={red} blue={blue}"
+                  f" shift-y={shift_y:+d} missing={len(missing)} extra={len(extra)}")
             continue
         errors, angle, offset, lo, hi = fit(cells)
         line = re.search(rf"^globe-sample: frame={frame} .*"
@@ -99,6 +126,7 @@ def main() -> None:
         attitude = (f" p={int(line[1])/80:.1f} h={int(line[2])/80:.1f}"
                     f" b={int(line[3])/80:.1f}") if line else ""
         print(f"frame={frame}{attitude} red={red} blue={blue} "
+              f"shift-y={shift_y:+d} missing={len(missing)} extra={len(extra)} "
               f"fit-errors={errors} angle={angle:+.1f} offset={offset:+.2f} "
               f"exact-angle-range=[{lo:+.1f},{hi:+.1f}]")
 

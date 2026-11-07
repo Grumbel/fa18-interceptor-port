@@ -80,6 +80,27 @@ change more slowly than the player's bank word, and the exact-fit angle
 ranges overlap multiple nearby orientations. Neither these static samples
 nor the best-fit angle establish the original update latency or formula.
 
+A denser capture every four frames from **4400–4520** confirms that the
+boundary advances in visible steps while the aircraft bank field changes
+more frequently: the observed angle is approximately `-3.5°` at frame
+4476 (bank `12.4°`), `-8°` at 4480 (`18.0°`), `-12°` at 4484 (`23.2°`),
+`-16°` at 4488 (`25.7°`), `-17.5°` at 4492 (`26.9°`), and `-19.5°`
+at 4496 (`27.4°`). These are fitted displayed boundaries, **not** a
+validated input-output conversion.
+
+The same capture exposes a subtlety missed by the static geometry model:
+the **358-cell fill stencil itself moves vertically** at frames 4488 and
+4492. Relative to the original `pix/inst5` stencil, its displayed Y shift
+is respectively **-1** and **+1** screen pixel. The 21-row capture crops
+seven cells at the edge, leaving exactly **351 visible coloured cells**
+at each pose. After translation, both maps match the original stencil
+with zero missing or extra cells; their tilted red/blue boundaries also
+fit with zero classification errors. These cells were initially mistaken
+for foreground occlusions. The boundary fitter now detects and reports
+the stencil shift explicitly, and the headless test verifies both poses.
+This is a screen observation; the exact upstream cause of the shift
+(including any buffer-latch effects) is still unresolved.
+
 The strongest live blitter sites attributed to this exact globe region are
 `$44d08` (plane 2, minterm `$22`) and `$451ac` (plane 2, minterm `$EC`),
 repeated from approximately frame 3478 in **both** original screen banks
@@ -102,10 +123,24 @@ The actual scanout row key at frame 4480 is `$06bb28` (first bank
 viable capture entry.
 It does *not* identify the upstream roll/pitch-to-source-data calculation.
 
+The original **bank-selection code is now identified separately from the
+instrument pattern producer**. A RAM-write watch shows `$283d2` toggling
+word `$5a964` between 0 and 1 once per four frames. The selector routine
+at `$44160` reads it; `$4417c` writes either `$5a966` or `$5a976` into
+`$5a9ae`, while `$44182` writes either `$5a986` or `$5a99a` into `$5a9b2`.
+`$44c42` later reads the selected descriptors for its drawing pass. On the
+five tested frames, the selector values are `1, 0, 1, 0, 1`; corresponding
+descriptor pairs are `(5a976,5a99a)` and `(5a966,5a986)`. These pointers
+select the **buffer bank**, not the aircraft bank angle or a precomputed
+attitude image. The replay regression verifies all 15 writes directly.
+
 To inspect original call registers and stack without an instruction-wide
 trace, set `FA18_GLOBE_WRITER_REGS=4470:4490:80` on the headless runner.
 The probe filters the shared clipping helper to the globe caller and never
 writes to guest memory.
+Use `FA18_GLOBE_SOURCE_WATCH=4420:4500:128` to trace CPU/HLE writes to the
+adjacent source-bank descriptor range `$5a960`–`$5a9cf`. This read-only bus
+observer records the original instruction PC, address, width and new bytes.
 
 ## Reusable geometry, not yet wired
 
@@ -124,7 +159,8 @@ The geometry's 0-degree, 0-offset split agrees with all 358 fill cells in
 the ADF level image **and the running interpreter at frame 3500**.
 `tests/globe_model.cpp` verifies angle wrapping, bank rotation, all three
 observed horizontal boundary locations, two samples from the measured
-rolled pose, AA coverage and bezel/mark exclusion.
+rolled pose, AA coverage and bezel/mark exclusion. The pure geometry model
+does not yet translate the entire fill stencil as seen at frames 4488/4492.
 
 To view an experimental pose outside the game (no SDL/Nix required), run:
 
@@ -156,7 +192,8 @@ checked.
 
 1. Use the headless scripted replay and verified `$44c42` routine entry and
    `$44d08`/`$451ac` writer sites to capture complete per-bank globe updates.
-   Trace their source-data producer before the `$213a8` call; compare it
+   Treat `$44160`/`$283d2` as the screen-bank selector only; trace the actual
+   attitude-image producer before the `$213a8` call and compare it
    against +102/+106 for pitch/roll, including inverted flight and frames
    between controls and their visibly updated boundary.
 2. Compare normal and `--hide-amiga-region globe` screenshots through

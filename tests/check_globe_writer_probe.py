@@ -8,6 +8,7 @@ Run REPLAY.log using tests/check_globe_writer_probe.sh, not a static fixture.
 from pathlib import Path
 import math
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
@@ -100,6 +101,31 @@ def main() -> None:
                     expected = "B" if d < 0 else "R"
                 assert observed == expected, (frame, x, y, expected, observed)
 
+    # The original globe fill itself shifts by one screen pixel on two
+    # consecutive redraws. These are not red/blue fills lost behind other
+    # ink. Both shifted 351-cell masks match the original 358-cell shape
+    # exactly after clipping the circle to the sampled 21-row viewport.
+    mask = {(x, y) for y in range(163, 184) for x in range(198, 221)
+            if source[(y - 145) * width + x] in (17, 21)}
+    for frame, shift_y in ((4488, -1), (4492, 1)):
+        assert len(roll_rows.get(frame, {})) == 21, frame
+        expected = {(x, y + shift_y) for x, y in mask
+                    if 163 <= y + shift_y <= 183}
+        observed = {(x, y) for y in range(163, 184) for x in range(198, 221)
+                    if roll_rows[frame][y][x - 198] in ("R", "B")}
+        assert len(expected) == 351 and observed == expected, frame
+
+    # Exercise the geometry fitting tool as well: it must align the moving
+    # stencil instead of interpreting forty displaced cells as occlusion.
+    fitting = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[1] /
+                           "tools/fit_globe_boundary.py"), sys.argv[1], sys.argv[3]],
+        check=True, capture_output=True, text=True).stdout
+    for frame, shift_y in ((4488, -1), (4492, 1)):
+        assert re.search(rf"^frame={frame} .*shift-y={re.escape(f'{shift_y:+d}')} "
+                         rf"missing=0 extra=0 fit-errors=0 ",
+                         fitting, re.MULTILINE), (frame, fitting)
+
     # Active (not initialization-only) original blitter writes are present in
     # both displayed screen banks for this flight. These are low-level sites,
     # not yet identified as the high-level attitude-control routine.
@@ -128,6 +154,17 @@ def main() -> None:
         assert re.search(rf"^globe-writer-regs: frame={frame} pc=044d08 .*"
                          rf" d6=[0-9a-f]{{4}}0542 .* a2={source} ",
                          roll_log, re.MULTILINE), frame
+        selection = "0001" if i % 2 == 0 else "0000"
+        second = "0005a99a" if i % 2 == 0 else "0005a986"
+        for pc, address, width, value in (
+            ("0283d2", "05a964", 2, selection),
+            ("04417c", "05a9ae", 4, source),
+            ("044182", "05a9b2", 4, second),
+        ):
+            assert re.search(
+                rf"^globe-source-write: frame={frame} pc={pc} "
+                rf"address={address} width={width} value={value}$",
+                roll_log, re.MULTILINE), (frame, pc, address, value)
 
     for frame, screen in ((4480, "06bb28"), (4500, "0a74a8")):
         assert re.search(rf"^globe-sample: frame={frame} rowkey={screen} ",
@@ -136,7 +173,8 @@ def main() -> None:
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
-          "boundaries, both writer banks and 4-frame call chain")
+          "boundaries, moving stencil, both writer banks, selector "
+          "and 4-frame call chain")
 
 
 if __name__ == "__main__":

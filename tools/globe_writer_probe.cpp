@@ -106,7 +106,12 @@ struct ProbeHost final : amiga::Host {
     }
     machine->joy_state(joystick[0], joystick[1], joystick[2], joystick[3], joystick[4]);
 
-    if (sample_every > 0 && frame % sample_every == 0) {
+    // Explicitly selected map frames must be captured even when they fall
+    // between the coarse periodic samples (for example, frame 4488 when
+    // sample_every=20). A request for a map also emits its attitude sample.
+    const bool wants_map = std::find(map_frames.begin(), map_frames.end(), frame) !=
+                           map_frames.end();
+    if ((sample_every > 0 && frame % sample_every == 0) || wants_map) {
       // Capture the entire observed globe window, including moving marks.
       // This is a displayed palette index, not a write to original RAM.
       const uint8_t* pixels = machine->frame_idx();
@@ -161,7 +166,7 @@ struct ProbeHost final : amiga::Host {
             comma = true;
           }
           std::putchar('\n');
-          if (std::find(map_frames.begin(), map_frames.end(), frame) != map_frames.end()) {
+          if (wants_map) {
             for (int y = 163; y < 184; ++y) {
               std::printf("globe-map: frame=%d y=%d ", frame, y);
               for (int x = 198; x < 221; ++x) {
@@ -179,6 +184,27 @@ struct ProbeHost final : amiga::Host {
   }
 
   void audio(const int16_t*, size_t) override {}
+};
+
+struct SourceWriteWatch {
+  amiga::Machine* machine = nullptr;
+  int first = 0, last = 0, limit = 0, printed = 0;
+
+  static void observe(void* opaque, uint32_t address, uint8_t width, bool write) {
+    auto& watch = *static_cast<SourceWriteWatch*>(opaque);
+    if (!write || address >= 0x5a9d0 || address + width <= 0x5a960 ||
+        watch.printed >= watch.limit) return;
+    const int frame = int(watch.machine->frame_count());
+    if (frame < watch.first || frame > watch.last) return;
+    ++watch.printed;
+    std::printf("globe-source-write: frame=%d pc=%06x address=%06x width=%u value=",
+                frame, watch.machine->cpu.op_pc, address, width);
+    // Read the RAM bytes directly: calling Machine::r8 here would recurse
+    // into this observer. The bus write has already occurred.
+    for (unsigned i = 0; i < width; ++i)
+      std::printf("%02x", watch.machine->ram[address + i]);
+    std::putchar('\n');
+  }
 };
 
 }  // namespace
@@ -211,6 +237,20 @@ int main(int argc, char** argv) {
     machine.hires_scale = 1;
     machine.set_host(&host);
     if (!machine.boot(argv[1])) return 1;
+    SourceWriteWatch source_watch;
+    // Locate the producer of the per-bank source pointer words A2=$5a966
+    // and A2=$5a976. This observer does not write guest RAM or alter timing.
+    // FA18_GLOBE_SOURCE_WATCH=4420:4500:128  (first:last:maximum writes)
+    if (const char* config = std::getenv("FA18_GLOBE_SOURCE_WATCH")) {
+      if (std::sscanf(config, "%d:%d:%d", &source_watch.first,
+                      &source_watch.last, &source_watch.limit) != 3 ||
+          source_watch.first < 0 || source_watch.last < source_watch.first ||
+          source_watch.limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_SOURCE_WATCH=first:last:limit");
+      source_watch.machine = &machine;
+      machine.ram_access_context = &source_watch;
+      machine.ram_access_observer = &SourceWriteWatch::observe;
+    }
     // Read-only PC-entry snapshots locate the *callers* of the low-level
     // BLTSIZE writers. This is optional: the ordinary pixel replay doesn't
     // need per-instruction instrumentation or a heavyweight instruction log.

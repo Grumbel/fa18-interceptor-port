@@ -581,6 +581,18 @@ before committing. Note limitations explicitly rather than masking them.
   regression now verify five consecutive redraws and the displayed row keys.
   Identifying the original attitude-to-source producer is still required
   before removing the Amiga writer itself.
+- [x] Recover the original *double-buffer selector*, distinct from the
+  attitude image: `$283d2` flips `$5a964`, and `$4417c`/`$44182` select
+  descriptor pairs into `$5a9ae`/`$5a9b2`. The read-only RAM observer and
+  headless replay regression verify all 15 pointer/selector writes across
+  five redraw frames. This resolves the A2 alternation without claiming
+  that it encodes roll or pitch.
+- [x] Record transient vertical globe-stencil movement during a rolling
+  replay: at frames 4488 and 4492 the live fill moves -1/+1 source pixel,
+  yielding 351 of 358 cells inside the 21-row capture. Source-mask
+  alignment eliminates the apparent missing pixels, and a regression checks
+  the displaced shape and the red/blue boundary fit independently. The
+  native replacement still needs the original source of this displacement.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
