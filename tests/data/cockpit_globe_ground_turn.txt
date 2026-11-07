@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Ingo Ruhnke <grumbel@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Original-game cockpit replay. Turn left on the runway well before
+# takeoff: heading changes strongly while pitch and bank barely change.
+# This is a negative control for the tilted globe in the flight replay.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3510 key 59
+3570 key 59
+4160 joy l
+4380 joy

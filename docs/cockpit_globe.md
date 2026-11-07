@@ -65,6 +65,19 @@ The offsets and rotations are *measured display geometry*, not a verified
 conversion from the game's bank field. The regression script checks both
 flight manoeuvres and preserves the original non-fill marks.
 
+An independent **ground-turn negative control**
+(`tests/data/cockpit_globe_ground_turn.txt`) keeps the player on the runway
+while steering left. At frame 4150 the player's heading is 28.0° and bank is
+0°; by frame 4360 heading has wrapped to 301.3° while bank is only 2.0°.
+The globe remains **horizontal** throughout, with its level fill boundary
+moving from row 173 to 174 and then back to 173 at frame 4440. The full
+358-cell stencil remains intact, no camera-view sequence is active, and
+pitch remains zero. This confirms that a large **heading** change is not
+enough to roll the instrument. The one-row boundary difference is observed
+at the original raster resolution; it does not establish a universal
+degrees-to-pixels factor. The regression now replays and checks all four
+ground-turn checkpoints in addition to both airborne/landing manoeuvres.
+
 To fit additional poses from original pixel observations (the result prints
 both the selected angle and the range of exact pixel fits), run:
 
@@ -181,6 +194,36 @@ appear within instructions `$453fc`–`$4540c`, before the other cockpit
 helpers run. Neither observation establishes the arithmetic that converts
 aircraft angles into the final boundary: `$44c42` remains a generic
 rectangle/blitter path with precomputed inputs.
+
+### Independent retro-foundry cross-reference
+
+The [retro-foundry 68000 reconstruction](https://github.com/retro-foundry/fa18interceptor/)
+contains the original **parent-call schedule** for both routines. Translate
+its Engine9000 live addresses by Hunk offset, not a global relocation bias:
+
+| This port | retro-foundry | Original Hunk | Reference call context |
+| --- | --- | --- | --- |
+| `$213a8` | `$C0F250` | 0 + `$13A0` | `run_parent_activity_stages.asm` calls `$C3003A` |
+| `$44c42` | `$C3003A` | 36 + `$BAA` | `ACTIVITY_HELPER_4`, among thirteen activity-stage helpers |
+| `$45368` | `$C30764` | 37 + `$A4` | `run_parent_postflight_setup.asm` calls the first postflight helper |
+| `$44d08` | `$C30100` | 36 + `$C70` | The active globe blitter path in our original-ADF trace |
+| `$451ac` | `$C305A4` | 36 + `$1114` | The later plane-2 blitter submit in our original-ADF trace |
+
+Verified mapping command with an upstream checkout beside this repository:
+
+```sh
+python3 tools/reference_addr.py ../fa18interceptor-reference \
+  --from-port 0x213a8 0x44c42 0x45368 0x44d08 0x451ac
+```
+
+At upstream commit `a8fc677966ef224e449a76637a51792169849573`, these
+are **call-site labels**, not high-level reconstructed attitude functions.
+The reference's Hunk-37 `$C30764` path is also seen in its attract-mode
+instruction trace, whereas the activity-stage `$C3003A` call is represented
+in its reconstructed parent sequence. Our separate headless original-game
+replay establishes the panel/globe data changes; those meanings must not be
+attributed to the upstream symbolic labels as though they were independently
+proved there.
 
 The same writer-entry probe resolves the apparent touchdown timing offset.
 At **game-code** frame 4480, `$44c42` already sees `$5ac10=-40`; at frame

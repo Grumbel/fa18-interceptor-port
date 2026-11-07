@@ -7,7 +7,7 @@ if [ "$#" -ne 1 ]; then
 fi
 repo=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'rm -f "$tmp"/probe "$tmp"/replay.log "$tmp"/roll.log "$tmp"/level.log; rmdir "$tmp"' EXIT
+trap 'rm -f "$tmp"/probe "$tmp"/replay.log "$tmp"/roll.log "$tmp"/level.log "$tmp"/ground.log; rmdir "$tmp"' EXIT
 FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_PROBE_BIN="$tmp/probe" \
   bash "$repo/tools/run_globe_writer_probe.sh" "$1" \
     "$repo/tests/data/cockpit_radar_maneuver.txt" 4700 100 > "$tmp/replay.log" 2>&1
@@ -27,5 +27,11 @@ FA18_GLOBE_MAP_FRAMES=4476,4480,4484,4488,4492,4496 \
   FA18_GLOBE_PANEL_ANCHOR=4484 \
   "$tmp/probe" "$1" \
     "$repo/tests/data/cockpit_globe_level.txt" 4496 100 > "$tmp/level.log" 2>&1
+# Negative attitude control: a runway turn can change heading by >80 degrees
+# while retaining almost zero bank and a level artificial horizon. Check
+# that the moving fill is not mistakenly driven by heading or camera shake.
+FA18_GLOBE_MAP_FRAMES=4150,4240,4360,4440 \
+  "$tmp/probe" "$1" \
+    "$repo/tests/data/cockpit_globe_ground_turn.txt" 4450 100 > "$tmp/ground.log" 2>&1
 python3 -B "$repo/tests/check_globe_writer_probe.py" "$1" \
-  "$tmp/replay.log" "$tmp/roll.log" "$tmp/level.log"
+  "$tmp/replay.log" "$tmp/roll.log" "$tmp/level.log" "$tmp/ground.log"

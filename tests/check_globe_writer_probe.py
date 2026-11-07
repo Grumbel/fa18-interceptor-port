@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify headless 68000 flight globe against the actual pix/inst5 fill mask.
 
-Usage: python3 tests/check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log
+Usage: python3 tests/check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log GROUND.log
 Run REPLAY.log using tests/check_globe_writer_probe.sh, not a static fixture.
 """
 
@@ -28,8 +28,8 @@ def read_maps(log: str) -> dict[int, dict[int, str]]:
 
 
 def main() -> None:
-    if len(sys.argv) != 5:
-        sys.exit("usage: check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log")
+    if len(sys.argv) != 6:
+        sys.exit("usage: check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log GROUND.log")
     disk = Adf(sys.argv[1])
     entries = {p: h for p, h, size in disk.walk() if size is not None}
     width, height, source, _ = indexed_ilbm(disk.read_file(entries["pix/inst5"]))
@@ -39,6 +39,8 @@ def main() -> None:
     roll_log = Path(sys.argv[3]).read_text()
     roll_rows = read_maps(roll_log)
     level_log = Path(sys.argv[4]).read_text()
+    ground_log = Path(sys.argv[5]).read_text()
+    ground_rows = read_maps(ground_log)
 
     # In this deterministic replay the original game draws three horizontal
     # boundaries; no original bitmap or expected screenshot is checked in.
@@ -71,6 +73,38 @@ def main() -> None:
                 for frame in expected_offsets:
                     assert rows[frame][y][x - 198] == original_cell, (frame, x, y)
     assert source_fills == 358, source_fills
+
+    # An independent runway-turn script changes the heading by more than
+    # eighty degrees, but keeps the aircraft on the ground with zero pitch
+    # and at most two degrees of bank. Its original globe stays horizontal:
+    # the boundary advances by one *quantized* pixel and then returns to
+    # normal. This guards against accidentally using heading as bank or
+    # interpreting that single-row split change as a full-panel shake.
+    ground_poses = {
+        4150: (2240, 0, 173),
+        4240: (28640, 160, 174),
+        4360: (24104, 160, 174),
+        4440: (22944, 0, 173),
+    }
+    for frame, (heading, bank, boundary) in ground_poses.items():
+        assert len(ground_rows.get(frame, {})) == 21, frame
+        assert re.search(
+            rf"^globe-sample: frame={frame} .* a102=0 a104={heading} "
+            rf"a106={bank} hrow={boundary} ",
+            ground_log, re.MULTILINE), frame
+        assert re.search(
+            rf"^globe-view-sequence: frame={frame} mode=0 tick=0 "
+            rf"forward=0 view=144 flags=0000 state=2080 altitude=1800 ",
+            ground_log, re.MULTILINE), frame
+        for y in range(163, 184):
+            for x in range(198, 221):
+                pen = source[(y - 145) * width + x]
+                observed = ground_rows[frame][y][x - 198]
+                if pen in (17, 21):
+                    expected = "B" if y < boundary else "R"
+                else:
+                    expected = ground_rows[4150][y][x - 198]
+                assert observed == expected, (frame, x, y, expected, observed)
 
     # With only joystick left, the aircraft has zero pitch and its bank
     # field reaches 2216/80 = 27.7 degrees. The original on-screen globe is
@@ -273,9 +307,10 @@ def main() -> None:
 
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
+    assert "globe-probe: frames=4450" in ground_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
-          "boundaries, touchdown shake latency, source-stage isolation, "
-          "both writer banks, selector and 4-frame call chain")
+          "boundaries, level runway turn, touchdown shake latency, "
+          "source-stage isolation, both writer banks, selector and 4-frame call chain")
 
 
 if __name__ == "__main__":
