@@ -271,8 +271,15 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   the panel. The boundary-fitting tool aligns the stencil rather than
   treating it as occlusion or part of the globe angle mapping. Set
   `FA18_GLOBE_PANEL_ANCHOR=4484` for this read-only panel alignment probe.
-  A level-flight control replay reproduces the shift with zero bank and
-  pitch, so it is not caused by the roll maneuver.
+  A no-roll control replay reproduces the shift with zero bank and
+  pitch, so it is not caused by the roll maneuver. It is descending,
+  however: at frame 4484 the altitude reaches 750, setting the grounded
+  `$80` player-state bit and view-sequence mode 1. Original `$39b06`
+  writes forward offsets -40/+40/0/0 to `$5ac10`; `$44c42` consumes them.
+  The four mode tables at `$39ade` are recovered and binary-verified:
+  modes 1/3 use [-1,+1,0,0], modes 2/4 their inverse. In this replay it
+  is a **touchdown shake**, not an engine compressor stall. This camera
+  motion must be kept separate from the globe's attitude geometry.
   See `docs/cockpit_globe.md` for the
   evidence and unresolved full-roll timing/angle mapping. Validate the pure
   C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and

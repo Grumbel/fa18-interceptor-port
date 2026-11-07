@@ -107,11 +107,35 @@ only two differences (versus 321 differences without shifting). Frame
 observations are checked in the headless replay regression. A second
 control replay with the **same flight-entry commands but no roll input**
 shows the **same -1/+1/0 displacement** at those frames (with only two,
-two and zero mismatches). Its pitch and bank fields remain zero. Thus this
-panel movement does not arise from the rolling attitude maneuver; its exact
-upstream cause (including any buffer-latch effects) remains unresolved.
-Do not bake it into the globe-angle formula; the native cockpit's panel
-presentation must reproduce it separately.
+two and zero mismatches). Its pitch and bank fields remain zero.
+
+**The trigger is now identified: first ground contact, not a compressor
+stall.** In the no-roll control replay the player's altitude falls from
+1404 at frame 4476 to 816 at 4480, then reaches the 750-unit ground floor
+at 4484. The player's state word at +2 changes from `$2000` to `$2080`,
+setting the on-ground `$80` bit. The original landing path in `$26b16`
+selects `$5aab8=1`; `$39b06` advances that scripted camera-view mode.
+The mode's sequence at frames 4484/4488/4492/4496 is:
+
+| Frame | Mode/tick | View `$5ac7c` | Forward `$5ac10` | Altitude |
+| --- | --- | --- | --- | --- |
+| 4484 | 1/1 | 143 | -40 | 750 |
+| 4488 | 1/2 | 145 | +40 | 750 |
+| 4492 | 1/3 | 144 | 0 | 750 |
+| 4496 | 1/4 | 144 | 0 | 750 |
+
+The **original executable** contains a four-entry view-sequence table at
+`$39ade`: modes **1 and 3** both have signed steps `[-1,+1,0,0]`, while
+modes 2 and 4 use `[+1,-1,0,0]`. `$39b06` scales a step by 40 bytes and
+writes it to `$5ac10`, which the cockpit-copy path `$44c42` consumes.
+The same animation can therefore accompany other events: the native
+translation of the original engine-speed path selects mode 3 above its
+8400-unit threshold. That explains the visual similarity to an
+afterburner/overspeed incident. In *this* replay the engine-speed flag
+`$5abca` is zero and the speed is only 867 at touchdown. The precise
+one-bank redraw/scanout latency of the panel movement still needs tracing.
+Do not bake the shake into the globe-angle formula; the native cockpit's
+panel presentation must reproduce it separately.
 
 The strongest live blitter sites attributed to this exact globe region are
 `$44d08` (plane 2, minterm `$22`) and `$451ac` (plane 2, minterm `$EC`),
@@ -158,6 +182,9 @@ Use `FA18_GLOBE_PANEL_ANCHOR=4484` with
 pixels near the instrument to a fixed source frame, checking row shifts
 from -2 to +2. The probe reports aligned and unaligned difference counts;
 it does not alter the game or the rendered frame.
+The same explicit map frames also print `globe-view-sequence` with the
+original event mode, sequence step, camera offsets, ground-state bit,
+altitude and speed, all read directly from interpreter RAM.
 
 ## Reusable geometry, not yet wired
 

@@ -20,7 +20,7 @@ FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_MAP_FRAMES=3500,4480,4484,4488,4492,4496,45
     "$repo/tests/data/cockpit_globe_roll.txt" 4700 20 > "$tmp/roll.log" 2>&1
 # Same flight-entry script without roll input: check whether a panel shift
 # observed during a bank change actually depends on attitude.
-FA18_GLOBE_MAP_FRAMES=4484,4488,4492,4496 \
+FA18_GLOBE_MAP_FRAMES=4476,4480,4484,4488,4492,4496 \
   FA18_GLOBE_PANEL_ANCHOR=4484 \
   "$tmp/probe" "$1" \
     "$repo/tests/data/cockpit_globe_level.txt" 4496 100 > "$tmp/level.log" 2>&1

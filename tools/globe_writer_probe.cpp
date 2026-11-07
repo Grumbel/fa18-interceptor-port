@@ -205,6 +205,19 @@ struct ProbeHost final : amiga::Host {
           }
           std::putchar('\n');
           if (wants_map) {
+            // $39b06's scripted view sequence writes $5ac10. The generic
+            // panel blitter at $44c42 later consumes that signed offset.
+            // Record the event mode and cursor beside the pixel evidence.
+            const uint32_t record = 0x5b47c + uint32_t(uint16_t(player));
+            std::printf("globe-view-sequence: frame=%d mode=%u tick=%u "
+                        "forward=%d view=%d flags=%04x state=%04x "
+                        "altitude=%d speed=%d\n",
+                        frame, machine->r8(0x5aab8), machine->r8(0x5ab87),
+                        int32_t(machine->r32(0x5ac10)),
+                        int16_t(machine->r16(0x5ac7c)),
+                        machine->r16(0x5abca), machine->r16(record + 2),
+                        int32_t(machine->r32(record + 24)),
+                        int16_t(machine->r16(record + 110)));
             for (int y = 163; y < 184; ++y) {
               std::printf("globe-map: frame=%d y=%d ", frame, y);
               for (int x = 198; x < 221; ++x) {

@@ -594,10 +594,15 @@ before committing. Note limitations explicitly rather than masking them.
   the displaced shape and the red/blue boundary fit independently. A second
   independent match of 910 pixels *outside* the globe proves the rest of
   the panel shifts -1/+1 with only two residual differences, then returns
-  to its previous position by frame 4496. A matching level-flight control
-  replay (zero pitch and roll) repeats the shifts, ruling out the turn as
-  their cause. The native compositor still needs to track the panel
-  displacement independently of globe geometry.
+  to its previous position by frame 4496. A matching no-roll control
+  replay (zero pitch and roll, but descending) repeats the shifts, ruling
+  out the turn as their cause. Original `$26b16` sets view-sequence mode 1
+  on first touchdown (altitude 750, grounded bit `$80`), and `$39b06`
+  drives `$5ac10` through `-40,+40,0,0` screen-byte offsets. The original
+  `$39ade` table shows modes 1/3 share this animation; 2/4 invert it.
+  The test verifies the binary table and original runtime values. The
+  native compositor still needs to track this camera motion independently
+  of globe geometry and respect the per-bank presentation timing.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

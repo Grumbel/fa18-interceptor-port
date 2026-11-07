@@ -10,10 +10,12 @@ import math
 import re
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from adf import Adf
+import loadseg
 from check_globe_asset import indexed_ilbm
 
 
@@ -102,7 +104,7 @@ def main() -> None:
                     expected = "B" if d < 0 else "R"
                 assert observed == expected, (frame, x, y, expected, observed)
 
-    # The original globe fill itself shifts by one screen pixel on two
+    # The original panel shifts vertically by one screen pixel on two
     # consecutive redraws. These are not red/blue fills lost behind other
     # ink. Both shifted 351-cell masks match the original 358-cell shape
     # exactly after clipping the circle to the sampled 21-row viewport.
@@ -146,6 +148,46 @@ def main() -> None:
             assert errors <= max_errors and baseline >= min_baseline and samples == 910, (variant, frame)
     assert re.search(r"^globe-sample: frame=4488 .*a102=0 .*a106=0 ",
                      level_log, re.MULTILINE), "level replay did not retain zero pitch/bank"
+
+    # The shake is a *touchdown view sequence*, not roll or compressor stall.
+    # Before it starts, the aircraft descends from 1404 to 816. On reaching
+    # the 750-unit ground floor, status bit $80 appears in player state +2,
+    # and original $39b06 runs mode 1's -40,+40,0,0 byte-offset sequence.
+    # The high-speed event flag $5abca is zero throughout this capture.
+    for frame, mode, tick, forward, view, state, altitude, speed in (
+        (4476, 0, 0, 0, 144, "2000", 1404, 1539),
+        (4480, 0, 0, 0, 144, "2000", 816, 1155),
+        (4484, 1, 1, -40, 143, "2080", 750, 867),
+        (4488, 1, 2, 40, 145, "20c0", 750, 840),
+        (4492, 1, 3, 0, 144, "2080", 750, 814),
+        (4496, 1, 4, 0, 144, "2080", 750, 789),
+    ):
+        pattern = (rf"^globe-view-sequence: frame={frame} mode={mode} "
+                   rf"tick={tick} forward={forward} view={view} flags=0000 "
+                   rf"state={state} altitude={altitude} speed={speed}$")
+        assert re.search(pattern, level_log, re.MULTILINE), (frame, pattern)
+
+    # Recover the *original binary*'s view-sequence data. Modes 1 and 3
+    # animate with the same four signed bytes, modes 2 and 4 with the
+    # inverse pattern. $39b06 scales these by 40 to offset panel rows.
+    with tempfile.NamedTemporaryFile(prefix="fa18-shake-", suffix=".exe") as f:
+        f.write(disk.read_file(entries["F-18 Interceptor"]))
+        f.flush()
+        _, _, image = loadseg.load(f.name)
+    base = loadseg.LOAD_BASE
+
+    def long(address: int) -> int:
+        return int.from_bytes(image[address - base:address - base + 4], "big")
+
+    for mode, expected in enumerate(((-1, 1, 0, 0), (1, -1, 0, 0),
+                                      (-1, 1, 0, 0), (1, -1, 0, 0)), start=1):
+        header = long(0x39ade + 8 * (mode - 1))
+        pattern = long(0x39ade + 8 * (mode - 1) + 4)
+        assert image[header - base] == 4, mode
+        observed = tuple(int.from_bytes(image[pattern - base + i:
+                                              pattern - base + i + 1],
+                                        "big", signed=True) for i in range(4))
+        assert observed == expected, (mode, observed)
 
     # Active (not initialization-only) original blitter writes are present in
     # both displayed screen banks for this flight. These are low-level sites,
@@ -194,7 +236,7 @@ def main() -> None:
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
-          "boundaries, level/roll panel shift, both writer banks, selector "
+          "boundaries, touchdown shake table, both writer banks, selector "
           "and 4-frame call chain")
 
 
