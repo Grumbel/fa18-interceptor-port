@@ -195,6 +195,10 @@ public:
   // normal display fetches. Suppressed writes still change guest RAM history.
   void set_original_blitter_writes(bool enabled) { blitter_write_gate_.enabled = enabled; }
   bool original_blitter_writes() const { return blitter_write_gate_.enabled; }
+  void set_original_bitplane_scanout(bool enabled) {
+    blitter_write_gate_.scanout_enabled = enabled;
+  }
+  bool original_bitplane_scanout() const { return blitter_write_gate_.scanout_enabled; }
   uint64_t suppressed_blitter_words() const { return blitter_write_gate_.suppressed_words; }
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
   // Scan-out data of the last rendered frame (see remaster::compose)

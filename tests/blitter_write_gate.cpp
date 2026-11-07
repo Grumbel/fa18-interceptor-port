@@ -38,4 +38,16 @@ int main() {
   assert(memory_writes.back().second == 0x4321);
   assert(gate.suppressed_words == 2);
   assert(gate.scanout_word(resident_bitplane_word) == 0xf00f);
+
+  // Pure display isolation: hide old pixels while continuing to execute
+  // all blitter writes, without affecting guest RAM or the write counter.
+  gate.scanout_enabled = false;
+  gate.write(0x1006, 0xabcd, store);
+  assert(memory_writes.size() == 3);
+  assert(memory_writes.back().first == 0x1006);
+  assert(memory_writes.back().second == 0xabcd);
+  assert(gate.suppressed_words == 2);
+  assert(gate.scanout_word(resident_bitplane_word) == 0);
+  gate.scanout_enabled = true;
+  assert(gate.scanout_word(resident_bitplane_word) == 0xf00f);
 }

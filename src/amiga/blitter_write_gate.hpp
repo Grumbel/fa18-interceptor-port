@@ -11,6 +11,7 @@ namespace amiga {
 
 struct BlitterWriteGate {
   bool enabled = true;
+  bool scanout_enabled = true;
   uint64_t suppressed_words = 0;
 
   template<class Writer>
@@ -21,9 +22,11 @@ struct BlitterWriteGate {
 
   // Blitter suppression alone leaves old art resident in chip RAM. When
   // isolating the native renderer, present zeroed bitplane words without
-  // mutating that RAM; restoring the toggle restores normal scanout.
+  // mutating that RAM; restoring the toggle restores normal scanout. The
+  // independent scanout switch can hide the original picture while all
+  // guest and blitter writes continue unchanged (RAM-parity diagnostic).
   uint16_t scanout_word(uint16_t original) const {
-    return enabled ? original : 0;
+    return enabled && scanout_enabled ? original : 0;
   }
 };
 

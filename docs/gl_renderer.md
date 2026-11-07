@@ -310,6 +310,26 @@ the changed guest RAM makes normal native-vs-interpreter checks meaningless.
 This switch reveals **what remains without the original blitter**, not a
 completed native renderer.
 
+For a clean, RAM-equivalent **native-renderer isolation**, use **Ctrl+Shift+B**
+(Graphics > Amiga bitplanes), `--no-amiga-scanout` or script `scanout off`.
+This masks bitplane display pixels, exactly as Ctrl+B does, but **does not
+suppress original blitter/CPU writes**; game memory and timing can be
+compared directly to the unmodified replay. An orange `AMIGA BITPLANES
+HIDDEN` status indicates this independent mode. Re-enable with
+Ctrl+Shift+B / `scanout on`. The display-data mask is downstream of
+bitplane RAM reads and does not alter DMA pointers or copper registers.
+Some current native elements still use captured original writer timing
+or fallback stencils and may disappear when the bitmap is hidden; that
+is itself a useful indication of incomplete renderer independence.
+`tests/check_gl_scanout.sh ORIGINAL.adf` replays the same flight twice,
+compares every 100-frame RAM hash and reports differing cockpit regions
+at frame 4000 with `tools/scanout_diff.py`. Run the latter with
+`--diff heatmap.ppm` to create a red/gray source-resolution difference map.
+The percentages measure *pixel sensitivity* to the original scanout,
+not exactly how many pixels are natively implemented: different sources
+can produce the same colour. The full SDL/OpenGL replay remains to be
+verified on a build-capable machine.
+
 The CPU and direct GPU now share the same mapping from each Amiga display
 scanline to the most recent completed 3D bank. A matching completed scene
 row remains eligible for widescreen extension even during the handful of

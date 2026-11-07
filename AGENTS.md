@@ -237,6 +237,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   title warning. Script `blitter off|on` and
   `tests/check_amiga_blitter_toggle.sh ORIGINAL.adf` exercise it, including
   screenshot differences while the bitplanes are blanked.
+  The independent **Ctrl+Shift+B** / Graphics > Amiga bitplanes switch
+  (`--no-amiga-scanout` or script `scanout off|on`) blanks only display
+  bitplane data; every original blitter/CPU write still executes. Unlike
+  Ctrl+B, it preserves emulated RAM hashes and can be used to quantify
+  remaining original-image dependence with `tests/check_gl_scanout.sh`
+  and `tools/scanout_diff.py`. The comparison is pixel sensitivity, not
+  a complete classification of who rendered each coincident colour.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

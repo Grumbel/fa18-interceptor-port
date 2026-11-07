@@ -542,6 +542,15 @@ before committing. Note limitations explicitly rather than masking them.
   mismatch audit reports six instrument areas with independent index/RGB
   change counts and bounding boxes (`FA18_COCKPIT_DYNAMIC_AUDIT=1`), with a
   screenshot/RAM no-side-effects regression for future writer tracing.
+- [x] Add an independent original-bitplane visibility mask for visual
+  debugging. Ctrl+B still suppresses original blitter writes and now blanks
+  scanout; Ctrl+Shift+B, `--no-amiga-scanout` and script `scanout off|on`
+  blank only the displayed pixels while letting all game writers run.
+  `tools/scanout_diff.py` measures source-resolution per-region sensitivity
+  between deterministic normal/hidden screenshots, optionally producing a
+  red/gray heatmap. `tests/check_gl_scanout.sh` checks a full-flight RAM
+  hash match and reports the original image's remaining contributions.
+  The live GPU/ADF gate has not run in this environment.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
