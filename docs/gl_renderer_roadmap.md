@@ -557,6 +557,13 @@ before committing. Note limitations explicitly rather than masking them.
   while preserving original DMA reads, per-row copper colours and RAM.
   `tests/check_gl_scanout_region.sh` compares screenshots and full RAM hash
   streams. The live GPU gate remains outstanding.
+- [x] Recover the blue/red globe fill from the original ADF (pens 21/17,
+  358 cells, source x=198..220/y=163..183) and isolate a portable
+  high-resolution moving-boundary geometry model with signed distance,
+  angle wrapping and edge coverage. ADF-backed and pure C++ checks validate
+  its level pose and bounds (`docs/cockpit_globe.md`). This is a preparatory
+  library component only; capturing the real moving writer, calibrating its
+  input angles, and wiring it into native GL remain outstanding.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

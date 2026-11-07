@@ -252,6 +252,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   bitplane DMA read, so game RAM and register/pointer evolution are intact.
   `tests/check_gl_scanout_region.sh ORIGINAL.adf [region]` checks ADF-backed
   screenshot sensitivity and unchanged RAM hashes.
+  The first isolated moving-globe geometry lives in
+  `src/cockpit/globe_model.hpp` (outside the translation-only `src/native/`
+  directory). It is **not** called by the renderer yet; its ADF-backed
+  colour-mask evidence and exact remaining unknowns are in
+  `docs/cockpit_globe.md`. Validate its pure C++ tests and
+  `tests/check_globe_asset.py ORIGINAL.adf` before attempting a live
+  OpenGL integration. The normal full native gate still applies to any
+  later changes within `src/native/`.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,
