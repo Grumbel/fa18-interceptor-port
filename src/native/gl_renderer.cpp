@@ -15,6 +15,7 @@
 #include "native/gl_line_quad.hpp"
 #include "native/gl_ground_cache.hpp"
 #include "native/gl_scene_batch_cache.hpp"
+#include "native/gl_camera_interp.hpp"
 #include "native/remaster.hpp"
 
 #include "native/runtime.hpp"
@@ -1516,8 +1517,35 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
       ++matched;
     }
     verts = &st.interpolated_verts;
-    for (int i = 0; i < 9; ++i)
-      cam.view[i] = st.previous_camera.view[i] + alpha * (st.camera.view[i] - st.previous_camera.view[i]);
+    if (std::getenv("FA18_GL_CAMERA_INTERP_REFERENCE")) {
+      // Original element-wise interpolation, useful for screenshot A/B.
+      for (int i = 0; i < 9; ++i)
+        cam.view[i] = st.previous_camera.view[i] + alpha *
+                      (st.camera.view[i] - st.previous_camera.view[i]);
+    } else {
+      // The Amiga matrix is rotation with *three distinct row scales*.
+      // Blending its coefficients shears terrain when the view rotates;
+      // blend orientation along the shorter quaternion arc instead, and
+      // keep the original projection scales on each axis.
+      camera_interp::Matrix old_view{}, new_view{};
+      std::copy_n(st.previous_camera.view, 9, old_view.begin());
+      std::copy_n(st.camera.view, 9, new_view.begin());
+      bool rotated = false;
+      const auto view = camera_interp::interpolate(old_view, new_view, alpha, &rotated);
+      std::copy(view.begin(), view.end(), cam.view);
+      if (std::getenv("FA18_GL_CAMERA_INTERP_DEBUG")) {
+        static uint64_t rotations = 0, fallback = 0, endpoints = 0;
+        if (alpha <= 0.f || alpha >= 1.f) ++endpoints;
+        else if (rotated) ++rotations;
+        else ++fallback;
+        if (rotations + fallback + endpoints <= 4 ||
+            (rotations + fallback + endpoints) % 120 == 0)
+          std::fprintf(stderr,
+                       "gl: camera interpolation rotations=%llu fallback=%llu endpoints=%llu alpha=%.3f\n",
+                       (unsigned long long)rotations, (unsigned long long)fallback,
+                       (unsigned long long)endpoints, alpha);
+      }
+    }
     cam.x = st.previous_camera.x + alpha * (st.camera.x - st.previous_camera.x);
     cam.z = st.previous_camera.z + alpha * (st.camera.z - st.previous_camera.z);
     cam.ground_y = st.previous_camera.ground_y + alpha * (st.camera.ground_y - st.previous_camera.ground_y);

@@ -68,6 +68,23 @@ captures (often four VBLs, about 15 Hz) to advance the blend smoothly, with
 one capture interval of visual latency. Large gaps reset history to prevent
 blending across menus or scene cuts.
 
+The world-to-view matrix is made of a camera orientation and three separate
+row scales (originally 168/256, 252/256 and 128/256 in normal flight). Simply
+blending its nine elements changes the camera's apparent scale and shears
+terrain during turns. Between captures, the GL ground renderer now
+reorthogonalises each endpoint, follows the shortest quaternion rotation
+(including +/-180-degree heading wrap), and interpolates the three row scales
+separately. The unmodified 8.8 fixed-point coefficients are preserved *exactly*
+at capture endpoints; if either matrix is degenerate or has an unexpected
+reflection/shear, interpolation falls back to the original linear method.
+Captured 3D objects still interpolate their view-space vertices as before;
+this change specifically corrects the camera matrix used for the world ground.
+`FA18_GL_CAMERA_INTERP_REFERENCE=1` restores element-wise camera blending,
+and `FA18_GL_CAMERA_INTERP_DEBUG=1` counts successful rotation blends and
+fallbacks. `tests/check_gl_camera_interp.sh` checks original 60 Hz pixels and
+120 Hz game RAM against the old path. End-to-end visual smoothness still
+requires testing on a real GPU/monitor.
+
 The HUD, 2D overlays, explosions not captured as geometry, and the original
 physics still advance only at their original rates; interpolation applies
 only to geometrically matched 3D primitives and camera movement. Additional

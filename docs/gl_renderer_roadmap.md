@@ -454,6 +454,15 @@ before committing. Note limitations explicitly rather than masking them.
   old pack/upload path; `tests/check_gl_scene_batch_cache.sh` compares
   flight/Pause direct-GPU pixels and emulated RAM against it. Hardware FPS
   improvement is not yet established.
+- [x] Interpolate the **row-scaled camera orientation** using quaternion
+  shortest-arc rotation and separately interpolated original row scales,
+  rather than linearly blending nine world-to-view entries and shearing the
+  ground plane. Exact capture endpoints and malformed/reflected matrix
+  fallbacks retain the old values. `FA18_GL_CAMERA_INTERP_REFERENCE=1` and
+  `tests/check_gl_camera_interp.sh` provide a 60 Hz screenshot and 120 Hz
+  memory oracle; a unit test covers heading wrap and scaled orthogonality.
+  View-space 3D object interpolation remains linear and still needs the
+  same camera-pose decomposition work for fully rigid motion.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
