@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -242,6 +243,7 @@ struct SourceWriteWatch {
   amiga::Machine* machine = nullptr;
   int first = 0, last = 0, limit = 0, printed = 0;
   int bitmap_first = 0, bitmap_last = 0, bitmap_limit = 0, bitmap_printed = 0;
+  int tuple_first = 0, tuple_last = 0, tuple_limit = 0, tuple_printed = 0;
 
   static void observe(void* opaque, uint32_t address, uint8_t width, bool write) {
     auto& watch = *static_cast<SourceWriteWatch*>(opaque);
@@ -253,11 +255,16 @@ struct SourceWriteWatch {
     const bool bitmap = address < 0x74000 && address + width > 0x73600 &&
                         frame >= watch.bitmap_first && frame <= watch.bitmap_last &&
                         watch.bitmap_printed < watch.bitmap_limit;
-    if (!descriptor && !bitmap) return;
+    const bool tuple = address < 0x608f0 && address + width > 0x60684 &&
+                       frame >= watch.tuple_first && frame <= watch.tuple_last &&
+                       watch.tuple_printed < watch.tuple_limit;
+    if (!descriptor && !bitmap && !tuple) return;
     if (descriptor) ++watch.printed;
-    else ++watch.bitmap_printed;
+    else if (bitmap) ++watch.bitmap_printed;
+    else ++watch.tuple_printed;
     std::printf("%s: frame=%d pc=%06x address=%06x width=%u value=",
-                descriptor ? "globe-source-write" : "globe-bitmap-write",
+                descriptor ? "globe-source-write" :
+                bitmap ? "globe-bitmap-write" : "globe-tuple-write",
                 frame, watch.machine->cpu.op_pc, address, width);
     // Read the RAM bytes directly: calling Machine::r8 here would recurse
     // into this observer. The bus write has already occurred.
@@ -414,10 +421,83 @@ int main(int argc, char** argv) {
         throw std::runtime_error("expected FA18_GLOBE_BITMAP_WATCH=first:last:limit");
       track_writes = true;
     }
+    // The Hunk-36 raster worker reads a count-prefixed XY tuple array at
+    // $60684. Find the *writer* of this array, before its line/area blits.
+    // FA18_GLOBE_TUPLE_WATCH=4476:4480:256
+    if (const char* config = std::getenv("FA18_GLOBE_TUPLE_WATCH")) {
+      if (std::sscanf(config, "%d:%d:%d", &source_watch.tuple_first,
+                      &source_watch.tuple_last, &source_watch.tuple_limit) != 3 ||
+          source_watch.tuple_first < 0 ||
+          source_watch.tuple_last < source_watch.tuple_first ||
+          source_watch.tuple_limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_TUPLE_WATCH=first:last:limit");
+      track_writes = true;
+    }
     if (track_writes) {
       source_watch.machine = &machine;
       machine.ram_access_context = &source_watch;
       machine.ram_access_observer = &SourceWriteWatch::observe;
+    }
+    // The 68000 copies a projected sea/horizon polygon from $60684 to
+    // $60726 using one MOVE.W and five MOVE.L instructions at $44b36.
+    // Observe both sides at instruction boundaries to establish the source
+    // of the list later read by $44da4, without tracing every tuple write.
+    // FA18_GLOBE_POLY_TRACE=4476:4480:16
+    if (const char* config = std::getenv("FA18_GLOBE_POLY_TRACE")) {
+      int first = 0, last = 0, limit = 0;
+      if (std::sscanf(config, "%d:%d:%d", &first, &last, &limit) != 3 ||
+          first < 0 || last < first || limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_POLY_TRACE=first:last:limit");
+      auto printed = std::make_shared<int>(0);
+      for (uint32_t pc : {0x44b36u, 0x44b42u, 0x44de4u}) {
+        machine.add_pc_hook(pc, [&, pc, first, last, limit, printed] {
+          const int frame = int(machine.frame_count());
+          if (frame < first || frame > last || *printed >= limit) return;
+          if (pc == 0x44de4) {
+            // The 2D raster worker has other callers too. Attribute this
+            // transformed polygon to the globe pass from game_frame.
+            bool globe_caller = false;
+            for (int i = 0; i < 7; ++i) {
+              const uint32_t a = machine.cpu.a[7] + uint32_t(4 * i);
+              if (a < amiga::RAM_SIZE - 4 && machine.r32(a) == 0x213ae) {
+                globe_caller = true;
+                break;
+              }
+            }
+            if (!globe_caller) return;
+          }
+          ++*printed;
+          const uint32_t address = pc == 0x44b42 ? 0x60726 : 0x60684;
+          const char* kind = pc == 0x44b36 ? "source" :
+                             pc == 0x44b42 ? "copy" : "scaled";
+          std::printf("globe-poly-%s: frame=%d pc=%06x source=%06x "
+                      "count=%u words=",
+                      kind, frame, pc, address, machine.r16(address));
+          for (int i = 0; i < 11; ++i)
+            std::printf("%s%04x", i ? "," : "", machine.r16(address + uint32_t(i * 2)));
+          std::putchar('\n');
+          if (pc == 0x44de4) {
+            std::printf("globe-poly-offsets: frame=%d x=%d y=%d\n",
+                        frame, int16_t(machine.r16(0x5ac80)),
+                        int16_t(machine.r16(0x5abd0)));
+          } else if (pc == 0x44b36) {
+            // $422f8 builds the cockpit attitude matrix $5aee2 from
+            // player-record +102/+104/+106. Snapshot the matrix actually
+            // used by $42f62 in this *same code frame*, independently of
+            // the later host/display-frame attitude sample.
+            const uint32_t player = 0x5b47c + machine.r16(0x5abd6);
+            std::printf("globe-poly-attitude: frame=%d pitch=%d heading=%d "
+                        "bank=%d matrix=",
+                        frame, int16_t(machine.r16(player + 102)),
+                        int16_t(machine.r16(player + 104)),
+                        int16_t(machine.r16(player + 106)));
+            for (int i = 0; i < 9; ++i)
+              std::printf("%s%04x", i ? "," : "",
+                          machine.r16(0x5aee2 + uint32_t(i * 2)));
+            std::putchar('\n');
+          }
+        });
+      }
     }
     // FA18_GLOBE_STAGE_TRACE=4472:4496:160 (first:last:max snapshots).
     // Compare live *original* source-bank pixels between the cockpit call
@@ -457,21 +537,21 @@ int main(int argc, char** argv) {
       if (std::sscanf(config, "%d:%d:%d", &first, &last, &limit) < 2 ||
           first < 0 || last < first || limit < 0)
         throw std::runtime_error("expected FA18_GLOBE_WRITER_REGS=first:last[:limit]");
-      int snapshots = 0;
+      auto snapshots = std::make_shared<int>(0);
       for (uint32_t pc : {0x44c42u, 0x45ce6u, 0x44d08u, 0x451acu}) {
-        machine.add_pc_hook(pc, [&, pc] {
+        machine.add_pc_hook(pc, [&, pc, first, last, limit, snapshots] {
           // Machine::add_pc_hook replaces an earlier hook at the same PC.
           // Preserve the call-boundary capture when both diagnostics are
           // enabled by invoking it from the register snapshot hook.
           if (pc == 0x44c42 && std::getenv("FA18_GLOBE_STAGE_TRACE"))
             stage_watch.observe(pc);
           const int frame = int(machine.frame_count());
-          if (frame < first || frame > last || snapshots >= limit) return;
+          if (frame < first || frame > last || *snapshots >= limit) return;
           const auto& cpu = machine.cpu;
           // $45ce6 is a generic clipping helper invoked by many drawing
           // routines. Only its $44c80 caller belongs to the globe pass.
           if (pc == 0x45ce6 && machine.r32(cpu.a[7]) != 0x44c86) return;
-          ++snapshots;
+          ++*snapshots;
           std::printf("globe-writer-regs: frame=%d pc=%06x sp=%06x fp=%06x"
                       " d0=%08x d1=%08x d2=%08x d3=%08x"
                       " d4=%08x d5=%08x d6=%08x d7=%08x"
@@ -549,11 +629,11 @@ int main(int argc, char** argv) {
       if (std::sscanf(config, "%d:%d:%d", &first, &last, &limit) != 3 ||
           first < 0 || last < first || limit < 0)
         throw std::runtime_error("expected FA18_GLOBE_CALC_TRACE=first:last:limit");
-      int printed = 0;
+      auto printed = std::make_shared<int>(0);
       for (uint32_t pc = 0x44da4; pc <= 0x451ac; pc += 2) {
-        machine.add_pc_hook(pc, [&, pc] {
+        machine.add_pc_hook(pc, [&, pc, first, last, limit, printed] {
           const int frame = int(machine.frame_count());
-          if (frame < first || frame > last || printed >= limit) return;
+          if (frame < first || frame > last || *printed >= limit) return;
           const auto& cpu = machine.cpu;
           // These generic raster helpers also run hundreds of times while
           // painting the 3D scene. Attribute only the nested call made by
@@ -567,7 +647,7 @@ int main(int argc, char** argv) {
             }
           }
           if (!globe_caller) return;
-          ++printed;
+          ++*printed;
           std::printf("globe-calc-insn: frame=%d pc=%06x op=%04x "
                       "d0=%08x d1=%08x d2=%08x d3=%08x "
                       "d4=%08x d5=%08x d6=%08x "

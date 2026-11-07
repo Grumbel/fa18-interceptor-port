@@ -214,6 +214,14 @@ def main() -> None:
     assert len(circle) == 21 * 4 and sum(byte.bit_count() for byte in circle) == 379
     assert circle[:4] == circle[-4:] == bytes.fromhex("0003f800")
 
+    # Original 68000 control flow: JSR $42f62 projects the sea polygon,
+    # BNE skips on failure, otherwise LEA $60684/A0 and $60726/A4,
+    # MOVE.W (A0)+,(A4)+, five MOVE.L (A0)+,(A4)+, then RTS. The extra
+    # copied tuple is not necessarily part of the count-prefixed polygon.
+    assert image[0x44b22 - base:0x44b42 - base] == bytes.fromhex(
+        "4eb900042f62661a41f90006068449f90006072638d8"
+        "28d828d828d828d828d8")
+
     def long(address: int) -> int:
         return int.from_bytes(image[address - base:address - base + 4], "big")
 
@@ -355,6 +363,62 @@ def main() -> None:
     compositing = roll_log.index("globe-blitter-input: frame=4476 pc=0451ac")
     assert positions[0] < positions[1] < compositing < positions[2]
     assert all(value == "0000" for pc, _, _, value in entries if pc == "0450fc")
+
+    # The tuple list consumed by $44da4 has a direct, measured producer:
+    # after a $42f62 projection, $44b36..$44b40 copies the already clipped
+    # 2D sea polygon from $60684 to $60726. In the banked replay, its two
+    # horizon-edge Y coordinates diverge; in the level replay they coincide.
+    def globe_poly(trace: str, frame: int, side: str) -> tuple[int, ...]:
+        pc, source = {
+            "source": ("044b36", "060684"),
+            "copy": ("044b42", "060726"),
+            "scaled": ("044de4", "060684"),
+        }[side]
+        match = re.search(
+            rf"^globe-poly-{side}: frame={frame} pc={pc} "
+            rf"source={source} count=(\d+) words=([0-9a-f,]+)$",
+            trace, re.MULTILINE)
+        assert match, (frame, side)
+        words = tuple(int(part, 16) for part in match[2].split(","))
+        assert len(words) == 11 and words[0] == int(match[1]) == 4, frame
+        return words
+
+    for frame in (4476, 4480, 4484, 4488):
+        for trace in (level_log, roll_log):
+            assert globe_poly(trace, frame, "source") == globe_poly(trace, frame, "copy")
+
+            offset = re.search(
+                rf"^globe-poly-offsets: frame={frame} x=(-?\d+) y=(-?\d+)$",
+                trace, re.MULTILINE)
+            assert offset, frame
+            dx, dy = int(offset[1]), int(offset[2])
+            source_words = globe_poly(trace, frame, "copy")
+            scaled_words = globe_poly(trace, frame, "scaled")
+            expected_scaled = [4]
+            for i in range(1, 9, 2):
+                expected_scaled.extend((193 + (source_words[i] * 24 >> 8) + dx,
+                                        162 + (source_words[i + 1] * 31 >> 8) + dy))
+            assert scaled_words[:9] == tuple(expected_scaled), (frame, scaled_words)
+
+    level_poly = globe_poly(level_log, 4480, "copy")
+    roll_poly = globe_poly(roll_log, 4480, "copy")
+    assert level_poly[:9] == (4, 0, 88, 319, 88, 319, 0, 0, 0)
+    assert roll_poly[:9] == (4, 0, 51, 319, 127, 319, 0, 0, 0)
+
+    def polygon_attitude(trace: str, frame: int) -> tuple[tuple[int, int, int], tuple[int, ...]]:
+        match = re.search(
+            rf"^globe-poly-attitude: frame={frame} pitch=(-?\d+) "
+            rf"heading=(-?\d+) bank=(-?\d+) matrix=([0-9a-f,]+)$",
+            trace, re.MULTILINE)
+        assert match, frame
+        matrix = tuple(int(word, 16) for word in match[4].split(","))
+        assert len(matrix) == 9, matrix
+        return tuple(map(int, match.groups()[:3])), matrix
+
+    level_angles, level_matrix = polygon_attitude(level_log, 4480)
+    roll_angles, roll_matrix = polygon_attitude(roll_log, 4480)
+    assert level_angles[2] == 0 and roll_angles[2] > 0
+    assert level_matrix != roll_matrix
 
     for frame in (4476, 4480, 4484, 4488):
         for trace in (roll_log, level_log):

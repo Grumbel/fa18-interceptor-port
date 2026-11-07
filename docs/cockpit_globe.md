@@ -268,8 +268,72 @@ through the raster helper; its first differing captured register is D0 at
 `$44dce` (`$0058` in level flight, `$0033` in banked flight), loaded from
 the in-RAM tuple list near `$6072c` by the preceding `MOVE.W (A0)+,D0`.
 This points to an already-generated primitive/coordinate list upstream of
-the blitter. The register trace alone does not establish its original
-writer or the meaning of this particular word.
+the blitter.
+
+### Original source of the globe's projected horizon polygon
+
+The original instructions at `$44b22`–`$44b42` establish the next upstream
+step: call `$42f62` (the alternate sea-quad projection), branch past the
+copy on failure, then copy one 16-bit count and **five 32-bit `(x,y)` pairs**
+from `$60684` to `$60726` using `$44b36`–`$44b40`. The count determines
+how many pairs form the polygon; the fixed extra copied pair may be stale
+or scratch data and is not automatically another vertex. The existing sea
+projection analysis in `docs/horizon.md` identifies `$42f62` as the
+cockpit's second sea-quad matrix path.
+
+Use `FA18_GLOBE_POLY_TRACE=4476:4488:20` to capture the source immediately
+before `$44b36` and the destination immediately before its terminating RTS
+at `$44b42`. In the original executable, they agree word-for-word at each
+of the four compared redraws. At game-code frame 4480 the first four pairs
+are:
+
+| Input | Vertex 0 | Vertex 1 | Vertex 2 | Vertex 3 |
+| --- | --- | --- | --- | --- |
+| Level flight | `(0,88)` | `(319,88)` | `(319,0)` | `(0,0)` |
+| Banked flight | `(0,51)` | `(319,127)` | `(319,0)` | `(0,0)` |
+
+Those are actual **clipped screen-space sky/sea polygons** from the running
+68000 game, not fitted roll angles. The divergent edge (Y=51 on the left,
+127 on the right) explains why later raster-helper input changes with bank.
+The earlier `$44dce` difference is simply the second word of this copied
+polygon.
+
+The next original raster stage `$44db8`–`$44dde` performs a precise
+**integer screen-to-instrument transformation** on each vertex:
+
+```c++
+x_out = 193 + ((uint16_t(x_in) * 24) >> 8) + int16_t(ram[$5ac80]);
+y_out = 162 + ((uint16_t(y_in) * 31) >> 8) + int16_t(ram[$5abd0]);
+```
+
+These are unsigned 68000 `MULU` operations followed by `LSR.L #8`,
+16-bit additions and an output `MOVE.W`. The offsets are read live, not
+assumed constant; `$5abd0` is the observed temporary cockpit row shake.
+`globe-poly-scaled` and `globe-poly-offsets` trace the resulting points
+immediately before the following `$44de4` call. For example, with the
+observed row offset `-1` at game-code frame 4480:
+
+| Input | Vertex 0 | Vertex 1 | Vertex 2 | Vertex 3 |
+| --- | --- | --- | --- | --- |
+| Level, instrument pixels | `(193,171)` | `(222,171)` | `(222,161)` | `(193,161)` |
+| Banked, instrument pixels | `(193,167)` | `(222,176)` | `(222,161)` | `(193,161)` |
+
+The ADF replay asserts this transformation for **all four vertices** in
+four consecutive redraws in both control scenarios. The pure
+`cockpit::globe::project_sky_point()` helper reproduces these original
+fixed-point operations for future native rendering. The existing
+`cockpit::globe::boundary_distance()` bank-angle model remains an
+independent approximation, not yet substituted for the actual polygon.
+
+We now know how original aircraft angles reach the globe geometry:
+`$422f8` reads the player's +102/+104/+106 fields, `$42bbe` creates the
+attitude matrix at `$5aee2`, `$42f62` projects the second sea quad through
+that matrix, `$44b36` copies the resulting screen-space polygon, and the
+small-instrument raster/blitter stages use the scaled vertices. See
+`src/native/view.cpp` and `src/native/sky.cpp` for the existing C++
+translations. The exact polygon fill and bank/display presentation parity
+within the masked 21-row circle still need verification before replacing
+the original instrument with a GPU overlay.
 
 This establishes a concrete, compact draw contract: the changing globe is
 assembled by clearing a fixed circular stencil and adding a shifted input
@@ -411,26 +475,23 @@ nonzero angle, the changed cells stay within the ADF's red/blue fill mask.
 The high-resolution boundary uses one-output-pixel coverage; this preview
 cannot establish the original instrument's pitch/bank mapping or timing.
 
-**Not yet established:** the exact relationship between the original
-high-level instrument routine and the aircraft's actual pitch/bank values,
-its vertical scale in pixels per degree, roll sign and source geometry
-generation before each four-frame redraw. In the recorded manoeuvre the
-player word at +102 varies alongside vertical movement and +106 reaches
-14400 during inversion, but this correlation does **not** prove the
-instrument's input formula or the precise displayed-bank latch semantics.
-See `src/native/view.cpp` for the player record's attitude usage. Do not
-hardwire those candidate fields or the level-only displacement into the GPU
-compositor until intermediate writer frames and inverted attitude have been
-checked.
+**Still to establish:** exact per-pixel equivalence of the final masked
+original blits and a native polygon fill, across inverted flight, rapidly
+changing attitude, the two display banks, and camera/panel shake. We now
+have a proven aircraft-angle → attitude matrix → projected sea polygon →
+integer-scaled instrument polygon path; the standalone angle-based model
+above predates that discovery and is intentionally not the game's authoritative
+input formula. In particular, do not substitute the host-frame player record
+or the level-only displacement for the original code-frame polygon latch.
 
 ## Integrating the replacement
 
-1. Use the headless scripted replay and verified `$44c42` routine entry and
-   `$44d08`/`$451ac` writer sites to capture complete per-bank globe updates.
-   Treat `$44160`/`$283d2` as the screen-bank selector only; trace the actual
-   attitude-image producer before the `$213a8` call and compare it
-   against +102/+106 for pitch/roll, including inverted flight and frames
-   between controls and their visibly updated boundary.
+1. Use the verified `$42f62` projected polygon, `$44b36` copy and
+   `$44dba`/`$44dcc` integer coordinate transforms as the candidate native
+   geometry producer. Match its fill against the intermediate bitmap and
+   final `$451ac` mask for level, banked and inverted flight. Keep
+   `$44160`/`$283d2` as **screen-bank selectors only**, and account for the
+   measured code-frame to display-frame latency.
 2. Compare normal and `--hide-amiga-region globe` screenshots through
    `tests/check_gl_scanout_region.sh ORIGINAL.adf globe`.
 3. For the active bank, require a verified cockpit-frame latch and complete

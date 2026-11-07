@@ -25,6 +25,23 @@ constexpr int kTop = 163, kBottom = 184;
 constexpr double kCenterX = 209.0, kLevelHorizonY = 173.0;
 constexpr int kAngleTurn = 28800;  // Original game's angle units per circle.
 
+// The original $44da4 raster helper does not take a bank angle directly.
+// It reads the *projected screen-space sky polygon* copied to $60726 by
+// $44b36 after the cockpit $42f62 attitude-matrix projection. Each (x,y)
+// word is transformed for the compact cockpit instrument with unsigned MULU,
+// LSR.L #8, ADDI.W and a signed per-frame screen offset. This gives native
+// rendering a deterministic geometry input without guessing a roll sign,
+// bank-angle latch or vertical pixels-per-degree conversion.
+struct ProjectedPoint { int16_t x, y; };
+
+constexpr ProjectedPoint project_sky_point(uint16_t x, uint16_t y,
+                                          int16_t offset_x, int16_t offset_y) {
+  return {
+    int16_t(uint16_t((uint32_t(x) * 24u) >> 8) + uint16_t(193 + offset_x)),
+    int16_t(uint16_t((uint32_t(y) * 31u) >> 8) + uint16_t(162 + offset_y)),
+  };
+}
+
 constexpr bool within_globe(int x, int y) {
   return x >= kLeft && x < kRight && y >= kTop && y < kBottom;
 }
