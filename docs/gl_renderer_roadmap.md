@@ -431,6 +431,20 @@ before committing. Note limitations explicitly rather than masking them.
   updates and reuses; `FA18_GL_PRESENT_CACHE_REFERENCE=1` forces the old
   every-presentation update for comparison. Use
   `tests/check_gl_present_cache.sh` for flight/Pause GPU pixel and RAM parity.
+- [x] Keep the land/water vertex stream in its own GL buffer. Its exact
+  camera-relative coordinates, altitude culling and detail flag form a
+  reuse key; changing the view rotation or framebuffer size alone does not
+  rebuild geometry. Island stencil toggles now rebind the same buffer rather
+  than uploading it twice. `FA18_GL_GROUND_CACHE_REFERENCE=1` forces the
+  previous rebuild cadence, while `tests/check_gl_ground_cache.sh` compares
+  the resulting GPU output and emulated RAM. Terrain upload elimination on
+  stationary poses is verified structurally; hardware speedup is not yet
+  measured. A permanently static water mesh would additionally need a
+  precision-safe world-space origin and an altitude-LOD strategy.
+- [x] Reuse the high-refresh primitive interpolation scratch vector across
+  successive presentations rather than allocating a new complete vertex
+  stream each time. The interpolation formula and object pairing stay the
+  same; `FA18_GL_INTERP_BUFFER_DEBUG=1` records capacity growth and reuse.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -13,6 +13,7 @@
 #include "native/gl_renderer.hpp"
 #include "native/gl_palette.hpp"
 #include "native/gl_line_quad.hpp"
+#include "native/gl_ground_cache.hpp"
 #include "native/remaster.hpp"
 
 #include "native/runtime.hpp"
@@ -759,6 +760,7 @@ struct State {
   bool deferred_scene_readback = false;
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
+  GLuint ground_vbo = 0; // retains the camera-relative land/water geometry
   GLuint quad_vbo = 0;  // immutable fullscreen triangle pair, not the scene stream
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
   PresentUniforms present_u;
@@ -789,6 +791,7 @@ struct State {
   std::vector<float> verts; // view space, world units
   std::vector<Prim> prims;
   std::vector<float> previous_verts;
+  std::vector<float> interpolated_verts; // reusable high-refresh CPU scratch
   std::vector<Prim> previous_prims;
   uint64_t matched_serial = 0;
   std::vector<int> matched_previous_first; // one previous vertex offset per current primitive, or -1
@@ -797,7 +800,8 @@ struct State {
   // terrain: triangulated water, absolute world coordinates
   struct WaterTri { double x[3], z[3]; int32_t min_alt; };
   std::vector<WaterTri> water;
-  std::vector<float> ground;  // per frame
+  std::vector<float> ground;
+  std::optional<GroundCacheKey> ground_key;
   uint64_t frames = 0;
   bool debug = false;
 };
@@ -808,6 +812,13 @@ void bind_present_quad() {
   gl.BindBuffer(GL_ARRAY_BUFFER, st.quad_vbo);
   gl.DisableVertexAttribArray(1);
   gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+}
+
+void bind_ground() {
+  gl.BindBuffer(GL_ARRAY_BUFFER, st.ground_vbo);
+  gl.DisableVertexAttribArray(1);
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
   gl.EnableVertexAttribArray(0);
 }
 
@@ -1121,6 +1132,7 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.u_coloured = gl.GetUniformLocation(st.prog, "u_coloured");
   st.u_water_class = gl.GetUniformLocation(st.prog, "u_water_class");
   gl.GenBuffers(1, &st.vbo);
+  gl.GenBuffers(1, &st.ground_vbo);
   // The scene renderer streams vertices through st.vbo on every capture.
   // Sharing that buffer with the presenter's quad previously forced a new
   // BufferData even on otherwise unchanged intermediate presentations.
@@ -1444,10 +1456,22 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   const bool interpolate = st.has_previous && alpha < 1.f;
   size_t matched = 0;
   const std::vector<float>* verts = &st.verts;
-  std::vector<float> interpolated;
   Camera cam = st.camera;
   if (interpolate) {
-    interpolated = st.verts;
+    // A new vector here allocated a full vertex stream on every extra
+    // presentation. Keep its capacity across subframes, while retaining
+    // the original captured vertices untouched for the next interpolation.
+    const size_t old_capacity = st.interpolated_verts.capacity();
+    st.interpolated_verts = st.verts;
+    if (std::getenv("FA18_GL_INTERP_BUFFER_DEBUG")) {
+      static uint64_t reused = 0, grown = 0;
+      if (st.interpolated_verts.capacity() > old_capacity) ++grown;
+      else ++reused;
+      if (grown + reused <= 4 || (grown + reused) % 240 == 0)
+        std::fprintf(stderr, "gl: interpolation scratch grown=%llu reused=%llu vertices=%zu\n",
+                     (unsigned long long)grown, (unsigned long long)reused,
+                     st.verts.size() / 3);
+    }
     // Cache the correspondence for the entire capture; high-FPS redraws
     // only need to blend the vertex arrays, not re-match the object list.
     if (st.matched_serial != st.serial) build_primitive_matches();
@@ -1458,12 +1482,12 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
       const size_t n = size_t(p.count) * 3;
       for (size_t i = 0; i < n; ++i) {
         const size_t at = size_t(p.first) * 3 + i;
-        interpolated[at] = st.previous_verts[size_t(old_first) * 3 + i] +
+        st.interpolated_verts[at] = st.previous_verts[size_t(old_first) * 3 + i] +
                            alpha * (st.verts[at] - st.previous_verts[size_t(old_first) * 3 + i]);
       }
       ++matched;
     }
-    verts = &interpolated;
+    verts = &st.interpolated_verts;
     for (int i = 0; i < 9; ++i)
       cam.view[i] = st.previous_camera.view[i] + alpha * (st.camera.view[i] - st.previous_camera.view[i]);
     cam.x = st.previous_camera.x + alpha * (st.camera.x - st.previous_camera.x);
@@ -1508,23 +1532,42 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   // ---- ground: land plane and water in world space ----
   // Camera = cell origin - $5ad5a (the frame of the object positions).
   std::vector<float>& g = st.ground;
-  g.clear();
-  const double R = std::ldexp(1.0, 31);
-  const double quad[6][2] = {{-R, -R}, {R, -R}, {R, R}, {-R, -R}, {R, R}, {-R, R}};
-  for (auto& q : quad) {
-    g.push_back(float(q[0]));
-    g.push_back(float(cam.ground_y));
-    g.push_back(float(q[1]));
-  }
-  for (const State::WaterTri& t : st.water) {
-    if (t.min_alt > cam.alt && !native::mach().full_detail) continue;
-    for (int i = 0; i < 3; ++i) {
-      g.push_back(float(t.x[i] - cam.x));
+  const bool full_detail = native::mach().full_detail;
+  const GroundCacheKey ground_key{cam.x, cam.z, cam.ground_y, cam.alt, full_detail};
+  const bool ground_reused = st.ground_key == ground_key &&
+                             !std::getenv("FA18_GL_GROUND_CACHE_REFERENCE");
+  if (!ground_reused) {
+    g.clear();
+    const double R = std::ldexp(1.0, 31);
+    const double quad[6][2] = {{-R, -R}, {R, -R}, {R, R}, {-R, -R}, {R, R}, {-R, R}};
+    for (auto& q : quad) {
+      g.push_back(float(q[0]));
       g.push_back(float(cam.ground_y));
-      g.push_back(float(t.z[i] - cam.z));
+      g.push_back(float(q[1]));
     }
+    for (const State::WaterTri& t : st.water) {
+      if (t.min_alt > cam.alt && !full_detail) continue;
+      for (int i = 0; i < 3; ++i) {
+        g.push_back(float(t.x[i] - cam.x));
+        g.push_back(float(cam.ground_y));
+        g.push_back(float(t.z[i] - cam.z));
+      }
+    }
+    gl.BindBuffer(GL_ARRAY_BUFFER, st.ground_vbo);
+    gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(g.size() * sizeof(float)),
+                  g.data(), GL_STREAM_DRAW);
+    st.ground_key = ground_key;
   }
-  upload(g);
+  bind_ground();
+  if (std::getenv("FA18_GL_GROUND_CACHE_DEBUG")) {
+    static uint64_t uploads = 0, reuses = 0;
+    if (ground_reused) ++reuses;
+    else ++uploads;
+    if (uploads + reuses <= 4 || (uploads + reuses) % 240 == 0)
+      std::fprintf(stderr, "gl: ground stream uploaded=%llu reused=%llu triangles=%zu\n",
+                   (unsigned long long)uploads, (unsigned long long)reuses,
+                   g.size() / 9);
+  }
   set_view(cam.view);
   set_param(rows, 1, 0, 0);
   // stencil bit 0 = water: the water tiles set it, flat patches whose
@@ -1557,7 +1600,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
     set_view(ident);
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_INVERT);
     gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(toggle_verts.size() / 3));
-    upload(g);
+    bind_ground();
     set_view(cam.view);
   }
   gl.ColorMask(1, 0, 0, 0);

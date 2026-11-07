@@ -111,6 +111,25 @@ visual oracle. `tests/check_gl_present_cache.sh` compares direct GPU pixels
 and emulated RAM through flight and Pause at 120 Hz. These avoid unnecessary
 driver calls; no hardware FPS gain is claimed without on-device profiling.
 
+Ground/water triangles now use a separate vertex buffer instead of sharing
+the changing-object stream. The terrain buffer is rebuilt only when camera
+translation, ground height, the altitude LOD threshold or full-detail mode
+changes; rotation, output resolution and stationary interpolated presents
+reuse the exact previous vertices. The island stencil pass also rebinds the
+buffer instead of uploading the same ground a second time. This retains the
+original double-precision camera-relative coordinates before converting to
+float, avoiding precision changes in the far terrain. Set
+`FA18_GL_GROUND_CACHE_DEBUG=1` for upload/reuse counters, or
+`FA18_GL_GROUND_CACHE_REFERENCE=1` to force a terrain rebuild each render.
+`tests/check_gl_ground_cache.sh` compares flight/Pause GPU pixels and RAM to
+that reference; real-GPU timing remains to be measured.
+
+Interpolated object vertices also reuse one CPU scratch vector instead of
+allocating a fresh copy of the capture for every extra presentation. Its
+capacity grows only when a larger primitive capture requires it;
+`FA18_GL_INTERP_BUFFER_DEBUG=1` reports growth and reuse. This changes no
+interpolation matching or numerical calculation.
+
 Full-detail baseline on the bundled free1 replay (3,700 deterministic,
 fast-forwarded frames, native mode, offscreen Mesa/llvmpipe): original
 320x200 took **7.5 s**, software `--hires 3` took **19.1 s**, and
