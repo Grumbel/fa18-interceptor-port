@@ -17,6 +17,22 @@ int main() {
   // Level attitude matches the original ILBM's blue-above/red-below split.
   assert(palette_index(kBluePen, 208, 170, 0, 0) == kBluePen);
   assert(palette_index(kRedPen, 208, 175, 0, 0) == kRedPen);
+  assert(kRedPen % 16 == kFlightRedPen && kBluePen % 16 == kFlightBluePen);
+  assert(flight_palette_index(kBluePen, 208, 170, 0, 0) == 5);
+  assert(flight_palette_index(kRedPen, 208, 175, 0, 0) == 1);
+  assert(flight_palette_index(3, 208, 175, 1, 0) == 3);
+  // Recorded 68000 flight replay: boundaries at rows 173, 182 and 166,
+  // each relative to the same original fill mask on two screen banks.
+  for (int y = 163; y < 184; ++y) {
+    assert(flight_palette_index(kRedPen, 209, y, 9, 0) ==
+           (y < 182 ? kFlightBluePen : kFlightRedPen));
+    assert(flight_palette_index(kBluePen, 209, y, -7, 0) ==
+           (y < 166 ? kFlightBluePen : kFlightRedPen));
+  }
+  // A separate level-pitch / bank-only replay at +106=2216 was captured
+  // with the boundary tilted about -20 degrees and shifted one source px.
+  assert(flight_palette_index(kRedPen, 200, 171, 1, -1600) == kFlightRedPen);
+  assert(flight_palette_index(kBluePen, 220, 176, 1, -1600) == kFlightBluePen);
   // Moving the boundary *up* makes some former sky become ground.
   assert(palette_index(kBluePen, 208, 170, -4, 0) == kRedPen);
   // A quarter-turn rotates the split into a vertical left/right boundary.

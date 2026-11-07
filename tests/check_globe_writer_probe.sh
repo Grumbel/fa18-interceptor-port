@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Headless original 68000 replay. No SDL/OpenGL/CMake/Nix dependencies.
+set -euo pipefail
+if [ "$#" -ne 1 ]; then
+  echo 'usage: tests/check_globe_writer_probe.sh ORIGINAL.adf' >&2
+  exit 2
+fi
+repo=$(cd "$(dirname "$0")/.." && pwd)
+tmp=$(mktemp -d)
+trap 'rm -f "$tmp"/probe "$tmp"/replay.log "$tmp"/roll.log; rmdir "$tmp"' EXIT
+FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_PROBE_BIN="$tmp/probe" \
+  bash "$repo/tools/run_globe_writer_probe.sh" "$1" \
+    "$repo/tests/data/cockpit_radar_maneuver.txt" 4700 100 > "$tmp/replay.log" 2>&1
+# Reuse the compiled no-SDL probe; isolate bank while pitch is zero.
+FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_MAP_FRAMES=3500,4480,4500,4700 \
+  "$tmp/probe" "$1" \
+    "$repo/tests/data/cockpit_globe_roll.txt" 4700 20 > "$tmp/roll.log" 2>&1
+python3 -B "$repo/tests/check_globe_writer_probe.py" "$1" \
+  "$tmp/replay.log" "$tmp/roll.log"

@@ -1,0 +1,16 @@
+# Same deterministic flight entry as cockpit_radar_maneuver, but isolate
+# sideways joystick before attempting pitch. Used by the headless original
+# 68000 probe to investigate the globe's bank-angle mapping.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3510 key 59
+3570 key 59
+4420 joy l
+4700 joy
+4760 joy r
+5060 joy

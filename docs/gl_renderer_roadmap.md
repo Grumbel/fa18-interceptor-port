@@ -564,6 +564,15 @@ before committing. Note limitations explicitly rather than masking them.
   its level pose and bounds (`docs/cockpit_globe.md`). This is a preparatory
   library component only; capturing the real moving writer, calibrating its
   input angles, and wiring it into native GL remain outstanding.
+- [x] Run the original 68000 in a headless script replay independently of
+  SDL/CMake/Nix, confirm live four-plane copper pens 5/1 instead of the ADF's
+  five-plane 21/17, and validate three positions of the moving red/blue
+  boundary against **all 358 original fill cells**. Original writer starts
+  `$44d08` and `$451ac` both update plane 2 on both cockpit screen banks.
+  `tests/check_globe_writer_probe.sh ORIGINAL.adf` is an end-to-end original
+  program check, including a separate bank-only replay whose -20-degree
+  native boundary matches all 358 pixels at two rolled poses. Full
+  input-angle calibration and GL integration remain.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

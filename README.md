@@ -233,7 +233,10 @@ selected at startup because the visible window needs an OpenGL context.
   any renderer yet; they make missing original-image dependencies easier
   to locate without changing what the game writes.
   An ADF-backed prototype for the red/blue moving globe is documented in
-  `docs/cockpit_globe.md`; its geometry is not yet connected to the renderer.
+  `docs/cockpit_globe.md`. The original 68000 can now replay the changing
+  globe headlessly (`tests/check_globe_writer_probe.sh ORIGINAL.adf`), proving
+  the active four-plane pen mapping and three exact boundary positions. The
+  new geometry is not yet connected to the renderer.
   **Controls >** contains analog-stick steering and the controller/keyboard
   reference; **Extras >** contains Mesh Viewer and text pacing. The main
   menu retains Resume, Save/Load states, Send ESC and Quit. Press Esc/B to

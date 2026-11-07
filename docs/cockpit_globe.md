@@ -1,4 +1,4 @@
-# Moving cockpit globe: first native geometry model
+# Moving cockpit globe: source geometry and original flight replay
 
 The lower `pix/inst5` image contains the aircraft's small blue/red attitude
 globe. It is **not** safe to mark the whole surrounding panel as static.
@@ -19,8 +19,73 @@ The full coloured mask is 358 cells (not a filled rectangle), and the level
 horizon crosses original screen row 173. Source indices outside these two
 fills include the bezel, ticks and surrounding instrument markings. Those
 must not be overwritten by a naive red/blue rectangle or a black-key mask.
-The live copper palette still controls the actual on-screen colour for pens
-17 and 21; the ILBM CMAP is only an asset-level reference.
+The ILBM has **five** bitplanes, but the original cockpit flight uses a
+**four-plane** display. As a result the ADF's 17 (red) and 21 (blue) become
+live palette indices **1** and **5**, respectively. Their observed original
+flight copper RGB values in the headless replay were `#880000` and `#444477`
+on row 170; neither equals the original ILBM's CMAP entry. Always use the
+active **copper row and displayed bank** for colours.
+
+## Confirmed from a full original-code replay
+
+There is now a no-SDL/no-GL way to run the original 68000 interpreter and
+inspect its actual double-buffered cockpit output:
+
+```sh
+bash tools/run_globe_writer_probe.sh ORIGINAL.adf \
+  tests/data/cockpit_radar_maneuver.txt 4700 100
+# Also check source-art stencil, live pen remapping, moving horizons, and
+# original BLTSIZE writer attribution in both original screen banks:
+bash tests/check_globe_writer_probe.sh ORIGINAL.adf
+```
+
+The instrument's fill is dynamically recoloured **inside the same ADF
+silhouette**, preserving its ticks, bezel and uncoloured marks. With the
+script above, the interpreter displays the following poses:
+
+| Frame | Player record +102 (wrapped angle) | First red row | Compared with source |
+| ---: | ---: | ---: | --- |
+| 3500 | 0 | 173 | all 358 original fill cells match |
+| 4500 | 25376 (−42.8°) | 182 | boundary offset +9 exactly matches all 358 |
+| 4700 | 2072 (+25.9°) | 166 | boundary offset −7 exactly matches all 358 |
+
+The displaced red/blue boundary is horizontal at those three points. The
+pixel comparison also confirms that all *non-fill* cells inside the 23×21
+bounds are unchanged by the manoeuvre. Intermediate flight includes bank
+inversions (`+106 = 14400`), so the horizontal split is not a general
+replacement for full roll geometry.
+
+A second replay (`tests/data/cockpit_globe_roll.txt`) holds pitch at zero and
+rolls the aircraft left. At frame 4480 its +106 word is 1440 (18° in game
+units), and the observed fill fits a screen-space rotation of **−8°** with
+an offset of **+0.65 source pixels**. At frames 4500 and 4700 the +106 word
+is 2216 (27.7°); both masks fit **−20° rotation and +1 source-pixel
+offset**. All 358 fill cells match at all three measured rolled poses.
+The offsets and rotations are *measured display geometry*, not a verified
+conversion from the game's bank field. The regression script checks both
+flight manoeuvres and preserves the original non-fill marks.
+
+To fit additional poses from original pixel observations (the result prints
+both the selected angle and the range of exact pixel fits), run:
+
+```sh
+FA18_GLOBE_MAP_FRAMES=3500,4440,4480,4500,4700 \
+  bash tools/run_globe_writer_probe.sh ORIGINAL.adf \
+    tests/data/cockpit_globe_roll.txt 4750 20 > /tmp/globe-roll.log
+python3 tools/fit_globe_boundary.py ORIGINAL.adf /tmp/globe-roll.log
+```
+
+The fit is quantised by the original 320×200 screen. Intermediate values
+change more slowly than the player's bank word, and the exact-fit angle
+ranges overlap multiple nearby orientations. Neither these static samples
+nor the best-fit angle establish the original update latency or formula.
+
+The strongest live blitter sites attributed to this exact globe region are
+`$44d08` (plane 2, minterm `$22`) and `$451ac` (plane 2, minterm `$EC`),
+repeated from approximately frame 3478 in **both** original screen banks
+`$06a098` and `$0a5a18`. These are low-level blitter starts, not yet a
+proven high-level attitude-control routine. The earlier `$45350` bulk copy
+seen on frame 377 was not representative of the moving writer.
 
 ## Reusable geometry, not yet wired
 
@@ -31,12 +96,15 @@ It exposes a continuous signed boundary distance and coverage for anti-aliased
 native scaling. Only original **ADF** fill cells with indices 17 and 21 may
 be recoloured; any other pen and any source cell outside the globe's tight
 bounds passes through unchanged. Its `palette_index` function is a
-source-resolution reference, while `sky_coverage` is suitable for rendering
-smooth edges at arbitrary OpenGL output scales.
+source-resolution reference. `flight_palette_index` converts the fill to
+the live four-plane palette indices 1 and 5. `sky_coverage` is suitable
+for rendering smooth edges at arbitrary OpenGL output scales.
 
 The geometry's 0-degree, 0-offset split agrees with all 358 fill cells in
-the ADF level image. `tests/globe_model.cpp` verifies angle wrapping,
-bank rotation, pitch-offset direction, AA coverage and bezel/mark exclusion.
+the ADF level image **and the running interpreter at frame 3500**.
+`tests/globe_model.cpp` verifies angle wrapping, bank rotation, all three
+observed horizontal boundary locations, two samples from the measured
+rolled pose, AA coverage and bezel/mark exclusion.
 
 To view an experimental pose outside the game (no SDL/Nix required), run:
 
@@ -52,27 +120,29 @@ nonzero angle, the changed cells stay within the ADF's red/blue fill mask.
 The high-resolution boundary uses one-output-pixel coverage; this preview
 cannot establish the original instrument's pitch/bank mapping or timing.
 
-**Not yet established:** the relationship between the original instrument
-writer and the aircraft's actual pitch/bank values, its vertical scale in
-pixels per degree, roll sign and update timing across the two screen banks.
-The player aircraft record contains candidate attitude words at +102,+104,
-+106 (see `src/native/view.cpp`), but **no verified claim** is made that a
-particular word drives each part of this instrument. Likewise, the observed
-`BLTSIZE` write at PC `$45350` was a bulk screen-copy operation, not proof
-of the dynamic globe writer. This model is deliberately not used at runtime
-until those relationships can be checked against a scripted flight.
+**Not yet established:** the exact relationship between the original
+high-level instrument routine and the aircraft's actual pitch/bank values,
+its vertical scale in pixels per degree, roll sign and update timing across
+the two screen banks. In the recorded manoeuvre the player word at +102
+varies alongside vertical movement and +106 reaches 14400 during inversion,
+but this correlation does **not** prove the instrument's input formula or
+per-bank latch timing. See `src/native/view.cpp` for the player record's
+attitude usage. Do not hardwire those candidate fields or the level-only
+displacement into the GPU compositor until intermediate writer frames and
+the inverted attitude have been checked.
 
 ## Integrating the replacement
 
-1. Run the ADF-backed flight with `FA18_COCKPIT_CPU_TRACE=1` and
-   `FA18_COCKPIT_BLIT_TRACE=1`; distinguish moving writes from initial art
-   copies and track the displayed bank for every update.
+1. Use the headless scripted replay and verified `$44d08`/`$451ac`
+   writer sites to capture complete per-bank globe updates. Compare them
+   against +102/+106 for pitch/roll, including inverted flight and frames
+   between controls and their visibly updated boundary.
 2. Compare normal and `--hide-amiga-region globe` screenshots through
    `tests/check_gl_scanout_region.sh ORIGINAL.adf globe`.
 3. For the active bank, require a verified cockpit-frame latch and complete
    attitude update, then feed the ADF fill stencil and captured orientation
    into a native GL layer. Preserve the bezel and other original foreground
-   until their own writer captures are complete. Use pens 17/21 from the
+   until their own writer captures are complete. Use pens 1/5 from the
    **active copper row** instead of hardcoded RGB colours.
 4. Check flight/Pause transitions, bank flips, GL-direct vs CPU output,
    moving-angle source bounds and unchanged RAM hashes. Run the complete

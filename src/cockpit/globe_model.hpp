@@ -14,6 +14,11 @@ namespace cockpit::globe {
 // Other ink (ticks, outline, mechanical bezel) belongs to a separate layer.
 constexpr uint8_t kRedPen = 17;
 constexpr uint8_t kBluePen = 21;
+// During cockpit flight the displayed screen has four bitplanes: the ILBM's
+// fifth bit is discarded, so the live copper pens are 1 (red) and 5 (blue).
+// Verified against the original 68k replay, not inferred from the CMAP RGB.
+constexpr uint8_t kFlightRedPen = 1;
+constexpr uint8_t kFlightBluePen = 5;
 // Tight bounding box of pen 17/21 cells in pix/inst5, checked against the ADF.
 constexpr int kLeft = 198, kRight = 221;
 constexpr int kTop = 163, kBottom = 184;
@@ -65,6 +70,16 @@ inline uint8_t palette_index(uint8_t original_pen, int x, int y,
   if (!within_globe(x, y) || !is_fill_pen(original_pen)) return original_pen;
   return boundary_distance(double(x), double(y), offset_px, bank) < 0
       ? kBluePen : kRedPen;
+}
+
+// For a four-plane flight framebuffer. Use its actual per-row copper colour
+// for this index when painting the native layer; the ADF's RGB is only a
+// reference and is different from the game's live copper palette.
+inline uint8_t flight_palette_index(uint8_t original_pen, int x, int y,
+                                    double offset_px, int bank) {
+  if (!within_globe(x, y) || !is_fill_pen(original_pen)) return original_pen;
+  return boundary_distance(double(x), double(y), offset_px, bank) < 0
+      ? kFlightBluePen : kFlightRedPen;
 }
 
 }  // namespace cockpit::globe

@@ -254,12 +254,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   screenshot sensitivity and unchanged RAM hashes.
   The first isolated moving-globe geometry lives in
   `src/cockpit/globe_model.hpp` (outside the translation-only `src/native/`
-  directory). It is **not** called by the renderer yet; its ADF-backed
-  colour-mask evidence and exact remaining unknowns are in
-  `docs/cockpit_globe.md`. Validate its pure C++ tests and
-  `tests/check_globe_asset.py ORIGINAL.adf` before attempting a live
-  OpenGL integration. The normal full native gate still applies to any
-  later changes within `src/native/`.
+  directory). It is **not** called by the renderer yet. The original 68000
+  headless scripted replay proves a four-plane live colour index remap
+  (ADF red/blue 17/21 become copper pens 1/5) and three exact horizontal
+  positions of the 358-cell globe fill. Original `$44d08`/`$451ac` plane-2
+  blits operate on both screen banks. See `docs/cockpit_globe.md` for the
+  evidence and unresolved full-roll timing/angle mapping. Validate the pure
+  C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and
+  `tests/check_globe_writer_probe.sh ORIGINAL.adf` before live OpenGL
+  integration. The normal full native gate still applies to any later
+  changes within `src/native/`.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,
