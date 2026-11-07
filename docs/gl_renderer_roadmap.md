@@ -587,12 +587,17 @@ before committing. Note limitations explicitly rather than masking them.
   headless replay regression verify all 15 pointer/selector writes across
   five redraw frames. This resolves the A2 alternation without claiming
   that it encodes roll or pitch.
-- [x] Record transient vertical globe-stencil movement during a rolling
+- [x] Record transient vertical *whole-panel* movement during a rolling
   replay: at frames 4488 and 4492 the live fill moves -1/+1 source pixel,
   yielding 351 of 358 cells inside the 21-row capture. Source-mask
   alignment eliminates the apparent missing pixels, and a regression checks
-  the displaced shape and the red/blue boundary fit independently. The
-  native replacement still needs the original source of this displacement.
+  the displaced shape and the red/blue boundary fit independently. A second
+  independent match of 910 pixels *outside* the globe proves the rest of
+  the panel shifts -1/+1 with only two residual differences, then returns
+  to its previous position by frame 4496. A matching level-flight control
+  replay (zero pitch and roll) repeats the shifts, ruling out the turn as
+  their cause. The native compositor still needs to track the panel
+  displacement independently of globe geometry.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

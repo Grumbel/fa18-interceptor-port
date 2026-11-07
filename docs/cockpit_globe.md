@@ -89,17 +89,29 @@ at 4496 (`27.4°`). These are fitted displayed boundaries, **not** a
 validated input-output conversion.
 
 The same capture exposes a subtlety missed by the static geometry model:
-the **358-cell fill stencil itself moves vertically** at frames 4488 and
-4492. Relative to the original `pix/inst5` stencil, its displayed Y shift
+the **whole instrument panel moves vertically** at frames 4488 and 4492,
+including the globe's 358-cell fill stencil. Relative to the original
+`pix/inst5` stencil, the displayed globe's Y shift
 is respectively **-1** and **+1** screen pixel. The 21-row capture crops
 seven cells at the edge, leaving exactly **351 visible coloured cells**
 at each pose. After translation, both maps match the original stencil
 with zero missing or extra cells; their tilted red/blue boundaries also
 fit with zero classification errors. These cells were initially mistaken
 for foreground occlusions. The boundary fitter now detects and reports
-the stencil shift explicitly, and the headless test verifies both poses.
-This is a screen observation; the exact upstream cause of the shift
-(including any buffer-latch effects) is still unresolved.
+the stencil shift explicitly. A wider original-screen measurement proves
+that this is **not globe-specific geometry**: against frame 4484, 910
+non-globe cockpit pixels match at frame 4488 after a -1 pixel shift with
+only two differences (versus 321 differences without shifting). Frame
+4492 matches after +1 pixel with only two differences (versus 327); by
+4496 all 910 pixels again match with no shift or differences. Both
+observations are checked in the headless replay regression. A second
+control replay with the **same flight-entry commands but no roll input**
+shows the **same -1/+1/0 displacement** at those frames (with only two,
+two and zero mismatches). Its pitch and bank fields remain zero. Thus this
+panel movement does not arise from the rolling attitude maneuver; its exact
+upstream cause (including any buffer-latch effects) remains unresolved.
+Do not bake it into the globe-angle formula; the native cockpit's panel
+presentation must reproduce it separately.
 
 The strongest live blitter sites attributed to this exact globe region are
 `$44d08` (plane 2, minterm `$22`) and `$451ac` (plane 2, minterm `$EC`),
@@ -141,6 +153,11 @@ writes to guest memory.
 Use `FA18_GLOBE_SOURCE_WATCH=4420:4500:128` to trace CPU/HLE writes to the
 adjacent source-bank descriptor range `$5a960`–`$5a9cf`. This read-only bus
 observer records the original instruction PC, address, width and new bytes.
+Use `FA18_GLOBE_PANEL_ANCHOR=4484` with
+`FA18_GLOBE_MAP_FRAMES=4484,4488,4492,4496` to compare the 910 non-globe
+pixels near the instrument to a fixed source frame, checking row shifts
+from -2 to +2. The probe reports aligned and unaligned difference counts;
+it does not alter the game or the rendered frame.
 
 ## Reusable geometry, not yet wired
 
@@ -160,7 +177,7 @@ the ADF level image **and the running interpreter at frame 3500**.
 `tests/globe_model.cpp` verifies angle wrapping, bank rotation, all three
 observed horizontal boundary locations, two samples from the measured
 rolled pose, AA coverage and bezel/mark exclusion. The pure geometry model
-does not yet translate the entire fill stencil as seen at frames 4488/4492.
+deliberately does not implement the **whole-panel** movement at 4488/4492.
 
 To view an experimental pose outside the game (no SDL/Nix required), run:
 
@@ -201,7 +218,9 @@ checked.
 3. For the active bank, require a verified cockpit-frame latch and complete
    attitude update, then feed the ADF fill stencil and captured orientation
    into a native GL layer. Preserve the bezel and other original foreground
-   until their own writer captures are complete. Use pens 1/5 from the
+   until their own writer captures are complete. Keep the original panel
+   movement distinct from the globe's changing red/blue horizon; use pens
+   1/5 from the
    **active copper row** instead of hardcoded RGB colours.
 4. Check flight/Pause transitions, bank flips, GL-direct vs CPU output,
    moving-angle source bounds and unchanged RAM hashes. Run the complete

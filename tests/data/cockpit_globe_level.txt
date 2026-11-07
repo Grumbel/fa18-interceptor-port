@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Ingo Ruhnke <grumbel@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Control replay for cockpit_globe_roll.txt: identical flight entry and
+# F-key setup, without the left-joystick roll beginning at frame 4420.
+900 key space
+1300 key return
+1600 key return
+1900 key space
+2200 key 2
+2650 key 1
+3000 key 1
+3510 key 59
+3570 key 59

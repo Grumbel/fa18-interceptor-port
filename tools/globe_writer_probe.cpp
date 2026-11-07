@@ -76,6 +76,9 @@ struct ProbeHost final : amiga::Host {
   std::array<uint8_t, 41 * 48> previous{};
   bool have_previous = false;
   unsigned changed_samples = 0;
+  int panel_anchor_frame = -1;
+  std::array<uint8_t, 41 * 48> panel_anchor{};
+  bool have_panel_anchor = false;
 
   void frame(const uint32_t*) override {
     const int frame = int(machine->frame_count());
@@ -132,6 +135,41 @@ struct ProbeHost final : amiga::Host {
         }
         have_previous = true;
         changed_samples += changed != 0;
+        if (frame == panel_anchor_frame) {
+          panel_anchor = previous;
+          have_panel_anchor = true;
+        } else if (have_panel_anchor && wants_map) {
+          // A moving globe mask may actually be the entire original panel
+          // moving. Compare *non-globe* pixels to a captured static bank,
+          // allowing a +/-2 row displacement. Exclude the changing sphere
+          // and a two-pixel guard, while keeping the sample count fixed.
+          int best_dy = 0, best_errors = 0x7fffffff, base_errors = -1;
+          int samples = 0;
+          for (int dy = -2; dy <= 2; ++dy) {
+            int errors = 0, count = 0;
+            for (int y = 149; y <= 190; ++y) {
+              for (int x = 189; x < 230; ++x) {
+                if (x >= 195 && x <= 223 && y >= 160 && y <= 187)
+                  continue;
+                const int local_x = x - 189;
+                const uint8_t expected = panel_anchor[(y - 146) * 41 + local_x];
+                const uint8_t observed = pixels[(y + dy) * amiga::FB_W + x];
+                errors += observed != expected;
+                ++count;
+              }
+            }
+            if (dy == 0) base_errors = errors;
+            if (errors < best_errors) {
+              best_errors = errors;
+              best_dy = dy;
+              samples = count;
+            }
+          }
+          std::printf("globe-panel-alignment: frame=%d anchor=%d shift-y=%+d "
+                      "errors=%d baseline-errors=%d samples=%d\n",
+                      frame, panel_anchor_frame, best_dy, best_errors,
+                      base_errors, samples);
+        }
         int horizon_row = -1;
         // Estimate the split only when enough original globe fill is visible.
         // For roll this majority-row estimate becomes ambiguous; raw pen
@@ -219,6 +257,8 @@ int main(int argc, char** argv) {
     host.events = read_script(argv[2]);
     host.limit = argc >= 4 ? std::stoi(argv[3]) : 6000;
     host.sample_every = argc >= 5 ? std::stoi(argv[4]) : 100;
+    if (const char* frame = std::getenv("FA18_GLOBE_PANEL_ANCHOR"))
+      host.panel_anchor_frame = std::stoi(frame);
     if (const char* selected = std::getenv("FA18_GLOBE_MAP_FRAMES")) {
       host.map_frames.clear();
       std::istringstream text(selected);

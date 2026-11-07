@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify headless 68000 flight globe against the actual pix/inst5 fill mask.
 
-Usage: python3 tests/check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log
+Usage: python3 tests/check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log
 Run REPLAY.log using tests/check_globe_writer_probe.sh, not a static fixture.
 """
 
@@ -26,8 +26,8 @@ def read_maps(log: str) -> dict[int, dict[int, str]]:
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
-        sys.exit("usage: check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log")
+    if len(sys.argv) != 5:
+        sys.exit("usage: check_globe_writer_probe.py ORIGINAL.adf REPLAY.log ROLL.log LEVEL.log")
     disk = Adf(sys.argv[1])
     entries = {p: h for p, h, size in disk.walk() if size is not None}
     width, height, source, _ = indexed_ilbm(disk.read_file(entries["pix/inst5"]))
@@ -36,6 +36,7 @@ def main() -> None:
     rows = read_maps(log)
     roll_log = Path(sys.argv[3]).read_text()
     roll_rows = read_maps(roll_log)
+    level_log = Path(sys.argv[4]).read_text()
 
     # In this deterministic replay the original game draws three horizontal
     # boundaries; no original bitmap or expected screenshot is checked in.
@@ -126,6 +127,26 @@ def main() -> None:
                          rf"missing=0 extra=0 fit-errors=0 ",
                          fitting, re.MULTILINE), (frame, fitting)
 
+    # The same +/-1 row displacement happens across the *surrounding panel*.
+    # Against frame 4484, 910 non-globe pixels in the panel region align
+    # almost perfectly after shifting, but hundreds disagree without it.
+    for frame, dy, max_errors, min_baseline in (
+        (4488, -1, 2, 300),
+        (4492, 1, 2, 300),
+        (4496, 0, 0, 0),
+    ):
+        for variant, sample_log in (("roll", roll_log), ("level", level_log)):
+            match = re.search(
+                rf"^globe-panel-alignment: frame={frame} anchor=4484 "
+                rf"shift-y={re.escape(f'{dy:+d}')} errors=(\d+) "
+                rf"baseline-errors=(\d+) samples=(\d+)$",
+                sample_log, re.MULTILINE)
+            assert match, (variant, frame, dy)
+            errors, baseline, samples = map(int, match.groups())
+            assert errors <= max_errors and baseline >= min_baseline and samples == 910, (variant, frame)
+    assert re.search(r"^globe-sample: frame=4488 .*a102=0 .*a106=0 ",
+                     level_log, re.MULTILINE), "level replay did not retain zero pitch/bank"
+
     # Active (not initialization-only) original blitter writes are present in
     # both displayed screen banks for this flight. These are low-level sites,
     # not yet identified as the high-level attitude-control routine.
@@ -173,7 +194,7 @@ def main() -> None:
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
-          "boundaries, moving stencil, both writer banks, selector "
+          "boundaries, level/roll panel shift, both writer banks, selector "
           "and 4-frame call chain")
 
 

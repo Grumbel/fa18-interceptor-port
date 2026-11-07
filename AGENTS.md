@@ -266,8 +266,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   selector toggles and `$4417c`/`$44182` pointer updates; these are **not**
   the producer of the moving attitude pattern.
   The rolling replay also proves a transient -1/+1 pixel shift of the
-  *entire* fill stencil at frames 4488/4492; the boundary-fitting tool
-  aligns these 351 visible cells rather than treating them as occlusions.
+  *entire cockpit panel* at frames 4488/4492; matching 910 surrounding
+  pixels independently confirms the globe's 351 visible cells move with
+  the panel. The boundary-fitting tool aligns the stencil rather than
+  treating it as occlusion or part of the globe angle mapping. Set
+  `FA18_GLOBE_PANEL_ANCHOR=4484` for this read-only panel alignment probe.
+  A level-flight control replay reproduces the shift with zero bank and
+  pitch, so it is not caused by the roll maneuver.
   See `docs/cockpit_globe.md` for the
   evidence and unresolved full-roll timing/angle mapping. Validate the pure
   C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and
