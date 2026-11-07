@@ -159,6 +159,67 @@ The actual scanout row key at frame 4480 is `$06bb28` (first bank
 viable capture entry.
 It does *not* identify the upstream roll/pitch-to-source-data calculation.
 
+### Separating the panel reset from the moving-boundary draw
+
+An additional read-only source-bank probe now compares the original **four
+bitplanes** at x=192..223, y=163..183 before every high-level cockpit
+routine in the 68000 game loop. It follows both buffer bases directly from
+the `$5a966` and `$5a976` pointer tables, so it does not conflate the
+displayed framebuffer with the current drawing bank. In the rolled replay:
+
+| Frame | Updated bank | After `$45368`, before `$455ba` | After `$44c42`, before `$474ac` |
+| ---: | --- | ---: | ---: |
+| 4480 | `$06a098` | 268 changed bits | 33 changed bits |
+| 4484 | `$0a5a18` | 282 changed bits | 35 changed bits |
+
+In the corresponding **zero-pitch, zero-bank** replay, the first operation
+still changes 254/270 bits, whereas the second changes only **one bit** at
+each frame. Consequently `$45368` performs a substantial base-panel rewrite
+regardless of roll, while the later `$44c42` pass is responsible for the
+extra angle-sensitive image changes. `$45368`'s four Amiga blitter starts
+appear within instructions `$453fc`–`$4540c`, before the other cockpit
+helpers run. Neither observation establishes the arithmetic that converts
+aircraft angles into the final boundary: `$44c42` remains a generic
+rectangle/blitter path with precomputed inputs.
+
+The same writer-entry probe resolves the apparent touchdown timing offset.
+At **game-code** frame 4480, `$44c42` already sees `$5ac10=-40`; at frame
+4484 it sees `+40`, then `0` at 4488. In **displayed** frames 4488, 4492,
+4496, the entire panel respectively moves `-1`, `+1`, `0` source rows. The
+displayed displacement thus trails its blitter input by two four-VBL redraw
+intervals in this scripted flight. This is a measured two-bank presentation
+schedule, not part of the globe's roll formula. The previously recorded
+`globe-view-sequence` lines show state at the *host's frame callback* and
+therefore lag the in-frame 68000 writer-entry trace.
+
+The rectangle-entry registers make the shift explicit: `$44c42` receives
+`D0=112` and `D2=2` throughout, while its `D1` destination Y moves
+**158 → 157 → 159 → 158** at code frames 4476/4480/4484/4488. That is
+exactly the signed forward offset divided by the 40-byte bitplane stride,
+and it is identical with or without roll. The verified `BLTSIZE=$0542`
+draws 21 rows × 2 words. A native replacement should apply this rectangle
+translation independently of the orientation-dependent red/blue split.
+
+To reproduce the non-mutating call-boundary comparison:
+
+```sh
+FA18_GLOBE_STAGE_TRACE=4472:4500:60 \
+  bash tools/run_globe_writer_probe.sh ORIGINAL.adf \
+    tests/data/cockpit_globe_roll.txt 4504 100
+# Optional, more verbose: dump source-bank R/B masks after each pass.
+FA18_GLOBE_STAGE_TRACE=4480:4480:30 FA18_GLOBE_STAGE_MAPS=1 \
+  bash tools/run_globe_writer_probe.sh ORIGINAL.adf \
+    tests/data/cockpit_globe_roll.txt 4484 100
+# For actual 68000 instruction boundaries within the panel reset:
+FA18_GLOBE_STAGE_TRACE=4480:4480:60 FA18_GLOBE_STAGE_INSNS=1 \
+  bash tools/run_globe_writer_probe.sh ORIGINAL.adf \
+    tests/data/cockpit_globe_roll.txt 4484 100
+```
+
+The automated check now compares the roll and no-roll bitplane deltas at
+these call boundaries and verifies the forward-offset-to-visible-shake
+latency. The trace reads chip RAM and never changes the guest drawing.
+
 The original **bank-selection code is now identified separately from the
 instrument pattern producer**. A RAM-write watch shows `$283d2` toggling
 word `$5a964` between 0 and 1 once per four frames. The selector routine

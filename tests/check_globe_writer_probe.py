@@ -233,11 +233,49 @@ def main() -> None:
         assert re.search(rf"^globe-sample: frame={frame} rowkey={screen} ",
                          roll_log, re.MULTILINE), frame
 
+    # In the original game_frame, $45368 draws the first instrument-panel
+    # layer, then $44c42 makes attitude-sensitive changes before $474ac.
+    # Compare *raw bitplane words* (four planes, both banks) at each entry:
+    # both replays have a large first-stage rewrite, but the later stage
+    # changes ~30+ globe bits with roll and at most one with zero bank/pitch.
+    # This isolates the dynamic draw path without assuming either helper is
+    # the still-unknown attitude/angle producer.
+    def stage_bits(trace: str, frame: int, after: str, before: str,
+                   active_bank: int) -> int:
+        match = re.search(
+            rf"^globe-stage: frame={frame} after={after} before={before} "
+            rf"bank0=0a5a18 bits0=(\d+) bank1=06a098 bits1=(\d+)$",
+            trace, re.MULTILINE)
+        assert match, (frame, after, before)
+        values = tuple(map(int, match.groups()))
+        assert values[1 - active_bank] == 0, (frame, values)
+        return values[active_bank]
+
+    for frame, active_bank in ((4480, 1), (4484, 0)):
+        for trace in (roll_log, level_log):
+            assert stage_bits(trace, frame, "045368", "0455ba", active_bank) >= 200
+        assert stage_bits(roll_log, frame, "044c42", "0474ac", active_bank) >= 20
+        assert stage_bits(level_log, frame, "044c42", "0474ac", active_bank) <= 2
+
+    # The source-correct four-step landing shake reaches $44c42 *before*
+    # those offsets appear in scanout. At 4480 the blitter reads -40; the
+    # panel's -1-row pose first appears on the 4488 displayed framebuffer.
+    # Similarly +40 at 4484 appears as +1 row at 4492; zero restores it at
+    # 4496. This is a per-buffer presentation delay, not globe roll motion.
+    for trace in (roll_log, level_log):
+        for frame, forward, dest_y in ((4476, "00000000", "0000009e"),
+                                       (4480, "ffffffd8", "0000009d"),
+                                       (4484, "00000028", "0000009f"),
+                                       (4488, "00000000", "0000009e")):
+            assert re.search(rf"^globe-writer-regs: frame={frame} pc=044c42 .*"
+                             rf"d0=00000070 d1={dest_y} d2=00000002 .*"
+                             rf"forward={forward} stack=", trace, re.MULTILINE), (frame, forward)
+
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
-          "boundaries, touchdown shake table, both writer banks, selector "
-          "and 4-frame call chain")
+          "boundaries, touchdown shake latency, source-stage isolation, "
+          "both writer banks, selector and 4-frame call chain")
 
 
 if __name__ == "__main__":

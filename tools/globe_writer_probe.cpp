@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -258,6 +259,95 @@ struct SourceWriteWatch {
   }
 };
 
+// Read-only snapshots around the original game_frame cockpit calls. The
+// low-level $44c42 rectangle blit copies an already-prepared panel, so its
+// BLTSIZE sites alone cannot identify the attitude-image producer. Compare
+// the two source banks *before* each higher-level draw call to locate the
+// routine that actually changes the 4-bit globe fill.
+struct GlobeStageWatch {
+  amiga::Machine* machine = nullptr;
+  int first = 0, last = 0, limit = 0, printed = 0;
+  bool instructions = false;
+  bool maps = false;
+  static constexpr int x0 = 192, x_bytes = 4, y0 = 163, height = 21;
+  static constexpr int planes = 4, banks = 2;
+  static constexpr size_t bytes = banks * planes * height * x_bytes;
+  std::array<uint8_t, bytes> previous{};
+  bool have_previous = false;
+  uint32_t previous_pc = 0;
+  int previous_frame = -1;
+
+  uint32_t read32(uint32_t addr) const {
+    const uint8_t* ram = machine->ram;
+    return (uint32_t(ram[addr]) << 24) | (uint32_t(ram[addr + 1]) << 16) |
+           (uint32_t(ram[addr + 2]) << 8) | ram[addr + 3];
+  }
+
+  void observe(uint32_t pc) {
+    const int frame = int(machine->frame_count());
+    if (frame < first || frame > last || printed >= limit) return;
+    std::array<uint8_t, bytes> now{};
+    std::array<uint32_t, banks> bases{};
+    for (int bank = 0; bank < banks; ++bank) {
+      const uint32_t table = bank ? 0x5a976u : 0x5a966u;
+      const uint32_t base = read32(table + 12) & 0x00ffffffu;
+      if (!base || base > amiga::RAM_SIZE - 32000) return;
+      bases[bank] = base;
+      for (int plane = 0; plane < planes; ++plane)
+        for (int y = 0; y < height; ++y)
+          for (int x = 0; x < x_bytes; ++x) {
+            const size_t i = (((size_t(bank) * planes + plane) * height + y) * x_bytes + x);
+            now[i] = machine->ram[base + uint32_t(plane) * 8000 +
+                                  uint32_t(y0 + y) * 40 + x0 / 8 + uint32_t(x)];
+          }
+    }
+    std::array<unsigned, banks> changed{};
+    if (have_previous)
+      for (size_t i = 0; i < bytes; ++i)
+        changed[i / (bytes / banks)] += std::popcount(unsigned(now[i] ^ previous[i]));
+    // Record the first entry of every observed frame and any changed bank.
+    // The change belongs to instructions *between* the previous hook and
+    // this one, not necessarily to the present call.
+    if (!have_previous || frame != previous_frame || changed[0] || changed[1]) {
+      std::printf("globe-stage: frame=%d after=%06x before=%06x "
+                  "bank0=%06x bits0=%u bank1=%06x bits1=%u",
+                  frame, previous_pc, pc, bases[0], changed[0], bases[1], changed[1]);
+      if (instructions) {
+        const auto& cpu = machine->cpu;
+        std::printf(" d0=%08x d1=%08x d2=%08x d3=%08x "
+                    "a0=%06x a1=%06x a2=%06x a3=%06x",
+                    cpu.d[0], cpu.d[1], cpu.d[2], cpu.d[3],
+                    cpu.a[0], cpu.a[1], cpu.a[2], cpu.a[3]);
+      }
+      std::putchar('\n');
+      ++printed;
+    }
+    previous = now;
+    have_previous = true;
+    previous_pc = pc;
+    previous_frame = frame;
+    if (maps && (pc == 0x455bau || pc == 0x44c42u || pc == 0x474acu)) {
+      // Dump the original four-plane pen map at each stage so the dynamic
+      // image can be compared with the pristine ADF mask after resets.
+      for (int bank = 0; bank < banks; ++bank) {
+        for (int y = 163; y < 184; ++y) {
+          std::printf("globe-stage-map: frame=%d before=%06x bank=%d y=%d ",
+                      frame, pc, bank, y);
+          for (int x = 198; x <= 220; ++x) {
+            const uint32_t off = uint32_t(y) * 40 + uint32_t(x / 8);
+            uint8_t pen = 0;
+            for (int p = 0; p < planes; ++p)
+              pen |= uint8_t(((machine->ram[bases[bank] + uint32_t(p) * 8000 + off]
+                                >> (7 - (x & 7))) & 1) << p);
+            std::putchar(pen == 1 ? 'R' : pen == 5 ? 'B' : '.');
+          }
+          std::putchar('\n');
+        }
+      }
+    }
+  }
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -304,6 +394,35 @@ int main(int argc, char** argv) {
       machine.ram_access_context = &source_watch;
       machine.ram_access_observer = &SourceWriteWatch::observe;
     }
+    // FA18_GLOBE_STAGE_TRACE=4472:4496:160 (first:last:max snapshots).
+    // Compare live *original* source-bank pixels between the cockpit call
+    // boundaries, without tracing every 68000 instruction or touching RAM.
+    GlobeStageWatch stage_watch;
+    if (const char* config = std::getenv("FA18_GLOBE_STAGE_TRACE")) {
+      if (std::sscanf(config, "%d:%d:%d", &stage_watch.first,
+                      &stage_watch.last, &stage_watch.limit) != 3 ||
+          stage_watch.first < 0 || stage_watch.last < stage_watch.first ||
+          stage_watch.limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_STAGE_TRACE=first:last:limit");
+      stage_watch.machine = &machine;
+      stage_watch.instructions = std::getenv("FA18_GLOBE_STAGE_INSNS") != nullptr;
+      stage_watch.maps = std::getenv("FA18_GLOBE_STAGE_MAPS") != nullptr;
+      for (uint32_t pc : {0x45368u, 0x455bau, 0x45e2au, 0x47ec0u,
+                          0x45d2eu, 0x45b7cu, 0x46abau, 0x46b50u,
+                          0x46d7cu, 0x46c1eu, 0x46d2eu, 0x4551cu,
+                          0x44c42u, 0x474acu, 0x45604u, 0x46dd6u,
+                          0x46e64u, 0x466d0u, 0x45938u, 0x46668u,
+                          0x46ef2u, 0x45760u}) {
+        machine.add_pc_hook(pc, [&, pc] { stage_watch.observe(pc); });
+      }
+      if (stage_watch.instructions) {
+        // Dense read-only instruction boundary probes, covering the
+        // candidate attitude producer. The hook only runs if the address
+        // is a real instruction PC, and is never installed in normal runs.
+        for (uint32_t pc = 0x4536au; pc < 0x454dcu; pc += 2)
+          machine.add_pc_hook(pc, [&, pc] { stage_watch.observe(pc); });
+      }
+    }
     // Read-only PC-entry snapshots locate the *callers* of the low-level
     // BLTSIZE writers. This is optional: the ordinary pixel replay doesn't
     // need per-instruction instrumentation or a heavyweight instruction log.
@@ -316,6 +435,11 @@ int main(int argc, char** argv) {
       int snapshots = 0;
       for (uint32_t pc : {0x44c42u, 0x45ce6u, 0x44d08u, 0x451acu}) {
         machine.add_pc_hook(pc, [&, pc] {
+          // Machine::add_pc_hook replaces an earlier hook at the same PC.
+          // Preserve the call-boundary capture when both diagnostics are
+          // enabled by invoking it from the register snapshot hook.
+          if (pc == 0x44c42 && std::getenv("FA18_GLOBE_STAGE_TRACE"))
+            stage_watch.observe(pc);
           const int frame = int(machine.frame_count());
           if (frame < first || frame > last || snapshots >= limit) return;
           const auto& cpu = machine.cpu;

@@ -603,6 +603,19 @@ before committing. Note limitations explicitly rather than masking them.
   The test verifies the binary table and original runtime values. The
   native compositor still needs to track this camera motion independently
   of globe geometry and respect the per-bank presentation timing.
+- [x] Separate the original lower-panel base rewrite from the rolling
+  attitude-boundary draw by sampling both *live four-plane source banks* at
+  each 68000 cockpit call boundary. `$45368` updates 268/282 panel bits in
+  the rolled 4480/4484 frames (254/270 even without roll); `$44c42` then
+  makes an additional 33/35 roll-sensitive changes against only one per
+  no-roll frame. Exact source masks are inspectable in the probe, which
+  also records the instruction-level four-blitter sequence in `$45368`.
+  The touchdown camera's -40/+40/0 blitter inputs at code frames 4480/
+  4484/4488 move the `$44c42` destination `D1` from its normal 158 to
+  157/159/158, and reach the displayed panel at frames 4488/4492/4496. A replay
+  regression checks both buffer phases. Neither stage reveals the upstream
+  original angle calculation yet; leave the globe's native-GL integration
+  gated on that producer.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

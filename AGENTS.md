@@ -279,7 +279,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   The four mode tables at `$39ade` are recovered and binary-verified:
   modes 1/3 use [-1,+1,0,0], modes 2/4 their inverse. In this replay it
   is a **touchdown shake**, not an engine compressor stall. This camera
-  motion must be kept separate from the globe's attitude geometry.
+  motion must be kept separate from the globe's attitude geometry. A
+  read-only two-bank source-bitplane trace isolates `$45368`'s 254–282-bit
+  lower-panel base rewrite from `$44c42`'s roll-sensitive 33–35-bit draw
+  (one bit when level). `$44c42` reads the -40/+40/0 shake values at code
+  frames 4480/4484/4488; the displayed panel moves -1/+1/0 rows two redraw
+  intervals later at 4488/4492/4496. Set
+  `FA18_GLOBE_STAGE_TRACE=4472:4500:60` for read-only call-boundary counts,
+  or add `FA18_GLOBE_STAGE_INSNS=1` for the `$45368` instruction trace and
+  `FA18_GLOBE_STAGE_MAPS=1` for both source-bank pen maps. The actual
+  attitude-angle producer is **still unknown**.
   See `docs/cockpit_globe.md` for the
   evidence and unresolved full-roll timing/angle mapping. Validate the pure
   C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and
