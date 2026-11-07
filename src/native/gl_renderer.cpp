@@ -14,6 +14,7 @@
 #include "native/gl_palette.hpp"
 #include "native/gl_line_quad.hpp"
 #include "native/gl_ground_cache.hpp"
+#include "native/gl_scene_batch_cache.hpp"
 #include "native/remaster.hpp"
 
 #include "native/runtime.hpp"
@@ -761,6 +762,7 @@ struct State {
   std::function<void()> make_current;
   GLuint prog = 0, fbo = 0, colour_rb = 0, depth_rb = 0, stencil_rb = 0, vbo = 0;
   GLuint ground_vbo = 0; // retains the camera-relative land/water geometry
+  GLuint toggle_vbo = 0, flat_vbo = 0, object_vbo = 0;
   GLuint quad_vbo = 0;  // immutable fullscreen triangle pair, not the scene stream
   GLuint present_prog = 0, scene_tex = 0, overlay_tex = 0, palette_tex = 0, rows_tex = 0;
   PresentUniforms present_u;
@@ -802,6 +804,12 @@ struct State {
   std::vector<WaterTri> water;
   std::vector<float> ground;
   std::optional<GroundCacheKey> ground_key;
+  std::optional<SceneBatchCacheKey> scene_batch_key;
+  std::vector<float> toggle_batch, flat_batch, object_batch;
+  // Source float offsets preserve each output vertex's original position in
+  // the captured stream; only XYZ changes across interpolated presentations.
+  std::vector<size_t> toggle_sources, flat_sources, object_sources;
+  bool object_batch_triangles = true;
   uint64_t frames = 0;
   bool debug = false;
 };
@@ -820,6 +828,22 @@ void bind_ground() {
   gl.DisableVertexAttribArray(1);
   gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
   gl.EnableVertexAttribArray(0);
+}
+
+void bind_plain(GLuint buffer) {
+  gl.BindBuffer(GL_ARRAY_BUFFER, buffer);
+  gl.DisableVertexAttribArray(1);
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
+  gl.EnableVertexAttribArray(0);
+}
+
+void bind_styled(GLuint buffer) {
+  gl.BindBuffer(GL_ARRAY_BUFFER, buffer);
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 5 * sizeof(float), nullptr);
+  gl.VertexAttribPointer(1, 2, GL_FLOAT, 0, 5 * sizeof(float),
+                         reinterpret_cast<const void*>(3 * sizeof(float)));
+  gl.EnableVertexAttribArray(0);
+  gl.EnableVertexAttribArray(1);
 }
 
 // An original game tick may request a centre-size readback and a different
@@ -1133,6 +1157,10 @@ bool init(GetProc proc, std::function<void()> make_current, std::string& err) {
   st.u_water_class = gl.GetUniformLocation(st.prog, "u_water_class");
   gl.GenBuffers(1, &st.vbo);
   gl.GenBuffers(1, &st.ground_vbo);
+  gl.GenBuffers(1, &st.toggle_vbo);
+  gl.GenBuffers(1, &st.flat_vbo);
+  gl.GenBuffers(1, &st.object_vbo);
+  st.scene_batch_key.reset();
   // The scene renderer streams vertices through st.vbo on every capture.
   // Sharing that buffer with the presenter's quad previously forced a new
   // BufferData even on otherwise unchanged intermediate presentations.
@@ -1582,24 +1610,100 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
     return p.flat && p.mode == GL_TRIANGLES && resolve(p.ops, kLand) == kWater &&
            resolve(p.ops, kWater) == kLand;
   };
-  bool any_toggle = false;
-  for (const Prim& p : st.prims) any_toggle |= toggles(p);
-  if (any_toggle) {
+  // The original capture produces an immutable primitive list until its
+  // serial advances. On repeated presents at the same blend alpha, the
+  // previously uploaded vertex streams are still valid even when the FBO
+  // size, view transform, or copper palette has changed. Keep three GPU
+  // buffers separate from the scratch VBO used by uncommon primitive modes.
+  const SceneBatchCacheKey batch_key{st.serial, alpha, interpolate};
+  const bool reference_batches = std::getenv("FA18_GL_BATCH_CACHE_REFERENCE") != nullptr;
+  const bool batch_reused = st.scene_batch_key == batch_key && !reference_batches;
+  const bool same_capture = st.scene_batch_key && st.scene_batch_key->serial == st.serial &&
+                            !reference_batches;
+  if (!batch_reused) {
+    if (!same_capture) {
+      st.toggle_batch.clear(); st.toggle_sources.clear();
+      st.flat_batch.clear(); st.flat_sources.clear();
+      st.object_batch.clear(); st.object_sources.clear();
+      st.object_batch_triangles = std::all_of(st.prims.begin(), st.prims.end(),
+        [](const Prim& p) { return p.flat || p.mode == GL_TRIANGLES; });
+      auto add = [&](std::vector<float>& dst, std::vector<size_t>& src,
+                     size_t at, bool styled, float a = 0.f, float b = 0.f) {
+        src.push_back(at);
+        dst.insert(dst.end(), {(*verts)[at], (*verts)[at + 1], (*verts)[at + 2]});
+        if (styled) { dst.push_back(a); dst.push_back(b); }
+      };
+      for (const Prim& p : st.prims) {
+        const size_t first = size_t(p.first) * 3;
+        if (toggles(p)) {
+          for (int j = 0; j < p.count; ++j)
+            add(st.toggle_batch, st.toggle_sources, first + size_t(j) * 3, false);
+        } else if (p.flat) {
+          const float land = palette::encode(resolve(p.ops, kLand));
+          const float water = palette::encode(resolve(p.ops, kWater));
+          for (int j = 0; j < p.count; ++j)
+            add(st.flat_batch, st.flat_sources, first + size_t(j) * 3, true, land, water);
+        } else if (st.object_batch_triangles) {
+          const float colour = palette::encode(resolve(p.ops, kLand));
+          for (int j = 0; j < p.count; ++j)
+            add(st.object_batch, st.object_sources, first + size_t(j) * 3, true, colour, p.bias);
+        }
+      }
+    } else {
+      // High-refresh alpha changes every subframe, but colours, per-object
+      // depth biases and primitive ordering do not. Rewrite only positions
+      // into the existing packed streams, preserving their allocation.
+      move_batch_positions(st.toggle_batch, st.toggle_sources, *verts, 3);
+      move_batch_positions(st.flat_batch, st.flat_sources, *verts, 5);
+      move_batch_positions(st.object_batch, st.object_sources, *verts, 5);
+    }
+    auto upload_batch = [](GLuint buffer, const std::vector<float>& values) {
+      if (values.empty()) return;
+      gl.BindBuffer(GL_ARRAY_BUFFER, buffer);
+      gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(values.size() * sizeof(float)),
+                    values.data(), GL_STREAM_DRAW);
+    };
+    upload_batch(st.toggle_vbo, st.toggle_batch);
+    upload_batch(st.flat_vbo, st.flat_batch);
+    if (st.object_batch_triangles) upload_batch(st.object_vbo, st.object_batch);
+    st.scene_batch_key = batch_key;
+  }
+  if (std::getenv("FA18_GL_BATCH_CACHE_DEBUG")) {
+    static uint64_t rebuilt = 0, moved = 0, reused = 0;
+    if (batch_reused) ++reused;
+    else if (same_capture) ++moved;
+    else ++rebuilt;
+    if (rebuilt + moved + reused <= 6 || (rebuilt + moved + reused) % 240 == 0)
+      std::fprintf(stderr,
+                   "gl: scene batches rebuilt=%llu moved=%llu reused=%llu toggle=%zu flat=%zu object=%zu\n",
+                   (unsigned long long)rebuilt, (unsigned long long)moved,
+                   (unsigned long long)reused,
+                   st.toggle_batch.size() / 3, st.flat_batch.size() / 5,
+                   st.object_batch.size() / 5);
+  }
+  if (!st.toggle_batch.empty()) {
     // Stencil inversion is XOR: overlapping toggle triangles commute.
     // One ordered buffer has precisely the same result as one draw call
     // per island/marking primitive, with far less host/driver overhead.
-    static std::vector<float> toggle_verts;
-    toggle_verts.clear();
-    for (const Prim& p : st.prims) {
-      if (!toggles(p)) continue;
-      const size_t at = size_t(p.first) * 3;
-      toggle_verts.insert(toggle_verts.end(), verts->begin() + at,
+    GLsizei toggle_count = GLsizei(st.toggle_batch.size() / 3);
+    if (reference_batches) {
+      // Legacy upload path for validating the independently packed VBO.
+      static std::vector<float> old_toggle;
+      old_toggle.clear();
+      for (const Prim& p : st.prims) {
+        if (!toggles(p)) continue;
+        const size_t at = size_t(p.first) * 3;
+        old_toggle.insert(old_toggle.end(), verts->begin() + at,
                           verts->begin() + at + size_t(p.count) * 3);
+      }
+      upload(old_toggle);
+      toggle_count = GLsizei(old_toggle.size() / 3);
+    } else {
+      bind_plain(st.toggle_vbo);
     }
-    upload(toggle_verts);
     set_view(ident);
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_INVERT);
-    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(toggle_verts.size() / 3));
+    gl.DrawArrays(GL_TRIANGLES, 0, toggle_count);
     bind_ground();
     set_view(cam.view);
   }
@@ -1618,28 +1722,34 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   // (palette-on-land, palette-on-water); u_water_class selects a channel.
   set_view(ident);
   auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
-  static std::vector<float> flat_styled;
-  flat_styled.clear();
-  for (const Prim& p : st.prims) {
-    if (!p.flat || toggles(p)) continue;
-    const float land = palette::encode(resolve(p.ops, kLand));
-    const float water = palette::encode(resolve(p.ops, kWater));
-    const size_t first = size_t(p.first) * 3;
-    for (int j = 0; j < p.count; ++j) {
-      const size_t at = first + size_t(j) * 3;
-      flat_styled.insert(flat_styled.end(), {(*verts)[at], (*verts)[at + 1],
-                                              (*verts)[at + 2], land, water});
+  if (!st.flat_batch.empty()) {
+    GLsizei flat_count = GLsizei(st.flat_batch.size() / 5);
+    if (reference_batches) {
+      static std::vector<float> old_flat;
+      old_flat.clear();
+      for (const Prim& p : st.prims) {
+        if (!p.flat || toggles(p)) continue;
+        const float land = palette::encode(resolve(p.ops, kLand));
+        const float water = palette::encode(resolve(p.ops, kWater));
+        const size_t first = size_t(p.first) * 3;
+        for (int j = 0; j < p.count; ++j) {
+          const size_t at = first + size_t(j) * 3;
+          old_flat.insert(old_flat.end(), {(*verts)[at], (*verts)[at + 1],
+                                           (*verts)[at + 2], land, water});
+        }
+      }
+      upload_coloured(old_flat);
+      flat_count = GLsizei(old_flat.size() / 5);
+    } else {
+      bind_styled(st.flat_vbo);
     }
-  }
-  if (!flat_styled.empty()) {
-    upload_coloured(flat_styled);
     set_param(rows, 1.f, 0.f, 0.f);
     gl.Uniform1f(st.u_coloured, 1.f);
     stencil_class(0);
-    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(flat_styled.size() / 5));
+    gl.DrawArrays(GL_TRIANGLES, 0, flat_count);
     stencil_class(1);
     gl.Uniform1f(st.u_water_class, 1.f);
-    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(flat_styled.size() / 5));
+    gl.DrawArrays(GL_TRIANGLES, 0, flat_count);
     gl.Uniform1f(st.u_water_class, 0.f);
     gl.Uniform1f(st.u_coloured, 0.f);
   }
@@ -1654,40 +1764,51 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   gl.Enable(GL_DEPTH_TEST);
   gl.DepthFunc(GL_LEQUAL);
   gl.DepthMask(1);
-  static std::vector<float> styled;
-  bool original_vertices_bound = true;
-  for (size_t i = 0; i < st.prims.size();) {
-    const Prim& p = st.prims[i];
-    if (p.flat) { ++i; continue; }
-    if (p.mode != GL_TRIANGLES) {
-      if (!original_vertices_bound) { upload(*verts); original_vertices_bound = true; }
-      set_param(rows, point_size(p), 1, p.bias);
-      set_colour(resolve(p.ops, kLand));
-      gl.DrawArrays(p.mode, p.first, p.count);
-      ++i;
-      continue;
-    }
-    styled.clear();
-    while (i < st.prims.size()) {
-      const Prim& t = st.prims[i];
-      if (t.flat) { ++i; continue; }
-      if (t.mode != GL_TRIANGLES) break;
-      const float colour = palette::encode(resolve(t.ops, kLand));
-      const size_t first = size_t(t.first) * 3;
-      const size_t count = size_t(t.count);
-      for (size_t j = 0; j < count; ++j) {
-        const size_t at = first + j * 3;
-        styled.insert(styled.end(), {(*verts)[at], (*verts)[at + 1], (*verts)[at + 2],
-                                      colour, t.bias});
-      }
-      ++i;
-    }
-    upload_coloured(styled);
-    original_vertices_bound = false;
+  if (!reference_batches && st.object_batch_triangles && !st.object_batch.empty()) {
+    // All currently captured points and lines are triangle quads too. The
+    // captured draw order and per-primitive depth bias fit in one stream.
+    bind_styled(st.object_vbo);
     set_param(rows, 1.f, 1.f, 0.f);
     gl.Uniform1f(st.u_coloured, 1.f);
-    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(styled.size() / 5));
+    gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(st.object_batch.size() / 5));
     gl.Uniform1f(st.u_coloured, 0.f);
+  } else if (reference_batches || !st.object_batch_triangles) {
+    // Future capture modes with actual GL points/lines retain the old
+    // ordered segmentation between triangle batches and point draws.
+    static std::vector<float> styled;
+    bool original_vertices_bound = false;
+    for (size_t i = 0; i < st.prims.size();) {
+      const Prim& p = st.prims[i];
+      if (p.flat) { ++i; continue; }
+      if (p.mode != GL_TRIANGLES) {
+        if (!original_vertices_bound) { upload(*verts); original_vertices_bound = true; }
+        set_param(rows, point_size(p), 1, p.bias);
+        set_colour(resolve(p.ops, kLand));
+        gl.DrawArrays(p.mode, p.first, p.count);
+        ++i;
+        continue;
+      }
+      styled.clear();
+      while (i < st.prims.size()) {
+        const Prim& t = st.prims[i];
+        if (t.flat) { ++i; continue; }
+        if (t.mode != GL_TRIANGLES) break;
+        const float colour = palette::encode(resolve(t.ops, kLand));
+        const size_t first = size_t(t.first) * 3;
+        for (int j = 0; j < t.count; ++j) {
+          const size_t at = first + size_t(j) * 3;
+          styled.insert(styled.end(), {(*verts)[at], (*verts)[at + 1],
+                                        (*verts)[at + 2], colour, t.bias});
+        }
+        ++i;
+      }
+      upload_coloured(styled);
+      original_vertices_bound = false;
+      set_param(rows, 1.f, 1.f, 0.f);
+      gl.Uniform1f(st.u_coloured, 1.f);
+      gl.DrawArrays(GL_TRIANGLES, 0, GLsizei(styled.size() / 5));
+      gl.Uniform1f(st.u_coloured, 0.f);
+    }
   }
   gl.Disable(GL_DEPTH_TEST);
 

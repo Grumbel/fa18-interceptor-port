@@ -445,6 +445,15 @@ before committing. Note limitations explicitly rather than masking them.
   successive presentations rather than allocating a new complete vertex
   stream each time. The interpolation formula and object pairing stay the
   same; `FA18_GL_INTERP_BUFFER_DEBUG=1` records capacity growth and reuse.
+- [x] Retain separate captured GL batches for stencil toggles, flat overlays
+  and ordered 3D triangles. A repeated serial/alpha reuses the existing GPU
+  buffers, while a new interpolation phase repositions only XYZ with a
+  source-vertex map, without repacking palette colours or primitive depth
+  biases. Preserve the former ordered per-primitive fallback for any future
+  non-triangle capture. `FA18_GL_BATCH_CACHE_REFERENCE=1` draws through the
+  old pack/upload path; `tests/check_gl_scene_batch_cache.sh` compares
+  flight/Pause direct-GPU pixels and emulated RAM against it. Hardware FPS
+  improvement is not yet established.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

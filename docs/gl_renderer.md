@@ -130,6 +130,27 @@ capacity grows only when a larger primitive capture requires it;
 `FA18_GL_INTERP_BUFFER_DEBUG=1` reports growth and reuse. This changes no
 interpolation matching or numerical calculation.
 
+The primitive drawing passes now retain **three independent GL vertex
+streams** per completed capture: stencil-toggle patches, flat land/water
+overlays and the ordered 3D triangle batch. Captured points and lines are
+already represented as triangles, so they participate in that last batch;
+future non-triangle primitives use the earlier ordered draw fallback. The
+stream cache is keyed by capture serial and interpolation phase. Repeated
+presentations of identical geometry reuse the GPU buffers without a new
+CPU pack or upload. On a different interpolation phase of the *same* capture,
+only the XYZ coordinates are rewritten using a retained source-vertex map;
+palette indices, primitive ordering and depth biases are unchanged. New
+captures rebuild the streams. This is independent of the existing terrain
+vertex buffer, which has a separate camera-translation key.
+
+`FA18_GL_BATCH_CACHE_DEBUG=1` reports full rebuilds, position-only updates
+and complete GPU-stream reuses. `FA18_GL_BATCH_CACHE_REFERENCE=1` executes
+the legacy per-render packing/upload/draw path as a screenshot oracle;
+`tests/check_gl_scene_batch_cache.sh` compares flight/Pause GPU pixels and
+emulated memory. This removes repeated driver and CPU work but does not
+change the 68000 rasterizer, scene depth rules, or the 60 Hz game simulation.
+Real-hardware 120/240 Hz timing still needs measurement.
+
 Full-detail baseline on the bundled free1 replay (3,700 deterministic,
 fast-forwarded frames, native mode, offscreen Mesa/llvmpipe): original
 320x200 took **7.5 s**, software `--hires 3` took **19.1 s**, and
