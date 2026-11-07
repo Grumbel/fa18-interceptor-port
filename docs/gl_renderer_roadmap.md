@@ -520,6 +520,18 @@ before committing. Note limitations explicitly rather than masking them.
   `FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE=1` restores the old policy, and
   `tests/check_gl_scene_rows.sh` will check GPU/CPU and RAM parity on Mesa.
   The new real-GPU regression has not been run in this environment.
+- [x] Begin replacing the opaque lower `pix/inst5` instrument frame without
+  relying on its current bitplane pixels. Static outer borders and centre
+  separators now resolve ADF indices through the live copper scanline; no
+  asset data or extra GL texture is bundled. The eligibility gate requires
+  the displayed bank's completed HUD frame *and* independent fuel writer,
+  avoiding stale panels in other views. Dynamic attitude/radar/LCD/ECM
+  regions still use their former compositing paths. The C++ fixture covers
+  the safe mask, all sampled dynamic exclusions, opaque black and palette
+  handling. `FA18_COCKPIT_PANEL_BITMAP_REFERENCE=1` restores bitplane
+  matching; `tests/check_gl_cockpit_panel.sh` checks all changed ADF cells,
+  five screenshot stages, direct GPU/CPU parity and RAM. The ADF runtime
+  gate is pending a machine with SDL/OpenGL libraries.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -190,6 +190,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `FA18_COCKPIT_FRONT_DEBUG=1` and `tests/check_gl_cockpit_front.sh` for a
   bounded ADF screenshot / direct-GPU / RAM comparison. This test has not
   yet been run here against the full game binary.
+  Fixed structural regions of the lower `pix/inst5` panel are also painted
+  directly from ADF indices (including opaque black cells), after both a
+  completed HUD-frame writer and the displayed screen bank's fuel redraw
+  establish that the cockpit is present. The attitude, radar, LCD, switches
+  and surrounding dynamic areas still fall back to their source bitplanes.
+  `FA18_COCKPIT_PANEL_BITMAP_REFERENCE=1` restores old per-pixel matching;
+  `FA18_COCKPIT_PANEL_DEBUG=1` counts native cells. Use
+  `gl_cockpit_panel_test` and `tests/check_gl_cockpit_panel.sh` to check the
+  static source region, flight/Pause/bank transitions, GPU/CPU parity and RAM.
+  The full ADF-backed replay is not yet verified in this environment.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

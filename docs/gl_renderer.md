@@ -216,6 +216,22 @@ independently drawn source cells every 400 frames. The ADF-backed
 screen-bank transitions, game RAM and GPU/CPU parity; it still needs running
 on a machine with an SDL/OpenGL build of the application.
 
+For the opaque lower `pix/inst5` panel, fixed outer borders and the safe
+structural separators (top/bottom row, x=0..3, 125..132, 190..226 and
+311..319) likewise come directly from the ADF and live copper palette.
+Unlike the front nose, **black inst5 cells are opaque**. The dynamic attitude
+display, radar, fuel bar/LCD, ECM and other flight readouts retain their
+previous bitplane/native-writer paths. Independent panel painting is enabled
+only when the displayed bank has both a completed native HUD frame and a
+captured fuel-value redraw: otherwise the exact old fallback remains active.
+`FA18_COCKPIT_PANEL_BITMAP_REFERENCE=1` reverts this layer for comparison;
+`FA18_COCKPIT_PANEL_DEBUG=1` logs its painted cells. The focused C++ unit
+test and `tests/check_gl_cockpit_panel.sh` check ADF pixel bounds, dynamic
+exclusions, screen-bank transitions, GPU/CPU parity and unchanged game RAM.
+The decoder/mask can be checked without compiling the game using
+`python3 tests/check_gl_cockpit_panel.py ORIGINAL.adf`.
+Full graphical replay remains to be run on an SDL/OpenGL-capable host.
+
 The CPU and direct GPU now share the same mapping from each Amiga display
 scanline to the most recent completed 3D bank. A matching completed scene
 row remains eligible for widescreen extension even during the handful of

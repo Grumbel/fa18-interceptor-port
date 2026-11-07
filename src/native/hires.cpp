@@ -18,6 +18,7 @@
 #include "native/hud_glyph.hpp"
 #include "native/cockpit_rail.hpp"
 #include "native/cockpit_front.hpp"
+#include "native/cockpit_panel.hpp"
 #include "native/gl_scene_rows.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
@@ -1494,9 +1495,13 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       std::getenv("FA18_HUD_RAIL_ART_BITMAP_REFERENCE") == nullptr;
   const bool front_asset_enabled = cockpit_enabled && hud.frame_from_writer &&
       hud.frame_rails && std::getenv("FA18_COCKPIT_FRONT_BITMAP_REFERENCE") == nullptr;
+  const bool panel_asset_enabled = cockpit_enabled &&
+      cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
+      std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
+  int panel_asset_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
@@ -1614,6 +1619,16 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
             continue;
           }
         }
+        // Fixed structural regions of inst5 are independently sourced from
+        // the user's ADF. The panel's black pixels are opaque, unlike the
+        // upper frnt5 silhouette; dynamic controls still use bitplanes.
+        if (panel_asset_enabled) {
+          if (const auto colour = cockpit_panel::pixel(cockpit, pal, x, y)) {
+            if (yy == 0) ++panel_asset_pixels;
+            for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = *colour;
+            continue;
+          }
+        }
         const size_t cp = size_t(y) * W + x;
         const bool index_matches = li == cockpit.index[cp];
         const bool colour_matches = (rgb[cp] & 0xFFFFFFu) == (cockpit.rgb[cp] & 0xFFFFFFu);
@@ -1682,6 +1697,14 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                    (unsigned long long)m.frame_count(), front_asset_pixels);
     }
   }
+  if (std::getenv("FA18_COCKPIT_PANEL_DEBUG") && m.frame_count() % 400 == 0) {
+    static uint64_t reported = UINT64_MAX;
+    if (reported != m.frame_count()) {
+      reported = m.frame_count();
+      std::fprintf(stderr, "cockpit panel CPU frame=%llu pixels=%d\n",
+                   (unsigned long long)m.frame_count(), panel_asset_pixels);
+    }
+  }
   blend_native_reticle(out, side, S, hud);
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
@@ -1748,6 +1771,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       std::getenv("FA18_HUD_RAIL_ART_BITMAP_REFERENCE") == nullptr;
   const bool front_asset_enabled = cockpit_enabled && hud.frame_from_writer &&
       hud.frame_rails && std::getenv("FA18_COCKPIT_FRONT_BITMAP_REFERENCE") == nullptr;
+  const bool panel_asset_enabled = cockpit_enabled &&
+      cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
+      std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
   last_prepared_gpu_hud = hud;
   if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
@@ -1762,6 +1788,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
+  int panel_asset_pixels = 0;
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
     int ly = -1;
@@ -1906,6 +1933,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         ++front_asset_pixels;
         continue;
       }
+      if (panel_asset_enabled && cockpit_panel::painted(cockpit, x, y)) {
+        // Same native indexed asset token as the front cockpit, resolved
+        // through the *live* scanline copper palette in the GL shader.
+        p[0] = p[1] = p[2] = 0;
+        p[3] = 32;
+        ++panel_asset_pixels;
+        continue;
+      }
       const size_t cp = size_t(y) * W + x;
       if (cockpit_enabled && cockpit.valid[cp]) {
         const bool index_matches = li == cockpit.index[cp];
@@ -1957,6 +1992,14 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       reported = m.frame_count();
       std::fprintf(stderr, "cockpit front GPU frame=%llu pixels=%d\n",
                    (unsigned long long)m.frame_count(), front_asset_pixels);
+    }
+  }
+  if (std::getenv("FA18_COCKPIT_PANEL_DEBUG") && m.frame_count() % 400 == 0) {
+    static uint64_t reported = UINT64_MAX;
+    if (reported != m.frame_count()) {
+      reported = m.frame_count();
+      std::fprintf(stderr, "cockpit panel GPU frame=%llu pixels=%d\n",
+                   (unsigned long long)m.frame_count(), panel_asset_pixels);
     }
   }
   return true;
