@@ -15,10 +15,9 @@ int main() {
   assert(!enabled(true, true, false));
   assert(enabled(true, true, true));
 
-  // Borders and the fixed separators around the dynamic instruments.
-  for (const auto& xy : std::array<std::array<int, 2>, 9>{{
-           {{0, 145}}, {{319, 199}}, {{128, 175}}, {{198, 183}},
-           {{225, 150}}, {{313, 181}}, {{0, 180}}, {{100, 145}},
+  // Outer borders and the verified fuel/radar separator only.
+  for (const auto& xy : std::array<std::array<int, 2>, 6>{{
+           {{0, 145}}, {{319, 199}}, {{128, 175}}, {{0, 180}}, {{100, 145}},
            {{100, 199}}
        }}) {
     const int x = xy[0], y = xy[1];
@@ -36,10 +35,11 @@ int main() {
   }
 
   // Explicitly leave original framebuffer-driven flight instruments alone.
-  for (const auto& xy : std::array<std::array<int, 2>, 10>{{
+  for (const auto& xy : std::array<std::array<int, 2>, 14>{{
            {{35, 155}}, {{70, 180}}, {{110, 160}}, {{110, 185}},
            {{143, 166}}, {{160, 174}}, {{177, 190}}, {{240, 175}},
-           {{295, 180}}, {{292, 188}}
+           {{295, 180}}, {{292, 188}}, {{198, 183}}, {{225, 150}},
+           {{313, 181}}, {{314, 190}}
        }}) {
     const int x = xy[0], y = xy[1];
     const size_t cell = size_t(y) * CockpitAtlas::W + size_t(x);
@@ -54,7 +54,7 @@ int main() {
   assert(!structural(-1, 175));
   assert(!structural(320, 175));
 
-  const size_t bad_index = size_t(175) * CockpitAtlas::W + 198;
+  const size_t bad_index = size_t(175) * CockpitAtlas::W + 128;
   atlas.index[bad_index] = 32;
-  assert(!painted(atlas, 198, 175));
+  assert(!painted(atlas, 128, 175));
 }

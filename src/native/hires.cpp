@@ -19,6 +19,7 @@
 #include "native/cockpit_rail.hpp"
 #include "native/cockpit_front.hpp"
 #include "native/cockpit_panel.hpp"
+#include "native/cockpit_dynamic_audit.hpp"
 #include "native/gl_scene_rows.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
@@ -1445,6 +1446,31 @@ static const Layer* completed_scene_layer() {
   return latest;
 }
 
+// Diagnostics for reverse-engineering the remaining moving lower-panel art.
+// Compare live ADF indices *and* RGB, and report only once per screen frame
+// per presenter. This does not alter emulated RAM or the rendered pixels.
+static void log_cockpit_dynamics(const char* presenter, const amiga::Machine& m,
+                                const CockpitAtlas& atlas, const uint8_t* indices,
+                                const uint32_t* rgb, const uint32_t* keys) {
+  if (!std::getenv("FA18_COCKPIT_DYNAMIC_AUDIT") || !indices || !rgb || !keys ||
+      m.frame_count() % 200 != 0) return;
+  static uint64_t last_cpu = UINT64_MAX, last_gpu = UINT64_MAX;
+  uint64_t& last = presenter[0] == 'C' ? last_cpu : last_gpu;
+  if (last == m.frame_count()) return;
+  last = m.frame_count();
+  for (const auto& zone : cockpit_dynamic_audit::kRegions) {
+    const auto measured = cockpit_dynamic_audit::inspect(atlas, indices, rgb, zone);
+    std::fprintf(stderr,
+                 "cockpit dynamic %s frame=%llu bank=%06x zone=%s "
+                 "sample=%d index=%d rgb=%d changed=%d bounds=%d,%d..%d,%d\n",
+                 presenter, (unsigned long long)m.frame_count(),
+                 keys[183], zone.name, measured.samples,
+                 measured.index_differences, measured.rgb_differences,
+                 measured.full_differences, measured.min_x, measured.min_y,
+                 measured.max_x, measured.max_y);
+  }
+}
+
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
   amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
@@ -1466,6 +1492,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const uint32_t* pal = m.frame_row_pal();
   if (!rgb || !idx || !key || !pal) return false;
   const CockpitAtlas& cockpit = cockpit_atlas(m);
+  log_cockpit_dynamics("CPU", m, cockpit, idx, rgb, key);
   // Diagnostic oracle: compare the asset-backed composition to the previous
   // bitplane-backed path without changing any emulated code or game state.
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
@@ -1728,6 +1755,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const uint32_t* pal = m.frame_row_pal();
   if (!rgb || !idx || !key || !pal) return false;
   const CockpitAtlas& cockpit = cockpit_atlas(m);
+  log_cockpit_dynamics("GPU", m, cockpit, idx, rgb, key);
   const char* native_cockpit = std::getenv("FA18_COCKPIT_NATIVE");
   const bool cockpit_enabled = !native_cockpit || std::strcmp(native_cockpit, "0") != 0;
   const FuelDigits fuel = prepare_fuel_digits(m, cockpit, key, pal, cockpit_enabled);

@@ -1,6 +1,6 @@
 // First framebuffer-independent portion of the lower pix/inst5 cockpit.
 // The ADF image is opaque here; unlike frnt5, its black cells are painted.
-// Keep the moving attitude display, radar, LCDs, switches and their nearby
+// Keep both moving attitude displays, radar, LCDs, switches and their nearby
 // labels in the original 2D overlay until their writers are reconstructed.
 #pragma once
 
@@ -19,8 +19,11 @@ constexpr int Y = 145, H = 55;
 // the masks are independent of double-buffered bitplane contents.
 inline bool structural(int x, int y) {
   if (x < 0 || x >= CockpitAtlas::W || y < Y || y >= Y + H) return false;
+  // The apparently decorative x=190..226 rectangle is actually the moving
+  // red/blue artificial horizon. The far-right column includes changing
+  // purple status cells. Neither can be treated as fixed panel artwork.
   return y == Y || y == Y + H - 1 || x < 4 ||
-         (x >= 125 && x < 133) || (x >= 190 && x < 227) || x >= 311;
+         (x >= 125 && x < 133);
 }
 
 inline bool painted(const CockpitAtlas& atlas, int x, int y) {

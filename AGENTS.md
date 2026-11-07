@@ -199,6 +199,15 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `FA18_COCKPIT_PANEL_DEBUG=1` counts native cells. Use
   `gl_cockpit_panel_test` and `tests/check_gl_cockpit_panel.sh` to check the
   static source region, flight/Pause/bank transitions, GPU/CPU parity and RAM.
+  **Corrected static ownership:** only the outer top/bottom border, x=0..3
+  and x=125..132 are currently proven safe. The tempting x=190..226 region
+  is a moving red/blue artificial horizon, and x=311..319 includes dynamic
+  purple status cells; neither must be painted unconditionally. Set
+  `FA18_COCKPIT_DYNAMIC_AUDIT=1` for per-bank ADF/index/RGB mismatch counts
+  and bounds for six remaining instrument zones every 200 frames. It is
+  read-only. `gl_cockpit_dynamic_audit_test` and
+  `tests/check_gl_cockpit_dynamic_audit.sh` check the classification and
+  unchanged renderer/game RAM.
   The full ADF-backed replay is not yet verified in this environment.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as

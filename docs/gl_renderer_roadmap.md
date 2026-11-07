@@ -521,8 +521,8 @@ before committing. Note limitations explicitly rather than masking them.
   `tests/check_gl_scene_rows.sh` will check GPU/CPU and RAM parity on Mesa.
   The new real-GPU regression has not been run in this environment.
 - [x] Begin replacing the opaque lower `pix/inst5` instrument frame without
-  relying on its current bitplane pixels. Static outer borders and centre
-  separators now resolve ADF indices through the live copper scanline; no
+  relying on its current bitplane pixels. Static outer borders and a centre
+  separator now resolve ADF indices through the live copper scanline; no
   asset data or extra GL texture is bundled. The eligibility gate requires
   the displayed bank's completed HUD frame *and* independent fuel writer,
   avoiding stale panels in other views. Dynamic attitude/radar/LCD/ECM
@@ -532,6 +532,16 @@ before committing. Note limitations explicitly rather than masking them.
   matching; `tests/check_gl_cockpit_panel.sh` checks all changed ADF cells,
   five screenshot stages, direct GPU/CPU parity and RAM. The ADF runtime
   gate is pending a machine with SDL/OpenGL libraries.
+- [x] Correct the instrument-panel ownership mask after visually inspecting
+  `pix/inst5` at enlarged resolution. The former x=190..226 "static" region
+  is actually a red/blue artificial horizon, and the rightmost purple cells
+  are changing status indicators. Both now retain their dynamic overlay;
+  the independently painted mask is restricted to 1,276 source cells,
+  including 138 opaque black cells. The ADF-only mask check and focused
+  unit fixture enforce those exclusions. A read-only per-displayed-bank
+  mismatch audit reports six instrument areas with independent index/RGB
+  change counts and bounding boxes (`FA18_COCKPIT_DYNAMIC_AUDIT=1`), with a
+  screenshot/RAM no-side-effects regression for future writer tracing.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

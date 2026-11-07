@@ -14,8 +14,7 @@ from compare_ppm_center import read_ppm
 def structural(x: int, y: int) -> bool:
     if not (0 <= x < 320 and 145 <= y < 200):
         return False
-    return (y == 145 or y == 199 or x < 4 or
-            125 <= x < 133 or 190 <= x < 227 or x >= 311)
+    return y == 145 or y == 199 or x < 4 or 125 <= x < 133
 
 
 def main() -> None:
@@ -32,7 +31,7 @@ def main() -> None:
     black = sum(not any(rgba[((y - 145) * iw + x) * 4:
                                  ((y - 145) * iw + x) * 4 + 3])
                 for x, y in source_cells)
-    assert len(source_cells) == 3714 and opaque == 3714 and black >= 300, (
+    assert len(source_cells) == 1276 and opaque == 1276 and black >= 100, (
         "unexpected inst5 structure / ADF masking; recheck the panel stencil"
     )
     if len(sys.argv) == 2:
