@@ -241,15 +241,23 @@ struct ProbeHost final : amiga::Host {
 struct SourceWriteWatch {
   amiga::Machine* machine = nullptr;
   int first = 0, last = 0, limit = 0, printed = 0;
+  int bitmap_first = 0, bitmap_last = 0, bitmap_limit = 0, bitmap_printed = 0;
 
   static void observe(void* opaque, uint32_t address, uint8_t width, bool write) {
     auto& watch = *static_cast<SourceWriteWatch*>(opaque);
-    if (!write || address >= 0x5a9d0 || address + width <= 0x5a960 ||
-        watch.printed >= watch.limit) return;
+    if (!write) return;
     const int frame = int(watch.machine->frame_count());
-    if (frame < watch.first || frame > watch.last) return;
-    ++watch.printed;
-    std::printf("globe-source-write: frame=%d pc=%06x address=%06x width=%u value=",
+    const bool descriptor = address < 0x5a9d0 && address + width > 0x5a960 &&
+                            frame >= watch.first && frame <= watch.last &&
+                            watch.printed < watch.limit;
+    const bool bitmap = address < 0x74000 && address + width > 0x73600 &&
+                        frame >= watch.bitmap_first && frame <= watch.bitmap_last &&
+                        watch.bitmap_printed < watch.bitmap_limit;
+    if (!descriptor && !bitmap) return;
+    if (descriptor) ++watch.printed;
+    else ++watch.bitmap_printed;
+    std::printf("%s: frame=%d pc=%06x address=%06x width=%u value=",
+                descriptor ? "globe-source-write" : "globe-bitmap-write",
                 frame, watch.machine->cpu.op_pc, address, width);
     // Read the RAM bytes directly: calling Machine::r8 here would recurse
     // into this observer. The bus write has already occurred.
@@ -384,12 +392,29 @@ int main(int argc, char** argv) {
     // Locate the producer of the per-bank source pointer words A2=$5a966
     // and A2=$5a976. This observer does not write guest RAM or alter timing.
     // FA18_GLOBE_SOURCE_WATCH=4420:4500:128  (first:last:maximum writes)
+    bool track_writes = false;
     if (const char* config = std::getenv("FA18_GLOBE_SOURCE_WATCH")) {
       if (std::sscanf(config, "%d:%d:%d", &source_watch.first,
                       &source_watch.last, &source_watch.limit) != 3 ||
           source_watch.first < 0 || source_watch.last < source_watch.first ||
           source_watch.limit < 0)
         throw std::runtime_error("expected FA18_GLOBE_SOURCE_WATCH=first:last:limit");
+      track_writes = true;
+    }
+    // Independently inspect the mutable image read by BLTAPTR at $451ac.
+    // The selected descending rectangles reach below $73800, so this watch
+    // covers $73600..$74000 (one 2560-byte source neighborhood).
+    // FA18_GLOBE_BITMAP_WATCH=4476:4480:80
+    if (const char* config = std::getenv("FA18_GLOBE_BITMAP_WATCH")) {
+      if (std::sscanf(config, "%d:%d:%d", &source_watch.bitmap_first,
+                      &source_watch.bitmap_last, &source_watch.bitmap_limit) != 3 ||
+          source_watch.bitmap_first < 0 ||
+          source_watch.bitmap_last < source_watch.bitmap_first ||
+          source_watch.bitmap_limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_BITMAP_WATCH=first:last:limit");
+      track_writes = true;
+    }
+    if (track_writes) {
       source_watch.machine = &machine;
       machine.ram_access_context = &source_watch;
       machine.ram_access_observer = &SourceWriteWatch::observe;
@@ -462,6 +487,95 @@ int main(int argc, char** argv) {
                                           ? machine.r32(addr) : 0xffffffffu);
           }
           std::putchar('\n');
+          if (pc == 0x44d08 || pc == 0x451ac) {
+            // The original blitter pointer registers are not readable
+            // through the Amiga's normal Custom-chip read bus. Snapshot the
+            // emulated write-side latches immediately before BLTSIZE fires.
+            // This distinguishes a precomputed source image from the live
+            // drawing-bank destination without modifying guest memory.
+            const auto blt = machine.blitter_registers();
+            std::printf("globe-blitter-input: frame=%d pc=%06x "
+                        "con0=%04x con1=%04x a=%06x b=%06x c=%06x d=%06x "
+                        "amod=%d bmod=%d cmod=%d dmod=%d\n",
+                        frame, pc, blt.con0, blt.con1,
+                        blt.ptr[0], blt.ptr[1], blt.ptr[2], blt.ptr[3],
+                        blt.mod[0], blt.mod[1], blt.mod[2], blt.mod[3]);
+            if (pc == 0x451ac) {
+              // This BLTSIZE instruction uses D0 as its source-rectangle
+              // height/width. Fingerprint both original input bitmaps at
+              // the precise pre-blit boundary (without dumping game art).
+              const int rows = int((cpu.d[0] & 0xffffu) >> 6);
+              const int words = int(cpu.d[0] & 63u);
+              const bool descending = (blt.con1 & 2u) != 0;
+              auto source_hash = [&](int channel) -> uint32_t {
+                uint32_t hash = 2166136261u;
+                uint32_t addr = blt.ptr[channel];
+                for (int y = 0; y < rows; ++y) {
+                  for (int i = 0; i < words; ++i) {
+                    if (addr >= amiga::RAM_SIZE - 1) return 0;
+                    hash = (hash ^ machine.ram[addr]) * 16777619u;
+                    hash = (hash ^ machine.ram[addr + 1]) * 16777619u;
+                    addr += uint32_t(descending ? -2 : 2);
+                  }
+                  addr += uint32_t(descending ? -blt.mod[channel] : blt.mod[channel]);
+                }
+                return hash;
+              };
+              std::printf("globe-blitter-sources: frame=%d pc=%06x "
+                          "rows=%d words=%d a-hash=%08x c-hash=%08x\n",
+                          frame, pc, rows, words,
+                          source_hash(0), source_hash(2));
+              // Probe the *same absolute* surrounding source-image RAM in
+              // level and banked replays. A selected source-slice hash can
+              // differ solely because its pointer/height moved; the fixed
+              // region hash answers whether the bitmap was rewritten.
+              uint32_t image_hash = 2166136261u;
+              for (uint32_t addr = 0x73800; addr < 0x74000; ++addr)
+                image_hash = (image_hash ^ machine.ram[addr]) * 16777619u;
+              std::printf("globe-blitter-region: frame=%d "
+                          "start=073800 end=074000 hash=%08x\n",
+                          frame, image_hash);
+            }
+          }
+        });
+      }
+    }
+    // Differential instruction trace of the generic $44da4..$451ac globe
+    // blitter parameter preparation. This is deliberately separate from the
+    // writer-register hooks (add_pc_hook replaces entries at the same PC).
+    // FA18_GLOBE_CALC_TRACE=4480:4480:250
+    if (const char* config = std::getenv("FA18_GLOBE_CALC_TRACE")) {
+      int first = 0, last = 0, limit = 0;
+      if (std::sscanf(config, "%d:%d:%d", &first, &last, &limit) != 3 ||
+          first < 0 || last < first || limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_CALC_TRACE=first:last:limit");
+      int printed = 0;
+      for (uint32_t pc = 0x44da4; pc <= 0x451ac; pc += 2) {
+        machine.add_pc_hook(pc, [&, pc] {
+          const int frame = int(machine.frame_count());
+          if (frame < first || frame > last || printed >= limit) return;
+          const auto& cpu = machine.cpu;
+          // These generic raster helpers also run hundreds of times while
+          // painting the 3D scene. Attribute only the nested call made by
+          // game_frame at $213a8, whose return PC is $213ae.
+          bool globe_caller = false;
+          for (int i = 0; i < 7; ++i) {
+            const uint32_t address = cpu.a[7] + uint32_t(i * 4);
+            if (address < amiga::RAM_SIZE - 4 && machine.r32(address) == 0x213ae) {
+              globe_caller = true;
+              break;
+            }
+          }
+          if (!globe_caller) return;
+          ++printed;
+          std::printf("globe-calc-insn: frame=%d pc=%06x op=%04x "
+                      "d0=%08x d1=%08x d2=%08x d3=%08x "
+                      "d4=%08x d5=%08x d6=%08x "
+                      "a0=%06x a1=%06x a2=%06x a3=%06x\n",
+                      frame, pc, machine.r16(pc),
+                      cpu.d[0], cpu.d[1], cpu.d[2], cpu.d[3],
+                      cpu.d[4], cpu.d[5], cpu.d[6],
+                      cpu.a[0], cpu.a[1], cpu.a[2], cpu.a[3]);
         });
       }
     }

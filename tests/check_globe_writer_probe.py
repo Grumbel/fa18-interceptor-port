@@ -210,6 +210,10 @@ def main() -> None:
         _, _, image = loadseg.load(f.name)
     base = loadseg.LOAD_BASE
 
+    circle = image[0x52d30 - base:0x52d84 - base]
+    assert len(circle) == 21 * 4 and sum(byte.bit_count() for byte in circle) == 379
+    assert circle[:4] == circle[-4:] == bytes.fromhex("0003f800")
+
     def long(address: int) -> int:
         return int.from_bytes(image[address - base:address - base + 4], "big")
 
@@ -263,6 +267,103 @@ def main() -> None:
                 rf"address={address} width={width} value={value}$",
                 roll_log, re.MULTILINE), (frame, pc, address, value)
 
+    # The $451ac input mask is selected from executable Hunk 62 rather than
+    # the framebuffer: $52d30 begins a 21x32-bit circular clipping table.
+    # Compare the original pre-BLTSIZE register state of the level and
+    # banked replays. All affected address/height parameters advance in
+    # multiples of one original row (40 bytes for a full bitplane, four for
+    # the narrow mask). These are measured blits, not a pitch/bank formula.
+    def blit_input(trace: str, frame: int, pc: str) -> dict[str, int]:
+        match = re.search(
+            rf"^globe-blitter-input: frame={frame} pc={pc} "
+            rf"con0=([0-9a-f]{{4}}) con1=([0-9a-f]{{4}}) "
+            rf"a=([0-9a-f]{{6}}) b=([0-9a-f]{{6}}) "
+            rf"c=([0-9a-f]{{6}}) d=([0-9a-f]{{6}}) "
+            rf"amod=(-?\d+) bmod=(-?\d+) cmod=(-?\d+) dmod=(-?\d+)$",
+            trace, re.MULTILINE)
+        assert match, (frame, pc)
+        return dict(zip(
+            ("con0", "con1", "a", "b", "c", "d", "amod", "bmod", "cmod", "dmod"),
+            (int(x, 16) if i < 6 else int(x) for i, x in enumerate(match.groups()))))
+
+    for frame, advance in ((4476, 4), (4480, 5), (4484, 5), (4488, 6)):
+        base_blit = blit_input(level_log, frame, "0451ac")
+        roll_blit = blit_input(roll_log, frame, "0451ac")
+        assert base_blit["con0"] == roll_blit["con0"] == 0x0FEC, frame
+        assert base_blit["con1"] == roll_blit["con1"] == 2, frame
+        assert (base_blit["amod"], base_blit["bmod"],
+                base_blit["cmod"], base_blit["dmod"]) == (36, 36, 0, 36), frame
+        assert base_blit["c"] == 0x52d56, frame
+        assert roll_blit["c"] == base_blit["c"] + advance * 4, frame
+        for channel in ("a", "b", "d"):
+            assert roll_blit[channel] == base_blit[channel] + advance * 40, (frame, channel)
+        assert base_blit["b"] == base_blit["d"], frame
+        assert roll_blit["b"] == roll_blit["d"], frame
+
+        def source_shape(trace: str) -> tuple[int, int, str, str]:
+            match = re.search(
+                rf"^globe-blitter-sources: frame={frame} pc=0451ac "
+                rf"rows=(\d+) words=(\d+) a-hash=([0-9a-f]{{8}}) "
+                rf"c-hash=([0-9a-f]{{8}})$", trace, re.MULTILINE)
+            assert match, frame
+            return int(match[1]), int(match[2]), match[3], match[4]
+
+        base_rows, base_words, base_ahash, base_chash = source_shape(level_log)
+        roll_rows_count, roll_words, roll_ahash, roll_chash = source_shape(roll_log)
+        assert (base_rows, base_words) == (11, 2), frame
+        assert (roll_rows_count, roll_words) == (11 + advance, 2), frame
+        assert base_ahash != "00000000" and roll_ahash != "00000000", frame
+        assert base_chash != "00000000" and roll_chash != "00000000", frame
+        # BLTCON1 bit 1 selects descending mode. Each extra scanline moves
+        # the starting pointer upward, but BOTH flight poses finish at the
+        # exact same source/destination address. This detects a mistaken
+        # ascending-rectangle interpretation of the traced BLTAPTR values.
+        for channel, modulo in (("a", 36), ("b", 36), ("c", 0), ("d", 36)):
+            row_stride = base_words * 2 + modulo
+            assert (base_blit[channel] - base_rows * row_stride ==
+                    roll_blit[channel] - roll_rows_count * row_stride), (frame, channel)
+
+    def image_region_hash(trace: str, frame: int) -> str:
+        match = re.search(
+            rf"^globe-blitter-region: frame={frame} "
+            rf"start=073800 end=074000 hash=([0-9a-f]{{8}})$",
+            trace, re.MULTILINE)
+        assert match, frame
+        return match[1]
+
+    # BLTAPTR's underlying image is live RAM, not a fixed executable asset.
+    # The same fixed 2 KiB region changes even in level flight, and the
+    # differential bank input changes it further at the same game-code frame.
+    assert image_region_hash(level_log, 4476) != image_region_hash(level_log, 4480)
+    assert image_region_hash(level_log, 4480) != image_region_hash(roll_log, 4480)
+
+    # The image is an intermediate Amiga blitter scratch bitmap, not static
+    # ILBM or executable data. During a single globe update the original
+    # writes sparse lines ($452b6), combines them ($4500c), samples the
+    # result at $451ac, then clears the temporary region ($450fc).
+    # Observe actual bus writes rather than inferring them from PC listings.
+    entries = re.findall(
+        r"^globe-bitmap-write: frame=4476 pc=([0-9a-f]{6}) "
+        r"address=([0-9a-f]{6}) width=(\d+) value=([0-9a-f]+)$",
+        roll_log, re.MULTILINE)
+    assert len(entries) >= 40, len(entries)
+    sites = {pc for pc, _, _, _ in entries}
+    assert sites == {"0452b6", "04500c", "0450fc"}, sites
+    assert {int(width) for _, _, width, _ in entries} == {2}
+    positions = [roll_log.index(f"globe-bitmap-write: frame=4476 pc={pc}")
+                 for pc in ("0452b6", "04500c", "0450fc")]
+    compositing = roll_log.index("globe-blitter-input: frame=4476 pc=0451ac")
+    assert positions[0] < positions[1] < compositing < positions[2]
+    assert all(value == "0000" for pc, _, _, value in entries if pc == "0450fc")
+
+    for frame in (4476, 4480, 4484, 4488):
+        for trace in (roll_log, level_log):
+            reset = blit_input(trace, frame, "044d08")
+            assert reset["con0"] == 0x0722 and reset["con1"] == 0, frame
+            assert reset["b"] == 0x52d30 and reset["c"] == reset["d"], frame
+            assert (reset["amod"], reset["bmod"],
+                    reset["cmod"], reset["dmod"]) == (-24, 0, 36, 36), frame
+
     for frame, screen in ((4480, "06bb28"), (4500, "0a74a8")):
         assert re.search(rf"^globe-sample: frame={frame} rowkey={screen} ",
                          roll_log, re.MULTILINE), frame
@@ -310,7 +411,8 @@ def main() -> None:
     assert "globe-probe: frames=4450" in ground_log
     print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
           "boundaries, level runway turn, touchdown shake latency, "
-          "source-stage isolation, both writer banks, selector and 4-frame call chain")
+          "original blitter mask and source-rectangle steps, source-stage "
+          "isolation, both writer banks, selector and 4-frame call chain")
 
 
 if __name__ == "__main__":

@@ -205,6 +205,19 @@ public:
   ScanoutRegion hidden_scanout_region() const { return blitter_write_gate_.hidden_region; }
   uint64_t suppressed_blitter_words() const { return blitter_write_gate_.suppressed_words; }
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
+  // Read-only diagnostic snapshot of the original blitter's current input
+  // registers. In particular, use this immediately *before* a BLTSIZE write
+  // to distinguish a panel copy's sources from its framebuffer destination.
+  struct BlitterRegisters {
+    uint16_t con0, con1;
+    std::array<uint32_t, 4> ptr;  // A/B/C/D
+    std::array<int16_t, 4> mod;
+  };
+  BlitterRegisters blitter_registers() const {
+    return {cs_.bltcon0_, cs_.bltcon1_,
+            {cs_.bltpt_[0], cs_.bltpt_[1], cs_.bltpt_[2], cs_.bltpt_[3]},
+            {cs_.bltmod_[0], cs_.bltmod_[1], cs_.bltmod_[2], cs_.bltmod_[3]}};
+  }
   // Scan-out data of the last rendered frame (see remaster::compose)
   const uint32_t* frame_rgb() const { return fb_.data(); }
   const uint8_t* frame_idx() const { return idx_.data(); }

@@ -195,6 +195,90 @@ helpers run. Neither observation establishes the arithmetic that converts
 aircraft angles into the final boundary: `$44c42` remains a generic
 rectangle/blitter path with precomputed inputs.
 
+### Original blitter input masks and moving rectangle
+
+The read-only `globe-blitter-input`/`globe-blitter-sources` diagnostics now
+snapshot the emulator's **write-side** blitter registers immediately before
+the `$44d08` and `$451ac` `BLTSIZE` stores. Ordinary Amiga Custom-register
+reads cannot recover those pointer latches. The original Hunk-62 data at
+`$52d30` starts with a **21-row × 32-bit circular mask** (379 set bits),
+followed by all-one/zero rows. It is executable-resident data, distinct from
+the source ILBM's 358 red/blue fill cells (which exclude the horizon and
+other foreground marks). In each captured redraw:
+
+| 68000 site | `BLTCON0/1` | Source inputs | Effect of minterm |
+| --- | --- | --- | --- |
+| `$44d08` | `$0722/$0000` | B=`$52d30` (circle mask), C=D=current panel bank | `C & ~B` clears selected existing bits |
+| `$451ac` | `$0fec/$0002` | A=`$073xxx` input, B=D=panel bank, C=offset into `$52d30` mask | `B \| (A & C)` adds masked foreground bits |
+
+The final `$451ac` blit has a **two-word width** and a height that depends
+on the current attitude. With the same game input sequence except for a
+late left-joystick bank, four consecutive 68000 redraws show:
+
+| Game-code frame | Level height | Banked height | Extra rows | C pointer: level → banked |
+| ---: | ---: | ---: | ---: | --- |
+| 4476 | 11 | 15 | +4 | `$52d56` → `$52d66` |
+| 4480 | 11 | 16 | +5 | `$52d56` → `$52d6a` |
+| 4484 | 11 | 16 | +5 | `$52d56` → `$52d6a` |
+| 4488 | 11 | 17 | +6 | `$52d56` → `$52d6e` |
+
+For each extra row, the **A, B and D pointers all advance by 40 bytes**
+(one source bitplane scanline), while C advances by 4 bytes (one mask row).
+Crucially, `$451ac` uses `BLTCON1=$0002`: **descending blit mode**.
+Each source/destination pointer moves backward two bytes per word, then
+backward by its modulo (36 bytes for A/B/D, zero for C). The larger banked
+rectangle therefore **has the same exclusive end pointer** as the level
+rectangle, in all four channels and all four measured frames. This is an
+extension toward earlier rows, not a moved 11-row copy. The existing camera
+shake can change the absolute A/B/D addresses in *both* control and banked
+runs, but those relative increments and fixed endpoints still hold.
+
+### The intermediate globe image is drawn dynamically
+
+The `$073xxx` A source is **not a static texture**. Hashing the same fixed
+RAM region `$73800`–`$73fff` before the final `$451ac` blit produces
+different values across consecutive updates even during level flight, and
+also different values in level and banked flight at frame 4480. Reading the
+actual descending source rectangle rather than forward-address memory is
+necessary when comparing its contents.
+
+An optional read-only bus-write observer,
+`FA18_GLOBE_BITMAP_WATCH=4476:4480:100`, identifies the producer of that
+intermediate bitmap in the original 68000 code:
+
+| Original blitter PC | Original Hunk 36 offset | Observed action |
+| --- | --- | --- |
+| `$452b6` | `$121e` | Sparse initial 16-bit words into the bitmap |
+| `$4500c` | `$0f74` | Combine/fill words of the temporary image |
+| `$451ac` | `$1114` | Read temporary bitmap through the descending, circular-masked cockpit copy |
+| `$450fc` | `$1064` | Clear the temporary image after the copy |
+
+The observed order is `$452b6` → `$4500c` → `$451ac` → `$450fc`, with
+all writes to this image attributed to those three source/cleanup PCs in
+the captured frame. The latter clear writes have value zero. The trace
+does not yet identify how the original routine computes the outline from
+pitch/roll or whether the full temporary image is relevant to the visible
+circle. Do not cache it as a permanent source texture or mistake the clearing
+pass for the horizon rendering itself.
+
+For a narrower comparison of the input geometry, use
+`FA18_GLOBE_CALC_TRACE=4480:4480:320` separately with the level and banked
+flight scripts. The globe caller follows the same instruction-PC sequence
+through the raster helper; its first differing captured register is D0 at
+`$44dce` (`$0058` in level flight, `$0033` in banked flight), loaded from
+the in-RAM tuple list near `$6072c` by the preceding `MOVE.W (A0)+,D0`.
+This points to an already-generated primitive/coordinate list upstream of
+the blitter. The register trace alone does not establish its original
+writer or the meaning of this particular word.
+
+This establishes a concrete, compact draw contract: the changing globe is
+assembled by clearing a fixed circular stencil and adding a shifted input
+bitmap through a second circular mask. It does not yet identify the
+high-level formula selecting the row count or pointer offsets, or the
+polygon/line parameters creating the live `$073xxx` source. That parameter
+producer is the next dependency to resolve before replacing this blit with
+a native GL pass.
+
 ### Independent retro-foundry cross-reference
 
 The [retro-foundry 68000 reconstruction](https://github.com/retro-foundry/fa18interceptor/)
@@ -208,6 +292,9 @@ its Engine9000 live addresses by Hunk offset, not a global relocation bias:
 | `$45368` | `$C30764` | 37 + `$A4` | `run_parent_postflight_setup.asm` calls the first postflight helper |
 | `$44d08` | `$C30100` | 36 + `$C70` | The active globe blitter path in our original-ADF trace |
 | `$451ac` | `$C305A4` | 36 + `$1114` | The later plane-2 blitter submit in our original-ADF trace |
+| `$452b6` | `$C306AE` | 36 + `$121e` | Writes sparse intermediate globe rows |
+| `$4500c` | `$C30404` | 36 + `$0f74` | Fills/combines intermediate bitmap words |
+| `$450fc` | `$C304F4` | 36 + `$1064` | Clears the temporary image after copying |
 
 Verified mapping command with an upstream checkout beside this repository:
 
