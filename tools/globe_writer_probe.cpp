@@ -211,6 +211,43 @@ int main(int argc, char** argv) {
     machine.hires_scale = 1;
     machine.set_host(&host);
     if (!machine.boot(argv[1])) return 1;
+    // Read-only PC-entry snapshots locate the *callers* of the low-level
+    // BLTSIZE writers. This is optional: the ordinary pixel replay doesn't
+    // need per-instruction instrumentation or a heavyweight instruction log.
+    // FA18_GLOBE_WRITER_REGS=4470:4490:80  (first:last:maximum snapshots)
+    if (const char* config = std::getenv("FA18_GLOBE_WRITER_REGS")) {
+      int first = 0, last = 0, limit = 64;
+      if (std::sscanf(config, "%d:%d:%d", &first, &last, &limit) < 2 ||
+          first < 0 || last < first || limit < 0)
+        throw std::runtime_error("expected FA18_GLOBE_WRITER_REGS=first:last[:limit]");
+      int snapshots = 0;
+      for (uint32_t pc : {0x44c42u, 0x45ce6u, 0x44d08u, 0x451acu}) {
+        machine.add_pc_hook(pc, [&, pc] {
+          const int frame = int(machine.frame_count());
+          if (frame < first || frame > last || snapshots >= limit) return;
+          const auto& cpu = machine.cpu;
+          // $45ce6 is a generic clipping helper invoked by many drawing
+          // routines. Only its $44c80 caller belongs to the globe pass.
+          if (pc == 0x45ce6 && machine.r32(cpu.a[7]) != 0x44c86) return;
+          ++snapshots;
+          std::printf("globe-writer-regs: frame=%d pc=%06x sp=%06x fp=%06x"
+                      " d0=%08x d1=%08x d2=%08x d3=%08x"
+                      " d4=%08x d5=%08x d6=%08x d7=%08x"
+                      " a0=%08x a1=%08x a2=%08x"
+                      " view=%u forward=%08x stack=",
+                      frame, pc, cpu.a[7], cpu.a[6], cpu.d[0], cpu.d[1],
+                      cpu.d[2], cpu.d[3], cpu.d[4], cpu.d[5], cpu.d[6],
+                      cpu.d[7], cpu.a[0], cpu.a[1], cpu.a[2],
+                      machine.r16(0x5ac7e), machine.r32(0x5ac10));
+          for (unsigned i = 0; i < 8; ++i) {
+            const uint32_t addr = cpu.a[7] + 4 * i;
+            std::printf("%s%08x", i ? "," : "", addr < amiga::RAM_SIZE - 4
+                                          ? machine.r32(addr) : 0xffffffffu);
+          }
+          std::putchar('\n');
+        });
+      }
+    }
     int result = machine.run();
     std::fprintf(stderr, "globe-probe: frames=%llu changed_samples=%u\n",
                  (unsigned long long)machine.frame_count(), host.changed_samples);

@@ -573,6 +573,14 @@ before committing. Note limitations explicitly rather than masking them.
   program check, including a separate bank-only replay whose -20-degree
   native boundary matches all 358 pixels at two rolled poses. Full
   input-angle calibration and GL integration remain.
+- [x] Recover the original globe's low-level call chain from real 68000
+  flight execution: caller `$213a8` → rectangle `$44c42` → clipping
+  `$45ce6` (from `$44c80`) → BLTSIZE `$44d08`/nested `$451ac`.
+  The 21-row/two-word rectangle updates every four frames, alternating
+  source state and screen bank. A bounded optional register/stack trace and
+  regression now verify five consecutive redraws and the displayed row keys.
+  Identifying the original attitude-to-source producer is still required
+  before removing the Amiga writer itself.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

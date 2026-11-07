@@ -109,10 +109,34 @@ def main() -> None:
             pattern += rf"area minterm={minterm} .*frames=34\d\d\.\."
             assert re.search(pattern, log, re.MULTILINE), (pc, bank)
 
+    # The 68k flight loop calls $44c42 from $213a8, via the clipping helper
+    # $45ce6 into the actual BLTSIZE writes. Consecutive 4-frame redraws
+    # alternate the buffer address ($06a098/$0a5a18 in the blitter trace).
+    for i, frame in enumerate((4472, 4476, 4480, 4484, 4488)):
+        for pc in ("044c42", "045ce6", "044d08", "0451ac"):
+            pattern = rf"^globe-writer-regs: frame={frame} pc={pc} .* stack="
+            assert re.search(pattern, roll_log, re.MULTILINE), (frame, pc)
+        assert re.search(rf"^globe-writer-regs: frame={frame} pc=044d08 .*"
+                         rf" stack=000213ae,", roll_log, re.MULTILINE), frame
+        assert re.search(rf"^globe-writer-regs: frame={frame} pc=045ce6 .*"
+                         rf" stack=00044c86,000213ae,",
+                         roll_log, re.MULTILINE), frame
+        assert re.search(rf"^globe-writer-regs: frame={frame} pc=0451ac .*"
+                         rf" stack=00044df2,00044d10,000213ae,",
+                         roll_log, re.MULTILINE), frame
+        source = "0005a976" if i % 2 == 0 else "0005a966"
+        assert re.search(rf"^globe-writer-regs: frame={frame} pc=044d08 .*"
+                         rf" d6=[0-9a-f]{{4}}0542 .* a2={source} ",
+                         roll_log, re.MULTILINE), frame
+
+    for frame, screen in ((4480, "06bb28"), (4500, "0a74a8")):
+        assert re.search(rf"^globe-sample: frame={frame} rowkey={screen} ",
+                         roll_log, re.MULTILINE), frame
+
     assert "globe-probe: frames=4700" in log
     assert "globe-probe: frames=4700" in roll_log
-    print("PASS: 68k globe original 358-cell mask, live pens 1/5, "
-          "three moving boundaries, rolled pose and both writer banks")
+    print("PASS: 68k globe 358-cell mask, live pens 1/5, pitch/roll "
+          "boundaries, both writer banks and 4-frame call chain")
 
 
 if __name__ == "__main__":

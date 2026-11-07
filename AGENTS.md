@@ -258,7 +258,11 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   headless scripted replay proves a four-plane live colour index remap
   (ADF red/blue 17/21 become copper pens 1/5) and three exact horizontal
   positions of the 358-cell globe fill. Original `$44d08`/`$451ac` plane-2
-  blits operate on both screen banks. See `docs/cockpit_globe.md` for the
+  blits operate on both screen banks. The original call at `$213a8` enters
+  the `$44c42` rectangle routine once per four frames in a bank-only replay;
+  its low-level stack, source alternation and displayed row keys are checked.
+  `FA18_GLOBE_WRITER_REGS=4470:4490:80` enables read-only register tracing.
+  See `docs/cockpit_globe.md` for the
   evidence and unresolved full-roll timing/angle mapping. Validate the pure
   C++ tests, `tests/check_globe_asset.py ORIGINAL.adf`, and
   `tests/check_globe_writer_probe.sh ORIGINAL.adf` before live OpenGL

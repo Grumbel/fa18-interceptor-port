@@ -87,6 +87,26 @@ repeated from approximately frame 3478 in **both** original screen banks
 proven high-level attitude-control routine. The earlier `$45350` bulk copy
 seen on frame 377 was not representative of the moving writer.
 
+The next read-only call-stack trace identifies a higher-level **blitter
+rectangle routine**, not merely its final `BLTSIZE` writes. The original
+flight-loop call at `$213a8` enters `$44c42` (return address `$213ae`).
+Inside it, `$44c80` invokes shared clipping helper `$45ce6`, then the
+`$44d08` area blit invokes `$44da4` before reaching `$451ac` with stack
+returns `$44df2`, `$44d10`, `$213ae`. In the bank-only replay the sequence
+recurs at frames **4472, 4476, 4480, 4484 and 4488**. Its `$44d08` entry
+uses `BLTSIZE=$0542` (21 rows × 2 words), and alternates A2 source pointers
+`$5a976`, `$5a966`, `$5a976`, `$5a966`, `$5a976` with the displayed banks.
+The actual scanout row key at frame 4480 is `$06bb28` (first bank
+`$06a098` + `$1a90`), and at frame 4500 it is `$0a74a8` (second bank
+`$0a5a18` + `$1a90`). This gives a concrete per-bank redraw cadence and a
+viable capture entry.
+It does *not* identify the upstream roll/pitch-to-source-data calculation.
+
+To inspect original call registers and stack without an instruction-wide
+trace, set `FA18_GLOBE_WRITER_REGS=4470:4490:80` on the headless runner.
+The probe filters the shared clipping helper to the globe caller and never
+writes to guest memory.
+
 ## Reusable geometry, not yet wired
 
 `src/cockpit/globe_model.hpp` is a pure C++ model of the moving colour
@@ -122,19 +142,21 @@ cannot establish the original instrument's pitch/bank mapping or timing.
 
 **Not yet established:** the exact relationship between the original
 high-level instrument routine and the aircraft's actual pitch/bank values,
-its vertical scale in pixels per degree, roll sign and update timing across
-the two screen banks. In the recorded manoeuvre the player word at +102
-varies alongside vertical movement and +106 reaches 14400 during inversion,
-but this correlation does **not** prove the instrument's input formula or
-per-bank latch timing. See `src/native/view.cpp` for the player record's
-attitude usage. Do not hardwire those candidate fields or the level-only
-displacement into the GPU compositor until intermediate writer frames and
-the inverted attitude have been checked.
+its vertical scale in pixels per degree, roll sign and source geometry
+generation before each four-frame redraw. In the recorded manoeuvre the
+player word at +102 varies alongside vertical movement and +106 reaches
+14400 during inversion, but this correlation does **not** prove the
+instrument's input formula or the precise displayed-bank latch semantics.
+See `src/native/view.cpp` for the player record's attitude usage. Do not
+hardwire those candidate fields or the level-only displacement into the GPU
+compositor until intermediate writer frames and inverted attitude have been
+checked.
 
 ## Integrating the replacement
 
-1. Use the headless scripted replay and verified `$44d08`/`$451ac`
-   writer sites to capture complete per-bank globe updates. Compare them
+1. Use the headless scripted replay and verified `$44c42` routine entry and
+   `$44d08`/`$451ac` writer sites to capture complete per-bank globe updates.
+   Trace their source-data producer before the `$213a8` call; compare it
    against +102/+106 for pitch/roll, including inverted flight and frames
    between controls and their visibly updated boundary.
 2. Compare normal and `--hide-amiga-region globe` screenshots through
