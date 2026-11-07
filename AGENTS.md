@@ -170,6 +170,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   Unobserved screen banks retain the fallback. Set
   `FA18_HUD_RAIL_ART_BITMAP_REFERENCE=1` to recover the neighbour average and
   run `tests/check_gl_hud_rail_art.sh` to check the bounded changes and RAM.
+  The same verified HUD-frame capture can now paint the complete nonblack
+  `pix/frnt5` nose silhouette (x=16..303, y=133..144) from native ADF indices
+  and the displayed copper row, independent of old bitplane content. Its
+  black background is deliberately **not** treated as opaque: unpainted
+  cells retain scene and other foreground composition. Unobserved/stale
+  HUD-frame banks fall back to the previous bitplane match. Set
+  `FA18_COCKPIT_FRONT_BITMAP_REFERENCE=1` to restore that match, and use
+  `FA18_COCKPIT_FRONT_DEBUG=1` and `tests/check_gl_cockpit_front.sh` for a
+  bounded ADF screenshot / direct-GPU / RAM comparison. This test has not
+  yet been run here against the full game binary.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

@@ -494,6 +494,18 @@ before committing. Note limitations explicitly rather than masking them.
   from the common 320×200 overlay scan. `gl_hud_glyph_test` covers all 255
   occupied source cells and every unassigned location; hardware speedup has
   not yet been measured.
+- [x] Promote the original `pix/frnt5` **front-nose silhouette** to a native
+  static artwork layer when a complete HUD outline was observed in the
+  displayed Amiga screen bank. All nonblack ILBM cells at x=16..303,
+  y=133..144 now use the original palette index and live copper colours,
+  independent of the old bitplanes. Black ILBM background and unobserved
+  banks keep the existing scene/bitmap composition; this prevents an
+  opaque black rectangle from obscuring sky. The CPU and GPU paths share a
+  mask with standalone unit coverage. Restore the old bitplane-matched
+  path with `FA18_COCKPIT_FRONT_BITMAP_REFERENCE=1`; use
+  `tests/check_gl_cockpit_front.sh` for ADF-painted-cell bounds, five
+  flight/Pause/bank screenshots, direct GPU parity and RAM comparisons.
+  Live GL execution is pending in this environment.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

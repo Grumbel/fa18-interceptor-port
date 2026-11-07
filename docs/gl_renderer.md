@@ -200,6 +200,22 @@ unsized RGBA texture path and fallback both use only GL 2.1/GLES2 entry
 points. GLES2 hardware testing remains outstanding. The host Graphics
 submenu can switch 3D mode, widescreen, target FPS, detail and stats live.
 
+The native cockpit compositors also paint the fixed **front nose** from the
+original `pix/frnt5` ILBM once a completed HUD-frame writer capture proves
+the corresponding Amiga screen bank is in cockpit mode. Only nonblack ILBM
+cells (x=16..303, y=133..144) are unconditional artwork: black ILBM pixels
+are not reliable transparency information, so the GL scene and other
+bitplane foreground remain visible there. ADF pen indexes are resolved
+through the displayed scanline copper palette; CPU composition and the
+direct GPU pass share the same mask, with the GPU reading the original ADF
+cockpit texture rather than uploading those old bitmap pixels.
+`FA18_COCKPIT_FRONT_BITMAP_REFERENCE=1` restores the previous per-pixel
+bitplane comparison. `FA18_COCKPIT_FRONT_DEBUG=1` prints the number of
+independently drawn source cells every 400 frames. The ADF-backed
+`tests/check_gl_cockpit_front.sh` checks exact source-ink bounds, Pause,
+screen-bank transitions, game RAM and GPU/CPU parity; it still needs running
+on a machine with an SDL/OpenGL build of the application.
+
 ## Audit before suppressing the old 3D rasterizer
 
 `FA18_GL_RASTER_AUDIT=1` enables an optional chip-RAM dependency observer.
