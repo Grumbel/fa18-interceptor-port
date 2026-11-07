@@ -244,6 +244,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   remaining original-image dependence with `tests/check_gl_scanout.sh`
   and `tools/scanout_diff.py`. The comparison is pixel sensitivity, not
   a complete classification of who rendered each coincident colour.
+  **Ctrl+Alt+B** (or `--hide-amiga-region REGION`, script
+  `scanout-region REGION`) masks only one source-screen rectangle while
+  leaving all other bitplanes visible. Available regions are `none`,
+  `upper-screen`, `front-cockpit`, `lower-panel`, `left-attitude`, `fuel`,
+  `radar`, `globe`, `readouts` and `status`. The mask is applied after the
+  bitplane DMA read, so game RAM and register/pointer evolution are intact.
+  `tests/check_gl_scanout_region.sh ORIGINAL.adf [region]` checks ADF-backed
+  screenshot sensitivity and unchanged RAM hashes.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

@@ -330,6 +330,19 @@ not exactly how many pixels are natively implemented: different sources
 can produce the same colour. The full SDL/OpenGL replay remains to be
 verified on a build-capable machine.
 
+To mask one instrument without hiding everything, press **Ctrl+Alt+B** to
+cycle `none`, `upper-screen`, `front-cockpit`, `lower-panel`, `left-attitude`,
+`fuel`, `radar`, `globe`, `readouts` and `status`. The source-cell rectangles
+use the same bounds as the cockpit audit, and the mask applies only after
+bitplane DMA is fetched, before colour lookup; it does not touch guest RAM,
+the copper palette or display pointers. Start with
+`--hide-amiga-region globe`, or use `scanout-region globe` / `none` in scripts.
+`tests/check_gl_scanout_region.sh ORIGINAL.adf globe` runs an ADF-backed
+normal/masked screenshot comparison and checks every 100-frame RAM digest.
+The native compositor may still have pixels depending on masked source
+pixels outside the selected region, so inspect the reported diff rather
+than treating every changed cell as independent instrumentation coverage.
+
 The CPU and direct GPU now share the same mapping from each Amiga display
 scanline to the most recent completed 3D bank. A matching completed scene
 row remains eligible for widescreen extension even during the handful of

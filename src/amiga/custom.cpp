@@ -320,7 +320,10 @@ void Machine::render_line(int line) {
   int step = hires ? 2 : 1;
   for (int i = 0; i < npix; i += step) {
     int hx = x0 + (hires ? i / 2 : i);
-    uint8_t c = pix[i];
+    // Hide only the selected source-space region *after* reading every DMA
+    // word, so all game memory and subsequent pointers remain untouched.
+    // The all-bitplanes switch still works at the earlier word-fetch stage.
+    uint8_t c = blitter_write_gate_.scanout_pixel(pix[i], hx - FB_HSTART, fy);
     uint32_t rgb;
     if (ham && !hires && nplanes >= 6) {
       int ctl = (c >> 4) & 3, val = c & 15;

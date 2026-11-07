@@ -43,6 +43,8 @@ namespace {
 //   stats on|off   (statistics overlay; "shot" then also writes FILE.stats.ppm)
 //   blitter on|off   (suppress original Amiga blitter destination writes)
 //   scanout on|off   (hide original Amiga pixels without changing game RAM)
+//   scanout-region <none|upper-screen|front-cockpit|lower-panel|left-attitude|
+//                   fuel|radar|globe|readouts|status> (selective display mask)
 struct ScriptEvent {
   int frame;
   std::string cmd;
@@ -262,6 +264,8 @@ public:
       return "F/A-18 Interceptor [AMIGA BLITTER OFF]";
     if (!machine->original_bitplane_scanout())
       return "F/A-18 Interceptor [AMIGA BITPLANES HIDDEN]";
+    if (machine->hidden_scanout_region() != amiga::ScanoutRegion::None)
+      return "F/A-18 Interceptor [AMIGA REGION MASK ACTIVE]";
     return "F/A-18 Interceptor";
   }
 
@@ -284,6 +288,16 @@ public:
             enabled ? "ON" : "OFF");
   }
 
+  void set_hidden_scanout_region(amiga::ScanoutRegion region) {
+    if (machine->hidden_scanout_region() == region) return;
+    machine->set_hidden_scanout_region(region);
+    SDL_SetWindowTitle(win, window_title());
+    hud_frame = -1;
+    fprintf(stderr, "graphics: original Amiga scanout region %.*s masked (Ctrl+Alt+B)\n",
+            int(amiga::scanout_region_info(region).name.size()),
+            amiga::scanout_region_info(region).name.data());
+  }
+
   void handle_events() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -293,14 +307,17 @@ public:
         case SDL_KEYUP: {
           bool down = e.type == SDL_KEYDOWN;
           SDL_Scancode sc = e.key.keysym.scancode;
-          // Ctrl+B gates the original blitter. Ctrl+Shift+B hides only
-          // scanout; it leaves the guest's blitter writes and RAM unchanged.
+          // Ctrl+B gates the original blitter; Ctrl+Shift+B hides all
+          // bitplanes; Ctrl+Alt+B cycles read-only region-specific masks.
           // Remember the down event in case Ctrl is released before B.
           if (sc == SDL_SCANCODE_B &&
               ((e.key.keysym.mod & KMOD_CTRL) || blitter_hotkey_held)) {
             if (down && !e.key.repeat) {
               blitter_hotkey_held = true;
-              if (e.key.keysym.mod & KMOD_SHIFT)
+              if (e.key.keysym.mod & KMOD_ALT)
+                set_hidden_scanout_region(
+                    amiga::next_scanout_region(machine->hidden_scanout_region()));
+              else if (e.key.keysym.mod & KMOD_SHIFT)
                 set_original_bitplane_scanout(!machine->original_bitplane_scanout());
               else
                 set_original_blitter_writes(!machine->original_blitter_writes());
@@ -1287,7 +1304,9 @@ public:
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     if (stats_on || fps_on || !machine->original_blitter_writes() ||
-        !machine->original_bitplane_scanout()) draw_stats(logical_w);
+        !machine->original_bitplane_scanout() ||
+        machine->hidden_scanout_region() != amiga::ScanoutRegion::None)
+      draw_stats(logical_w);
     SDL_RenderPresent(ren);
     report_presentation();
   }
@@ -1323,7 +1342,8 @@ public:
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
     const bool show_hud = stats_on || fps_on || !machine->original_blitter_writes() ||
-                          !machine->original_bitplane_scanout();
+                          !machine->original_bitplane_scanout() ||
+                          machine->hidden_scanout_region() != amiga::ScanoutRegion::None;
     const bool pause_visible = remaster::pause_screen_active();
     if (pause_visible) prepare_pause_ui();
     const uint8_t* new_hud = nullptr;
@@ -1411,7 +1431,8 @@ public:
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
     const bool show_hud = stats_on || fps_on || !machine->original_blitter_writes() ||
-                          !machine->original_bitplane_scanout();
+                          !machine->original_bitplane_scanout() ||
+                          machine->hidden_scanout_region() != amiga::ScanoutRegion::None;
     if (show_hud && hud_frame != frame_no) {
       prepare_hud();
       hud_rgba.resize(stats_buf.size() * 4);
@@ -1617,6 +1638,9 @@ public:
       } else if (e.cmd == "scanout" && !e.args.empty()) {  // scanout on | off
         if (e.args[0] == "on" || e.args[0] == "off")
           set_original_bitplane_scanout(e.args[0] == "on");
+      } else if (e.cmd == "scanout-region" && !e.args.empty()) {
+        if (const auto region = amiga::parse_scanout_region(e.args[0]))
+          set_hidden_scanout_region(*region);
       } else if (e.cmd == "textpace") {  // textpace on | textpace off
         machine->text_pace = !e.args.empty() && e.args[0] == "on";
       } else if (e.cmd == "fast") {  // fast on | fast off (timing tests)
@@ -1683,6 +1707,11 @@ public:
     if (!machine->original_bitplane_scanout())
       lines.insert(lines.begin(), stats_overlay::Line{"AMIGA BITPLANES HIDDEN (Ctrl+Shift+B)",
                                                       0xFFFFAA60u});
+    if (machine->hidden_scanout_region() != amiga::ScanoutRegion::None) {
+      const auto name = amiga::scanout_region_info(machine->hidden_scanout_region()).name;
+      lines.insert(lines.begin(), stats_overlay::Line{
+          "AMIGA MASK: " + std::string(name) + " (Ctrl+Alt+B)", 0xFFFFAA60u});
+    }
     if (lines.empty() && !fps_on) return;
     const int lh = font6x10::H, pad = 4;
     size_t cols = 0;
@@ -1844,8 +1873,12 @@ void usage() {
           "  --ram-dump N FILE  dump emulated RAM at frame N\n"
           "  --no-amiga-blitter suppress Amiga blits and blank bitplane scanout (debug)\n"
           "  --no-amiga-scanout hide bitplanes but preserve guest RAM (debug)\n"
+          "  --hide-amiga-region NAME hide one original source region (debug)\n"
+          "                   upper-screen|front-cockpit|lower-panel|left-attitude|\n"
+          "                   fuel|radar|globe|readouts|status|none\n"
           "\n"
-          "keys: Ctrl+B gate Amiga blitter, Ctrl+Shift+B hide bitplanes,\n"
+          "keys: Ctrl+B gate blitter, Ctrl+Shift+B hide all bitplanes,\n"
+          "      Ctrl+Alt+B cycle masked original Amiga regions,\n"
           "      Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"
           "      Ctrl+F11 original/enhanced graphics toggle,\n"
           "      F12 grab/release mouse (port 1), F11 fullscreen,\n"
@@ -1917,6 +1950,7 @@ int main(int argc, char** argv) {
   bool full_detail = false, stats = false, fps = false, text_pace = false, widescreen = false;
   bool disable_amiga_blitter = false;
   bool disable_amiga_scanout = false;
+  amiga::ScanoutRegion hidden_scanout_region = amiga::ScanoutRegion::None;
   bool gl_direct = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
@@ -1942,6 +1976,15 @@ int main(int argc, char** argv) {
     else if (a == "--full-detail") full_detail = true;
     else if (a == "--no-amiga-blitter") disable_amiga_blitter = true;
     else if (a == "--no-amiga-scanout") disable_amiga_scanout = true;
+    else if (a == "--hide-amiga-region" && i + 1 < argc) {
+      const std::string name = argv[++i];
+      const auto region = amiga::parse_scanout_region(name);
+      if (!region) {
+        fprintf(stderr, "unknown Amiga scanout region: %s\n", name.c_str());
+        return 2;
+      }
+      hidden_scanout_region = *region;
+    }
     else if (a == "--text-pace") text_pace = true;
     else if (a == "--stats") stats = true;
     else if (a == "--fps") fps = true;
@@ -2101,6 +2144,7 @@ int main(int argc, char** argv) {
   machine.text_pace = text_pace;
   machine.set_original_blitter_writes(!disable_amiga_blitter);
   machine.set_original_bitplane_scanout(!disable_amiga_scanout);
+  machine.set_hidden_scanout_region(hidden_scanout_region);
   machine.set_hires_scale(std::max(0, std::min(8, hires)));
   machine.coverage_path = coverage_path;
   machine.use_recomp = !interpret;
@@ -2158,6 +2202,11 @@ int main(int argc, char** argv) {
     fprintf(stderr, "graphics: original Amiga blitter writes OFF (--no-amiga-blitter)\n");
   if (disable_amiga_scanout)
     fprintf(stderr, "graphics: original Amiga bitplane scanout OFF (--no-amiga-scanout)\n");
+  if (hidden_scanout_region != amiga::ScanoutRegion::None) {
+    const auto name = amiga::scanout_region_info(hidden_scanout_region).name;
+    fprintf(stderr, "graphics: original Amiga scanout region %.*s masked (--hide-amiga-region)\n",
+            int(name.size()), name.data());
+  }
   if (!misses_path.empty()) machine.track_recomp_misses(true);
 
   SdlHost host;

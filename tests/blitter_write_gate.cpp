@@ -50,4 +50,35 @@ int main() {
   assert(gate.scanout_word(resident_bitplane_word) == 0);
   gate.scanout_enabled = true;
   assert(gate.scanout_word(resident_bitplane_word) == 0xf00f);
+
+  // Region masks operate on already-fetched palette indices, so the DMA
+  // stream and all guest writes remain identical while selected instruments
+  // disappear. Half-open boundaries are defined in 320x200 source space.
+  gate.hidden_region = amiga::ScanoutRegion::Globe;
+  assert(gate.scanout_pixel(0x15, 189, 146) == 0);
+  assert(gate.scanout_pixel(0x15, 229, 193) == 0);
+  assert(gate.scanout_pixel(0x15, 188, 146) == 0x15);
+  assert(gate.scanout_pixel(0x15, 230, 193) == 0x15);
+  assert(gate.scanout_pixel(0x15, 200, 194) == 0x15);
+  assert(gate.scanout_word(resident_bitplane_word) == resident_bitplane_word);
+  gate.write(0x1008, 0xdef0, store);
+  assert(memory_writes.size() == 4);
+  assert(memory_writes.back().second == 0xdef0);
+  assert(gate.suppressed_words == 2);
+
+  // Every exposed region maps to a unique, bounded rectangle. Cycling returns
+  // to the default after the final region and parser accepts no aliases.
+  auto region = amiga::ScanoutRegion::None;
+  for (std::size_t i = 0; i < amiga::scanout_regions.size(); ++i) {
+    const auto info = amiga::scanout_region_info(region);
+    const auto parsed = amiga::parse_scanout_region(info.name);
+    assert(parsed.has_value() && *parsed == region);
+    assert(amiga::scanout_region_contains(region, info.x0, info.y0) ==
+           (region != amiga::ScanoutRegion::None));
+    assert(!amiga::scanout_region_contains(region, info.x1, info.y1));
+    region = amiga::next_scanout_region(region);
+  }
+  assert(region == amiga::ScanoutRegion::None);
+  assert(!amiga::parse_scanout_region("outside").has_value());
+  assert(!amiga::parse_scanout_region("").has_value());
 }

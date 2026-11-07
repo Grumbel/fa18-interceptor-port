@@ -34,8 +34,11 @@ def main() -> None:
     assert counts["front-cockpit"] == (0, 320 * 12)
     assert counts["lower-panel"] == (3, 320 * 55)
     assert counts["left-attitude"][0] == 1
+    assert counts["fuel"][0] == 0
+    assert counts["radar"][0] == 0
     assert counts["globe"][0] == 1
-    assert counts["right-status"][0] == 1
+    assert counts["readouts"][0] == 0
+    assert counts["status"][0] == 1
     preview = heatmap(changed)
     assert len(preview) == 320 * 200 * 3
     assert preview[:3] == b"\xff\x40\x40"

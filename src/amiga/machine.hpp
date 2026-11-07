@@ -199,6 +199,10 @@ public:
     blitter_write_gate_.scanout_enabled = enabled;
   }
   bool original_bitplane_scanout() const { return blitter_write_gate_.scanout_enabled; }
+  void set_hidden_scanout_region(ScanoutRegion region) {
+    blitter_write_gate_.hidden_region = region;
+  }
+  ScanoutRegion hidden_scanout_region() const { return blitter_write_gate_.hidden_region; }
   uint64_t suppressed_blitter_words() const { return blitter_write_gate_.suppressed_words; }
   uint16_t color_reg(int i) const { return cs_.color_[i & 31]; }
   // Scan-out data of the last rendered frame (see remaster::compose)

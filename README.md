@@ -94,7 +94,9 @@ Keys are passed to the game as on the Amiga (see `manual.txt`):
 
 Front end keys: **Ctrl+B** disables original Amiga blitter writes for a
 native-graphics comparison; **Ctrl+Shift+B** hides only original bitplane
-pixels while preserving guest RAM. **Ctrl+F9** or **Insert** opens the debug menu, **Ctrl+F10** mesh
+pixels while preserving guest RAM. **Ctrl+Alt+B** cycles selective original
+bitplane masks (instruments, panel, upper view), also preserving guest RAM.
+**Ctrl+F9** or **Insert** opens the debug menu, **Ctrl+F10** mesh
 viewer, **Ctrl+F11** switches between original 320×200 and the last enhanced
 graphics setting (OpenGL/software, including its scale; the first switch from
 original defaults to 3× OpenGL, or software if GL is unavailable), **F11**
@@ -221,6 +223,15 @@ selected at startup because the visible window needs an OpenGL context.
   This is reversible and RAM-equivalent to the normal game. The native
   cockpit can therefore be measured separately using
   `tests/check_gl_scanout.sh ORIGINAL.adf` and `tools/scanout_diff.py`.
+  For an individual instrument, **Ctrl+Alt+B** cycles a masked Amiga
+  source-screen region, leaving all other bitplanes visible. The equivalent
+  `--hide-amiga-region globe` (or `left-attitude`, `status`, `fuel`, `radar`,
+  `readouts`, `front-cockpit`, `lower-panel`, `upper-screen`, `none`) can be
+  changed during replays via `scanout-region globe` or `scanout-region none`.
+  `tests/check_gl_scanout_region.sh ORIGINAL.adf globe` compares the
+  resulting image and unchanged RAM hashes. Region masks do **not** replace
+  any renderer yet; they make missing original-image dependencies easier
+  to locate without changing what the game writes.
   **Controls >** contains analog-stick steering and the controller/keyboard
   reference; **Extras >** contains Mesh Viewer and text pacing. The main
   menu retains Resume, Save/Load states, Send ESC and Quit. Press Esc/B to

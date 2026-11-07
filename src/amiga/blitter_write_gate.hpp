@@ -4,6 +4,8 @@
 // erasing guest RAM; keep the gate testable without SDL or the game image.
 #pragma once
 
+#include "amiga/scanout_regions.hpp"
+
 #include <cstdint>
 #include <utility>
 
@@ -12,6 +14,7 @@ namespace amiga {
 struct BlitterWriteGate {
   bool enabled = true;
   bool scanout_enabled = true;
+  ScanoutRegion hidden_region = ScanoutRegion::None;
   uint64_t suppressed_words = 0;
 
   template<class Writer>
@@ -27,6 +30,11 @@ struct BlitterWriteGate {
   // guest and blitter writes continue unchanged (RAM-parity diagnostic).
   uint16_t scanout_word(uint16_t original) const {
     return enabled && scanout_enabled ? original : 0;
+  }
+  // Selectively hide colour indices, not DMA words, so a region may begin
+  // or end in the middle of a fetched word or an odd/even bitplane delay.
+  uint8_t scanout_pixel(uint8_t index, int x, int y) const {
+    return scanout_region_contains(hidden_region, x, y) ? 0 : index;
   }
 };
 

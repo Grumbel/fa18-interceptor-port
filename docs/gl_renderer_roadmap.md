@@ -551,6 +551,12 @@ before committing. Note limitations explicitly rather than masking them.
   red/gray heatmap. `tests/check_gl_scanout.sh` checks a full-flight RAM
   hash match and reports the original image's remaining contributions.
   The live GPU/ADF gate has not run in this environment.
+- [x] Add region-selective original bitplane scanout masking for next-stage
+  cockpit ownership debugging: Ctrl+Alt+B and `--hide-amiga-region` select
+  upper view, nose, panel, or one of six moving-instrument rectangles,
+  while preserving original DMA reads, per-row copper colours and RAM.
+  `tests/check_gl_scanout_region.sh` compares screenshots and full RAM hash
+  streams. The live GPU gate remains outstanding.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
