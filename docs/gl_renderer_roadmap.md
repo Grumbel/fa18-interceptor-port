@@ -471,6 +471,15 @@ before committing. Note limitations explicitly rather than masking them.
   `FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores the old colour-matched erase,
   while `tests/check_gl_hud_erase.sh` checks flight/Pause/bank GPU pixels and
   game RAM. The ADF-backed parity gate still needs to be run on a GL build.
+- [x] Use the original captured source-font masks to remove old 3×5 ink for
+  twelve HUD digits and five unit labels. The eleven source compass pixels
+  also erase from their captured phase without comparing displayed bitmap
+  colours. Current copper backdrops (pens 5, 12, 4) replace adjacent source
+  samples; old per-pixel erasure remains for incomplete/stale banks and under
+  `FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE=1`. CPU and GPU share the clearing
+  routine, with geometry unit coverage and a five-scenario screenshot/RAM plus
+  direct-GL parity gate in `tests/check_gl_hud_text_erase.sh`. ADF replay
+  validation is still pending on a machine with CMake/SDL/OpenGL installed.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -697,6 +697,32 @@ output against the old renderer pixel-for-pixel. This removes the source
 bitmap as a *value or ink* oracle; broader HUD visibility and
 original clears are still mediated by the source bitmap.
 
+Completed and displayed writer captures now also supply the **source erasure
+footprints** for all twelve 3×5 flight digits and five `KT`/`FT`/`G` unit
+letters. The old bitmap is not examined to decide which ink pixels to clear:
+the compositor maps the captured numeric value back to the original 3×5 font
+rows, rather than approximating those pixels using the new seven-stroke vector
+shape. Its background is the active scanline's copper pen 5 for upper digits,
+5/12 for flight unit groups and 4 behind the right-hand unit labels. This
+keeps copper fades and screen-bank selection independent of bitmap colour.
+An unobserved or partially drawn glyph still uses the exact original bitmap
+stencil; conditional HUD-frame visibility is unchanged.
+
+The same mechanism erases the eleven source pixels of the compass tape and
+centre index using their completed `$444c0` phase capture, with copper pen 5
+as its background. Native writer erasure is restricted to a bank with an
+active recent/held complete HUD outline; it cannot clear old ink on a stale
+screen bank that merely retained a previous glyph latch. Both compositors
+share the same erase/background routine.
+
+`FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE=1` restores source-colour comparison and
+neighbour-pixel backdrop sampling for these digits, unit labels and heading
+marks. `tests/check_gl_hud_text_erase.sh ORIGINAL.adf [fa18-executable]`
+compares bank-flip, flight, Pause and maneuver screenshots, RAM hashes and
+direct GPU/CPU parity. `FA18_HUD_TEXT_ERASE_DEBUG=1` reports how many captured
+digits/labels and whether the compass use writer-derived erasure at frame 4000.
+Hardware and full ADF replay parity still need testing.
+
 The five heading-scale marks beneath the top numerals are now native as well:
 three two-pixel major ticks alternate with two single-pixel minor ticks,
 10 source columns apart, and a fixed three-pixel central heading index at

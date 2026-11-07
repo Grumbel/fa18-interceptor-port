@@ -26,6 +26,14 @@ inline constexpr uint8_t kLetterRows[4][5] = {
 // Strokes A,B,C,D,E,F,G (1 is a centre stem, not a right-side seven).
 inline constexpr uint8_t kDigitStrokes[10] = {63, 128, 91, 79, 102, 109, 125, 7, 127, 103};
 
+// The exact original 3x5 font footprint, used for clearing the old writer's
+// ink under native strokes. Zero value_plus_one denotes an unobserved bank.
+constexpr bool writer_digit_pixel(uint8_t value_plus_one, int x, int y) {
+  return value_plus_one >= 1 && value_plus_one <= 10 &&
+         x >= 0 && x < 3 && y >= 0 && y < 5 &&
+         (kDigitRows[value_plus_one - 1][y] & (4 >> x)) != 0;
+}
+
 inline int letter_index(char letter) {
   switch (letter) {
     case 'K': return 0;
@@ -34,6 +42,12 @@ inline int letter_index(char letter) {
     case 'G': return 3;
     default: return -1;
   }
+}
+
+inline bool writer_letter_pixel(char letter, int x, int y) {
+  const int glyph = letter_index(letter);
+  return glyph >= 0 && x >= 0 && x < 3 && y >= 0 && y < 5 &&
+         (kLetterRows[glyph][y] & (4 >> x)) != 0;
 }
 
 // The 68000 HUD writer receives five consecutive glyph bytes, with the

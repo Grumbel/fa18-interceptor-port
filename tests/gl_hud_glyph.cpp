@@ -59,6 +59,41 @@ int main() {
   state = blank;
   state.reticle_from_writer = true;
   assert(state != blank);
+  state = blank;
+  state.heading_from_writer = true;
+  assert(state != blank);
+  state = blank;
+  state.digit_writer_value[3] = 5;
+  assert(state != blank);
+  state = blank;
+  state.letter_from_writer[3] = 1;
+  assert(state != blank);
+
+  // Writer-derived 3x5 footprints use the original font bytes, not the
+  // seven-segment high-resolution stroke approximation. Incomplete captures
+  // (zero), unknown digits and any out-of-cell coordinates must erase none.
+  for (int number = 0; number < 10; ++number)
+    for (int y = 0; y < 5; ++y)
+      for (int x = 0; x < 3; ++x)
+        assert(writer_digit_pixel(uint8_t(number + 1), x, y) ==
+               bool(kDigitRows[number][y] & (4 >> x)));
+  for (const auto& slot : kHudLetterSlots) {
+    const int glyph = letter_index(slot.letter);
+    assert(glyph >= 0);
+    for (int y = 0; y < 5; ++y)
+      for (int x = 0; x < 3; ++x)
+        assert(writer_letter_pixel(slot.letter, x, y) ==
+               bool(kLetterRows[glyph][y] & (4 >> x)));
+    assert(!writer_letter_pixel(slot.letter, -1, 0));
+    assert(!writer_letter_pixel(slot.letter, 3, 0));
+    assert(!writer_letter_pixel(slot.letter, 0, 5));
+  }
+  assert(!writer_letter_pixel('X', 0, 0));
+  assert(!writer_digit_pixel(0, 1, 1));
+  assert(!writer_digit_pixel(11, 1, 1));
+  assert(!writer_digit_pixel(10, -1, 0));
+  assert(!writer_digit_pixel(10, 3, 0));
+  assert(!writer_digit_pixel(10, 0, 5));
 
   // Exact capture-derived original ink footprints, independent of pixels.
   // Every origin/end point is inclusive; neighbouring UI pixels stay intact.

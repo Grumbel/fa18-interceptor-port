@@ -75,10 +75,15 @@ struct NativeHudState {
   uint32_t frame_rail_rgb = 0;
   // 0 = no validated digit; otherwise seven-stroke mask (128 = centre 1).
   std::array<uint8_t, kHudDigitSlots.size()> digit_strokes{};
+  // 0 = source bitmap fallback, 1..10 = completed writer's original digit.
+  // These are source-font values, not the vector seven-stroke rendering mask.
+  std::array<uint8_t, kHudDigitSlots.size()> digit_writer_value{};
   std::array<uint32_t, 4> digit_colours{};
   std::array<uint8_t, kHudLetterSlots.size()> letter_visible{};
+  std::array<uint8_t, kHudLetterSlots.size()> letter_from_writer{};
   std::array<uint32_t, kHudLetterSlots.size()> letter_colours{};
   bool heading_marks = false;
+  bool heading_from_writer = false;
   int heading_first_x = 0;
   uint32_t heading_rgb = 0;
 };

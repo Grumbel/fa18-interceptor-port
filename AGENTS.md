@@ -164,6 +164,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   backdrop. Unknown/partial captures retain the old source-colour stencil;
   `FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores it for flight/Pause CPU and
   GPU/RAM parity in `tests/check_gl_hud_erase.sh`.
+  The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
+  erase their original writer footprints with scanline copper backdrops as
+  well. Captured numeric values map to the **original** source font rows,
+  independently of the new seven-stroke shapes. Only complete captures in
+  an active HUD-frame bank use this path; other banks use the original bitmap
+  stencil. `FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE=1` restores bitmap erasure;
+  compare CPU/GPU pixels and RAM with `tests/check_gl_hud_text_erase.sh`.
   The native Pause heading has a cached high-resolution coverage texture:
   colour comes from the live copper palette pen 9 (not hardcoded amber), and
   the original 5x7 font writer's per-bank captured ink count gates visibility,

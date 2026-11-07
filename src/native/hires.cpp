@@ -33,10 +33,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace remaster {
+
+static int hud_backdrop_pen(int y, int x);
 
 namespace {
 using native::rd16;
@@ -1328,13 +1331,13 @@ void blend_native_heading_marks(std::vector<uint32_t>& out, int side, int scale,
     }
 }
 
-const HudDigitSlot* hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
+int hud_original_digit_cell(int x, int y, const NativeHudState& hud) {
   for (size_t i = 0; i < kHudDigitSlots.size(); ++i) {
     const auto& slot = kHudDigitSlots[i];
     if (hud.digit_strokes[i] && x >= slot.x && x < slot.x + 3 &&
-        y >= slot.y && y < slot.y + 5) return &slot;
+        y >= slot.y && y < slot.y + 5) return int(i);
   }
-  return nullptr;
+  return -1;
 }
 
 int hud_original_letter_cell(int x, int y, const NativeHudState& hud) {
@@ -1353,6 +1356,51 @@ bool hud_original_heading_pixel(int x, int y, const NativeHudState& hud) {
   const int delta = x - hud.heading_first_x;
   if (delta < 0 || delta > 40 || delta % 10 != 0) return false;
   return y == 61 || (delta / 10) % 2 == 0;
+}
+
+// The font and compass geometry comes from complete screen-bank writer
+// captures. In that case erase only the exact source 3x5/point strokes and
+// reconstruct their background from the current scanline copper palette.
+// The source-colour fallback remains for unobserved/partial redraws.
+std::optional<uint32_t> hud_original_text_background(
+    int x, int y, const NativeHudState& hud, const uint32_t* rgb,
+    const uint32_t* palette, bool native_erase) {
+  if (hud_original_heading_pixel(x, y, hud)) {
+    const bool writer = native_erase && hud.heading_from_writer;
+    if (hud_erase::erase_pixel(hud.heading_from_writer, native_erase,
+                               writer ? 0 : rgb[y * W + x], hud.heading_rgb)) {
+      return writer ? palette[size_t(y) * 32 + 5] :
+                      rgb[y * W + (x == 159 ? 165 : x + 2)];
+    }
+  }
+  if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0) {
+    const auto& slot = kHudLetterSlots[size_t(letter)];
+    const bool writer = native_erase && hud.letter_from_writer[size_t(letter)];
+    const bool ink = writer ? hud_font::writer_letter_pixel(
+                                  slot.letter, x - slot.x, y - slot.y) :
+                              (rgb[y * W + x] & 0xffffffu) ==
+                                  hud.letter_colours[size_t(letter)];
+    if (ink) {
+      const int pen = hud_backdrop_pen(slot.y, slot.background_x);
+      return writer && pen >= 0 ? palette[size_t(y) * 32 + size_t(pen)] :
+                                  rgb[y * W + slot.background_x];
+    }
+  }
+  if (const int digit = hud_original_digit_cell(x, y, hud); digit >= 0) {
+    const auto& slot = kHudDigitSlots[size_t(digit)];
+    const uint8_t value = hud.digit_writer_value[size_t(digit)];
+    const bool writer = native_erase && value != 0;
+    const bool ink = writer ? hud_font::writer_digit_pixel(
+                                  value, x - slot.x, y - slot.y) :
+                              (rgb[y * W + x] & 0xffffffu) ==
+                                  hud.digit_colours[slot.group];
+    if (ink) {
+      const int pen = hud_backdrop_pen(slot.y, slot.background_x);
+      return writer && pen >= 0 ? palette[size_t(y) * 32 + size_t(pen)] :
+                                  rgb[y * W + slot.background_x];
+    }
+  }
+  return std::nullopt;
 }
 }  // namespace
 
@@ -1443,6 +1491,8 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const bool pause_backdrop_copper =
       std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
   const bool native_erase = std::getenv("FA18_HUD_ERASE_BITMAP_REFERENCE") == nullptr;
+  const bool native_text_erase =
+      std::getenv("FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE") == nullptr;
   const bool frame_writer_erase = native_erase && hud.frame_from_writer;
   const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
   const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
@@ -1478,22 +1528,9 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
-        if (hud_original_heading_pixel(x, y, hud) &&
-            (rgb[y * W + x] & 0xffffffu) == hud.heading_rgb) {
-          const uint32_t bg = rgb[y * W + (x == 159 ? 165 : x + 2)];
-          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
-          continue;
-        }
-        if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
-            (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
-          const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
-          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
-          continue;
-        }
-        if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
-            slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
-          const uint32_t bg = rgb[y * W + slot->background_x];
-          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
+        if (const auto bg = hud_original_text_background(
+                x, y, hud, rgb, pal, native_text_erase)) {
+          for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = *bg;
           continue;
         }
         // The native UI will draw the Pause heading at output resolution.
@@ -1669,6 +1706,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const bool pause_backdrop_copper =
       std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
   const bool native_erase = std::getenv("FA18_HUD_ERASE_BITMAP_REFERENCE") == nullptr;
+  const bool native_text_erase =
+      std::getenv("FA18_HUD_TEXT_ERASE_BITMAP_REFERENCE") == nullptr;
   const bool frame_writer_erase = native_erase && hud.frame_from_writer;
   const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
   last_prepared_gpu_hud = hud;
@@ -1725,30 +1764,11 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[3] = 255;
         continue;
       }
-      if (hud_original_heading_pixel(x, y, hud) &&
-          (rgb[y * W + x] & 0xffffffu) == hud.heading_rgb) {
-        const uint32_t bg = rgb[y * W + (x == 159 ? 165 : x + 2)];
-        p[0] = uint8_t(bg >> 16);
-        p[1] = uint8_t(bg >> 8);
-        p[2] = uint8_t(bg);
-        p[3] = 255;
-        continue;
-      }
-      if (const int letter = hud_original_letter_cell(x, y, hud); letter >= 0 &&
-          (rgb[y * W + x] & 0xffffffu) == hud.letter_colours[size_t(letter)]) {
-        const uint32_t bg = rgb[y * W + kHudLetterSlots[size_t(letter)].background_x];
-        p[0] = uint8_t(bg >> 16);
-        p[1] = uint8_t(bg >> 8);
-        p[2] = uint8_t(bg);
-        p[3] = 255;
-        continue;
-      }
-      if (const HudDigitSlot* slot = hud_original_digit_cell(x, y, hud);
-          slot && (rgb[y * W + x] & 0xffffffu) == hud.digit_colours[slot->group]) {
-        const uint32_t bg = rgb[y * W + slot->background_x];
-        p[0] = uint8_t(bg >> 16);
-        p[1] = uint8_t(bg >> 8);
-        p[2] = uint8_t(bg);
+      if (const auto bg = hud_original_text_background(
+              x, y, hud, rgb, pal, native_text_erase)) {
+        p[0] = uint8_t(*bg >> 16);
+        p[1] = uint8_t(*bg >> 8);
+        p[2] = uint8_t(*bg);
         p[3] = 255;
         continue;
       }
@@ -2033,6 +2053,7 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       if (from_writer) {
         out.heading_marks = true;
         out.heading_first_x = captured_phase;
+        out.heading_from_writer = point_palette_native && out.frame_from_writer;
       } else {
         out.heading_marks = hud_font::decode_heading_marks(
             rgb, out.heading_first_x, out.heading_rgb);
@@ -2069,6 +2090,8 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
                                 hud_font::kDigitRows[value][0], ink));
         if (captured_ink) {
           ++captured_digits;
+          if (palette_native && out.frame_from_writer)
+            out.digit_writer_value[i] = uint8_t(value + 1);
         } else {
           value = hud_font::decode_digit(rgb, kHudDigitSlots[i], ink);
         }
@@ -2101,6 +2124,7 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
             continue;
           }
           out.letter_visible[i] = 1;
+          out.letter_from_writer[i] = drawn && palette_native && out.frame_from_writer;
           out.letter_colours[i] = ink;
           if (std::getenv("FA18_HUD_DIGITS_DEBUG")) {
             static int reported = 0;
@@ -2115,6 +2139,23 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       if (std::getenv("FA18_HUD_CAPTURE_DEBUG") && m.frame_count() % 400 == 0)
         std::fprintf(stderr, "HUD capture use frame=%llu digits=%d letters=%d\n",
                      (unsigned long long)m.frame_count(), captured_digits, captured_letters);
+    }
+  }
+
+  if (std::getenv("FA18_HUD_TEXT_ERASE_DEBUG") && m.frame_count() % 400 == 0) {
+    static uint64_t reported = UINT64_MAX;
+    if (reported != m.frame_count()) {
+      reported = m.frame_count();
+      const int digits = int(std::count_if(out.digit_writer_value.begin(),
+                                           out.digit_writer_value.end(),
+                                           [](uint8_t value) { return value != 0; }));
+      const int letters = int(std::count_if(out.letter_from_writer.begin(),
+                                            out.letter_from_writer.end(),
+                                            [](uint8_t value) { return value != 0; }));
+      std::fprintf(stderr,
+                   "HUD text erase capture frame=%llu digits=%d letters=%d heading=%d\n",
+                   (unsigned long long)m.frame_count(), digits, letters,
+                   int(out.heading_from_writer));
     }
   }
 
