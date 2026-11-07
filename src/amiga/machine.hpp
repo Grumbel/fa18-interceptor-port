@@ -189,9 +189,10 @@ public:
   void raster_audit_reset();
   void raster_audit_blit(uint8_t minterm, uint32_t words, bool line, bool fill);
   // Debug-only visual isolation. Suppress every Amiga blitter destination
-  // write, while retaining source reads, pointer updates, DMA timing,
-  // BLTZERO and completion interrupts so the original game can progress.
-  // Unlike normal graphics options, this deliberately changes guest RAM.
+  // write and present blank bitplane data, while retaining source reads,
+  // pointer updates, DMA timing, BLTZERO and completion interrupts.
+  // Previously drawn words stay in RAM, so turning this back on restores
+  // normal display fetches. Suppressed writes still change guest RAM history.
   void set_original_blitter_writes(bool enabled) { blitter_write_gate_.enabled = enabled; }
   bool original_blitter_writes() const { return blitter_write_gate_.enabled; }
   uint64_t suppressed_blitter_words() const { return blitter_write_gate_.suppressed_words; }

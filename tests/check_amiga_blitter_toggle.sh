@@ -11,12 +11,14 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 adf=$1
 bin=${2:-"$repo/build/fa18"}
 tmp=$(mktemp -d)
-trap 'rm -f "$tmp"/*.log; rmdir "$tmp"' EXIT
+trap 'rm -f "$tmp"/*.log "$tmp"/*.ppm; rmdir "$tmp"' EXIT
 export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
 args=(--native off --interpret --det-timing --fast --gl 3
       --frames 430 --ram-hash 100)
-"$bin" "${args[@]}" "$adf" >"$tmp/original.log" 2>&1
-"$bin" "${args[@]}" --script "$repo/tests/data/blitter_toggle.txt" "$adf" \
+"$bin" "${args[@]}" --screenshot 385 "$tmp/original.ppm" "$adf" \
+  >"$tmp/original.log" 2>&1
+"$bin" "${args[@]}" --script "$repo/tests/data/blitter_toggle.txt" \
+  --screenshot 385 "$tmp/toggled.ppm" "$adf" \
   >"$tmp/toggled.log" 2>&1
 grep -q '^graphics: original Amiga blitter writes OFF ' "$tmp/toggled.log"
 grep -q '^graphics: original Amiga blitter writes ON ' "$tmp/toggled.log"
@@ -28,4 +30,10 @@ if cmp -s <(grep '^\[ramhash\]' "$tmp/original.log") \
   echo 'FAIL: disabling the blitter left the original RAM history unchanged' >&2
   exit 1
 fi
-echo 'PASS: blitter writes are suppressed and can be restored during a running game'
+test -s "$tmp/original.ppm"
+test -s "$tmp/toggled.ppm"
+if cmp -s "$tmp/original.ppm" "$tmp/toggled.ppm"; then
+  echo 'FAIL: Amiga bitplanes are still visible while the blitter is off' >&2
+  exit 1
+fi
+echo 'PASS: blitter writes suppressed, bitplane scanout blanked, and toggle restored'

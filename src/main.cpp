@@ -1810,7 +1810,7 @@ void usage() {
           "  --vbl-time       use video-blank timing\n"
           "  --ram-hash N     log emulated RAM hashes every N frames\n"
           "  --ram-dump N FILE  dump emulated RAM at frame N\n"
-          "  --no-amiga-blitter suppress original Amiga blitter drawing (debug)\n"
+          "  --no-amiga-blitter suppress Amiga blits and blank bitplane scanout (debug)\n"
           "\n"
           "keys: Ctrl+B toggle original Amiga blitter drawing,\n"
           "      Ctrl+F9/Insert debug menu, Ctrl+F10 mesh viewer,\n"

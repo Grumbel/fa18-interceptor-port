@@ -306,7 +306,9 @@ void Machine::render_line(int line) {
     uint32_t pt = cs_.bplpt_[p];
     int delay = (p & 1) ? delay2 : delay1;
     for (int w = 0; w < nwords; ++w) {
-      uint16_t data = read16(pt + uint32_t(w * 2));
+      // Keep consuming the original DMA stream and advancing BPLxPT, but
+      // hide any stale bitmap when the native-only comparison is enabled.
+      uint16_t data = blitter_write_gate_.scanout_word(read16(pt + uint32_t(w * 2)));
       for (int b = 0; b < 16; ++b)
         if (data & (0x8000 >> b)) pix[w * 16 + b + delay] |= uint8_t(1 << p);
     }

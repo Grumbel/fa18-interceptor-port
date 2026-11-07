@@ -229,11 +229,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   all original area/line blitter destination writes (or set
   `--no-amiga-blitter` at launch). It retains pointer shifts, minterm
   computation, cycle accounting, BLTZERO and blitter IRQ so the game can
-  advance; the original bitmaps will become stale. This intentionally
-  changes emulated RAM and must **never** be used for native parity gates.
+  advance. It also masks all original bitplane display reads to zero,
+  so stale cockpit/menu artwork vanishes immediately without erasing the
+  underlying chip RAM. The mask reverses on re-enable; suppressed writes
+  still change guest RAM and must **never** be used for native parity gates.
   It renders a red status line via both SDL and direct GPU, and a window
   title warning. Script `blitter off|on` and
-  `tests/check_amiga_blitter_toggle.sh ORIGINAL.adf` exercise it.
+  `tests/check_amiga_blitter_toggle.sh ORIGINAL.adf` exercise it, including
+  screenshot differences while the bitplanes are blanked.
   The twelve 3x5 HUD digits, five unit labels, and eleven compass marks now
   erase their original writer footprints with scanline copper backdrops as
   well. Captured numeric values map to the **original** source font rows,

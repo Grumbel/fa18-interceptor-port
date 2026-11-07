@@ -290,13 +290,22 @@ For visual isolation rather than parity checking, press **Ctrl+B** in the
 running game (or use the Graphics > Amiga blitter switch). All subsequent
 Amiga area/line blitter **destination writes** are discarded while their
 source reads, internal register updates, blitter-completion IRQ and cycle
-cost remain. The red `AMIGA BLITTER OFF (Ctrl+B)` HUD label appears in both
+cost remain. In addition, **all original bitplane data is presented as zero**
+during display DMA: previously rendered cockpit and menu images disappear
+immediately, even if they remain in chip RAM. The bitplane pointers still
+advance and the palette continues to update, allowing the native GL and
+asset-backed layers to be inspected separately. This is a reversible
+**scanout mask**, not a destructive clearing of the game's RAM; turning the
+switch on immediately resumes reading the stored bitplane data (except
+writes that were suppressed while it was off). The red
+`AMIGA BLITTER OFF (Ctrl+B)` HUD label appears in both
 the SDL and direct GPU compositors; the window title also announces the
 state. Press Ctrl+B again to resume normal writes. Use
 `--no-amiga-blitter` to start with them disabled, or script `blitter off`
 and `blitter on` to capture a controlled replay. See
-`tests/check_amiga_blitter_toggle.sh ORIGINAL.adf`. In this mode previously
-drawn bitplanes are not cleared, and original UI/3D dependencies can fail;
+`tests/check_amiga_blitter_toggle.sh ORIGINAL.adf`, which checks a masked
+frame alongside the existing RAM-hash/suppression checks. Original UI/3D
+dependencies can still fail;
 the changed guest RAM makes normal native-vs-interpreter checks meaningless.
 This switch reveals **what remains without the original blitter**, not a
 completed native renderer.

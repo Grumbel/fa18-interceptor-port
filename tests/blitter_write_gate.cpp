@@ -16,6 +16,7 @@ int main() {
   gate.write(0x1000, 0x00ff, store);
   assert(memory_writes.size() == 1);
   assert(memory_writes[0].first == 0x1000 && memory_writes[0].second == 0x00ff);
+  assert(gate.scanout_word(0x1234) == 0x1234);
 
   // Both area and line blits use this exact gate. Suppression affects only
   // the final write; callers still perform their blit bookkeeping.
@@ -24,6 +25,11 @@ int main() {
   gate.write(0x1002, 0xabcd, store);
   assert(memory_writes.size() == 1);
   assert(gate.suppressed_words == 2);
+  // Existing chip-RAM words are visually blanked, including data written
+  // before suppression or directly by the CPU. They are not overwritten.
+  const uint16_t resident_bitplane_word = 0xf00f;
+  assert(gate.scanout_word(resident_bitplane_word) == 0);
+  assert(resident_bitplane_word == 0xf00f);
 
   gate.enabled = true;
   gate.write(0x1004, 0x4321, store);
@@ -31,4 +37,5 @@ int main() {
   assert(memory_writes.back().first == 0x1004);
   assert(memory_writes.back().second == 0x4321);
   assert(gate.suppressed_words == 2);
+  assert(gate.scanout_word(resident_bitplane_word) == 0xf00f);
 }
