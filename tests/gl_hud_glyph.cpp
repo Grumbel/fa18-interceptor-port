@@ -1,4 +1,5 @@
 #include "native/hud_glyph.hpp"
+#include "native/hud_erase.hpp"
 
 #include <array>
 #include <cassert>
@@ -52,6 +53,33 @@ int main() {
   state = blank;
   state.pause_rgb = 0xaa6622;
   assert(state != blank);
+  state = blank;
+  state.frame_from_writer = true;
+  assert(state != blank);
+  state = blank;
+  state.reticle_from_writer = true;
+  assert(state != blank);
+
+  // Exact capture-derived original ink footprints, independent of pixels.
+  // Every origin/end point is inclusive; neighbouring UI pixels stay intact.
+  using namespace remaster::hud_erase;
+  assert(frame_crown(93, 37) && frame_crown(225, 37));
+  assert(!frame_crown(92, 37) && !frame_crown(226, 37));
+  assert(frame_crown(92, 38) && frame_crown(226, 38));
+  assert(frame_crown(85, 45) && frame_crown(233, 45));
+  assert(!frame_crown(85, 46) && !frame_crown(159, 38));
+  assert(frame_rail(85, 46) && frame_rail(233, 144));
+  assert(!frame_rail(85, 45) && !frame_rail(233, 145));
+  assert(reticle(159, 71) && reticle(159, 75));
+  assert(reticle(157, 73) && reticle(161, 73));
+  assert(!reticle(158, 72) && !reticle(162, 73));
+
+  constexpr uint32_t source = 0x123456;
+  constexpr uint32_t target_ink = 0xcccccc;
+  assert(erase_pixel(true, true, source, target_ink)); // completed writer
+  assert(!erase_pixel(false, true, source, target_ink)); // unknown bank
+  assert(!erase_pixel(true, false, source, target_ink)); // bitmap reference
+  assert(erase_pixel(false, true, target_ink | 0xff000000, target_ink));
 
   Screen screen{};
   screen.fill(kBackground);

@@ -14,6 +14,7 @@
 //                set (1) / clear (0); $5a9e2 bit b set = XOR for polygons
 #include "amiga/machine.hpp"
 #include "native/gl_renderer.hpp"
+#include "native/hud_erase.hpp"
 #include "native/hud_glyph.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
@@ -1355,16 +1356,15 @@ bool hud_original_heading_pixel(int x, int y, const NativeHudState& hud) {
 }
 }  // namespace
 
-// Exact *locations* of the old 320x200 source strokes, only used to clear
-// their bitmap footprints. No source pixel supplies the vector geometry.
+// Exact locations of the original writers' 320x200 strokes. The fallback
+// only compares ink in unobserved/partial banks; a complete writer capture
+// erases these footprints without asking the old bitmap what colour they are.
 bool frame_crown_source_pixel(int x, int y, const NativeHudState& hud,
-                              uint32_t colour) {
-  if (!hud.frame_crown) return false;
-  if (y == 37 && x >= 93 && x <= 224) return colour == hud.frame_top_rgb;
-  if (y == 37 && x == 225) return colour == hud.frame_corner_rgb;
-  if (y >= 38 && y <= 45 && (x == 130 - y || x == 188 + y))
-    return colour == hud.frame_corner_rgb;
-  return false;
+                              uint32_t colour, bool native_erase) {
+  return hud.frame_crown && hud_erase::frame_crown(x, y) &&
+         hud_erase::erase_pixel(hud.frame_from_writer, native_erase, colour,
+                               y == 37 && x < 225 ? hud.frame_top_rgb :
+                                                     hud.frame_corner_rgb);
 }
 
 uint32_t frame_crown_background(const uint32_t* rgb, int x, int y) {
@@ -1372,9 +1372,11 @@ uint32_t frame_crown_background(const uint32_t* rgb, int x, int y) {
              (y == 37 ? x : (x < 159 ? x - 2 : x + 2))];
 }
 
-bool frame_rail_source_pixel(int x, int y, const NativeHudState& hud, uint32_t colour) {
-  return hud.frame_rails && y >= 46 && y <= 144 && (x == 85 || x == 233) &&
-         colour == hud.frame_rail_rgb;
+bool frame_rail_source_pixel(int x, int y, const NativeHudState& hud,
+                             uint32_t colour, bool native_erase) {
+  return hud.frame_rails && hud_erase::frame_rail(x, y) &&
+         hud_erase::erase_pixel(hud.frame_from_writer, native_erase, colour,
+                               hud.frame_rail_rgb);
 }
 
 // The forward cockpit lip begins at y=138. Its artwork obscures the world,
@@ -1440,6 +1442,9 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
   const NativeHudState hud = native_hud_state(m);
   const bool pause_backdrop_copper =
       std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
+  const bool native_erase = std::getenv("FA18_HUD_ERASE_BITMAP_REFERENCE") == nullptr;
+  const bool frame_writer_erase = native_erase && hud.frame_from_writer;
+  const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
   const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
   out.assign(size_t(stride) * size_t(200 * S), 0xFF000000u);
@@ -1500,20 +1505,26 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
-        if (hud.reticle &&
-            ((x == 159 && y >= 71 && y <= 75) ||
-             (y == 73 && x >= 157 && x <= 161)) &&
-            (rgb[y * W + x] & 0xffffffu) == hud.reticle_rgb) {
-          const uint32_t bg = rgb[y * W + 165];
+        if (hud.reticle && hud_erase::reticle(x, y) &&
+            hud_erase::erase_pixel(hud.reticle_from_writer, native_erase,
+                                   reticle_writer_erase ? 0 : rgb[y * W + x],
+                                   hud.reticle_rgb)) {
+          const uint32_t bg = reticle_writer_erase ?
+              pal[size_t(y) * 32 + 5] : rgb[y * W + 165];
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
-        if (frame_crown_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
-          const uint32_t bg = frame_crown_background(rgb, x, y);
+        if (frame_crown_source_pixel(x, y, hud,
+                                     frame_writer_erase ? 0 : rgb[y * W + x],
+                                     native_erase)) {
+          const uint32_t bg = frame_writer_erase ?
+              pal[size_t(y) * 32 + 5] : frame_crown_background(rgb, x, y);
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = bg;
           continue;
         }
-        if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+        if (frame_rail_source_pixel(x, y, hud,
+                                    frame_writer_erase ? 0 : rgb[y * W + x],
+                                    native_erase)) {
           const bool scene_behind = flight && y < 138 && y < ready->rows;
           if (scene_behind) {
             const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
@@ -1657,6 +1668,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   const NativeHudState hud = native_hud_state(m);
   const bool pause_backdrop_copper =
       std::getenv("FA18_PAUSE_BACKDROP_REFERENCE") == nullptr;
+  const bool native_erase = std::getenv("FA18_HUD_ERASE_BITMAP_REFERENCE") == nullptr;
+  const bool frame_writer_erase = native_erase && hud.frame_from_writer;
+  const bool reticle_writer_erase = native_erase && hud.reticle_from_writer;
   last_prepared_gpu_hud = hud;
   if (std::getenv("FA18_HUD_RETICLE_DEBUG") && m.frame_count() % 30 == 0)
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
@@ -1747,26 +1761,32 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         p[3] = 255;
         continue;
       }
-      if (hud.reticle &&
-          ((x == 159 && y >= 71 && y <= 75) ||
-           (y == 73 && x >= 157 && x <= 161)) &&
-          (rgb[y * W + x] & 0xffffffu) == hud.reticle_rgb) {
-        const uint32_t bg = rgb[y * W + 165];
+      if (hud.reticle && hud_erase::reticle(x, y) &&
+          hud_erase::erase_pixel(hud.reticle_from_writer, native_erase,
+                                 reticle_writer_erase ? 0 : rgb[y * W + x],
+                                 hud.reticle_rgb)) {
+        const uint32_t bg = reticle_writer_erase ?
+            pal[size_t(y) * 32 + 5] : rgb[y * W + 165];
         p[0] = uint8_t(bg >> 16);
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
         p[3] = 255;
         continue;
       }
-      if (frame_crown_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
-        const uint32_t bg = frame_crown_background(rgb, x, y);
+      if (frame_crown_source_pixel(x, y, hud,
+                                   frame_writer_erase ? 0 : rgb[y * W + x],
+                                   native_erase)) {
+        const uint32_t bg = frame_writer_erase ?
+            pal[size_t(y) * 32 + 5] : frame_crown_background(rgb, x, y);
         p[0] = uint8_t(bg >> 16);
         p[1] = uint8_t(bg >> 8);
         p[2] = uint8_t(bg);
         p[3] = 255;
         continue;
       }
-      if (frame_rail_source_pixel(x, y, hud, rgb[y * W + x] & 0xffffffu)) {
+      if (frame_rail_source_pixel(x, y, hud,
+                                  frame_writer_erase ? 0 : rgb[y * W + x],
+                                  native_erase)) {
         if (flight && y < 138 && y < ready->rows) {
           // Reveal native scene indices, using the same double-buffered row
           // lookup as every other scene-backed pixel in the GPU presenter.
@@ -1976,6 +1996,7 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
       out.frame_top_rgb = top;
       out.frame_corner_rgb = corner;
     }
+    out.frame_from_writer = use_writer && out.frame_crown;
     const char* rails = std::getenv("FA18_HUD_RAILS_NATIVE");
     if (out.frame_crown && (!rails || std::strcmp(rails, "0") != 0)) {
       const uint32_t ink = use_writer ? row_palette[55 * 32] & 0xffffffu :
@@ -2111,6 +2132,10 @@ NativeHudState native_hud_state(const amiga::Machine& m) {
                               hud_font::live_reticle_ink(rgb, out.reticle_rgb));
   if (from_writer) {
     out.reticle = true;
+    // A reticle latch can outlive the flight outline. Only replace its
+    // bitmap footprint unconditionally while the current bank also has a
+    // verified, recent (or Pause-held) complete HUD frame.
+    out.reticle_from_writer = out.frame_from_writer;
   } else {
     const uint32_t ink = rgb[73 * W + 159] & 0xffffffu;
     const uint32_t backdrop = rgb[73 * W + 165] & 0xffffffu;

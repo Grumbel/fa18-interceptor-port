@@ -158,6 +158,12 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   not the old source glyph pixels. `FA18_HUD_POINT_PALETTE_REFERENCE=1`
   restores pixel sampling for A/B checks, and
   `tests/check_gl_hud_point_palette.sh` verifies flight/Pause/bank parity.
+  Completed per-bank HUD outline and reticle writer captures also let the
+  compositor remove their exact original stroke footprints without reading
+  the old bitmap's ink. Copper pen 5 supplies the erased crown/reticle
+  backdrop. Unknown/partial captures retain the old source-colour stencil;
+  `FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores it for flight/Pause CPU and
+  GPU/RAM parity in `tests/check_gl_hud_erase.sh`.
   The native Pause heading has a cached high-resolution coverage texture:
   colour comes from the live copper palette pen 9 (not hardcoded amber), and
   the original 5x7 font writer's per-bank captured ink count gates visibility,

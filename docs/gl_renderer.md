@@ -784,6 +784,30 @@ compares screenshots and emulated RAM hashes with the source-pixel reference
 across bank flip, settled flight, Pause, dynamic controls and maneuvering,
 and checks both bank captures and an active writer path in settled flight.
 
+### Replacing source HUD ink with captured erasure footprints
+
+Once the complete `$48eba` outline and, for the reticle, the combined
+`$444a2` / `$44924` writer have been observed for the displayed bank, the
+original pixels no longer determine **which** 320×200 locations to clear.
+The compositor erases the exact writer footprint (crown/chamfers, both rails
+and the aiming cross) before drawing its high-resolution strokes. Unknown,
+partial and stale-bank redraws still use the previous ink-colour match.
+The exact source footprint is shared by the CPU and direct-GPU compositor.
+
+For the crown and reticle, the erased region is filled with the current
+scanline's copper **pen 5** background, not an adjacent source-screen pixel.
+Rail pixels in the 3D view expose the underlying native scene; those crossing
+the opaque cockpit lip still use adjacent artwork pixels to reconstruct its
+background. The original raster writes still execute and game RAM is
+unchanged; this only removes a dependency in presentation.
+
+`FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores both the previous colour-matched
+erase stencil and the previous neighbour-pixel background sampling. Use
+`tests/check_gl_hud_erase.sh ORIGINAL.adf [fa18-executable]` to compare the
+reference against captured flight, Pause, dynamic-control, bank-flip and
+maneuver screenshots, RAM hashes, and native GPU/CPU output. These ADF-backed
+replay checks remain necessary before treating this as hardware-verified.
+
 ## Open points
 
 

@@ -64,6 +64,11 @@ struct NativeHudState {
   bool reticle = false;
   bool frame_crown = false;
   bool frame_rails = false;
+  // A complete capture of the original writer permits erasing its exact
+  // stroke footprint without inspecting old bitmap ink. Other banks and
+  // incomplete redraws keep the legacy source-colour stencil.
+  bool reticle_from_writer = false;
+  bool frame_from_writer = false;
   uint32_t reticle_rgb = 0;
   uint32_t frame_top_rgb = 0;
   uint32_t frame_corner_rgb = 0;

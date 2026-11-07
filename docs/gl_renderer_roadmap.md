@@ -463,6 +463,14 @@ before committing. Note limitations explicitly rather than masking them.
   memory oracle; a unit test covers heading wrap and scaled orthogonality.
   View-space 3D object interpolation remains linear and still needs the
   same camera-pose decomposition work for fully rigid motion.
+- [x] Erase the captured `$48eba` HUD frame and `$444a2`/`$44924` reticle
+  directly from their original writer geometry, including completed-bank
+  provenance in the HUD state. Crown/reticle backdrops come from the live
+  copper pen 5 rather than neighbouring bitmap colours; original raster
+  writes still execute and unknown banks keep the bitmap stencil.
+  `FA18_HUD_ERASE_BITMAP_REFERENCE=1` restores the old colour-matched erase,
+  while `tests/check_gl_hud_erase.sh` checks flight/Pause/bank GPU pixels and
+  game RAM. The ADF-backed parity gate still needs to be run on a GL build.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
