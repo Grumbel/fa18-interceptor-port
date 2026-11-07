@@ -322,6 +322,7 @@ private:
   struct RasterAudit;
   std::unique_ptr<RasterAudit> raster_audit_;
   std::unique_ptr<panel_blit_trace::Trace> panel_blit_trace_;
+  bool panel_cpu_trace_enabled_ = false;
   BlitterWriteGate blitter_write_gate_;
   RasterSource raster_origin_ = RasterSource::Guest;
   void raster_audit_access(uint32_t addr, uint8_t size, bool write);

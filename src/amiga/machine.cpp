@@ -60,14 +60,28 @@ Machine::Machine() : ram_(RAM_SIZE), fb_(FB_W * FB_H) {
   if (const char* enabled = std::getenv("FA18_GL_RASTER_AUDIT");
       enabled && std::strcmp(enabled, "0") != 0) {
     raster_audit_ = std::make_unique<RasterAudit>();
-    ram_access_context = this;
-    ram_access_observer = [](void* ctx, uint32_t addr, uint8_t size, bool write) {
-      static_cast<Machine*>(ctx)->raster_audit_access(addr, size, write);
-    };
   }
   if (const char* enabled = std::getenv("FA18_COCKPIT_BLIT_TRACE");
       enabled && std::strcmp(enabled, "0") != 0)
     panel_blit_trace_ = std::make_unique<panel_blit_trace::Trace>();
+  if (const char* enabled = std::getenv("FA18_COCKPIT_CPU_TRACE");
+      enabled && std::strcmp(enabled, "0") != 0) {
+    panel_cpu_trace_enabled_ = true;
+    if (!panel_blit_trace_)
+      panel_blit_trace_ = std::make_unique<panel_blit_trace::Trace>();
+  }
+  if (raster_audit_ || panel_cpu_trace_enabled_) {
+    ram_access_context = this;
+    ram_access_observer = [](void* ctx, uint32_t addr, uint8_t size, bool write) {
+      Machine& m = *static_cast<Machine*>(ctx);
+      if (m.raster_audit_) m.raster_audit_access(addr, size, write);
+      // Blitter words have their own before/after trace. CPU/HLE writes
+      // reach this observer after the RAM store and have no old value.
+      if (m.panel_cpu_trace_enabled_ && write &&
+          m.raster_origin_ == RasterSource::Guest)
+        m.panel_blit_trace_->cpu_write(m.cpu.op_pc, addr, size, m.frame_count_);
+    };
+  }
   hle_ = std::make_unique<Hle>(*this);
 }
 
@@ -102,6 +116,33 @@ Machine::~Machine() {
           (unsigned long long)s.changed_bits, s.first_address,
           (unsigned long long)s.first_frame, (unsigned long long)s.last_frame,
           s.min_x, s.min_y, s.max_x, s.max_y);
+      }
+    }
+  }
+  if (panel_cpu_trace_enabled_) {
+    const auto sites = panel_blit_trace_->ranked_cpu();
+    log("cockpit-cpu: attributed sites=%zu (top 8 per zone by touched bytes)\n",
+        sites.size());
+    for (size_t zone = 0; zone < panel_blit_trace::zones.size(); ++zone) {
+      size_t count = 0;
+      uint64_t bytes = 0;
+      for (const auto& [key, site] : sites) {
+        if (key.zone != zone) continue;
+        ++count;
+        bytes += site.bytes;
+      }
+      log("cockpit-cpu: zone=%s sites=%zu touched_bytes=%llu\n",
+          panel_blit_trace::zones[zone].name, count, (unsigned long long)bytes);
+      size_t shown = 0;
+      for (const auto& [key, s] : sites) {
+        if (key.zone != zone || shown++ >= 8) continue;
+        log("cockpit-cpu: zone=%s pc=%06x bank=%06x plane=%u width=%u "
+            "bytes=%llu first=%06x frames=%llu..%llu bounds=%d,%d..%d,%d\n",
+            panel_blit_trace::zones[key.zone].name, key.pc, key.bank,
+            unsigned(key.plane), unsigned(key.width),
+            (unsigned long long)s.bytes, s.first_address,
+            (unsigned long long)s.first_frame, (unsigned long long)s.last_frame,
+            s.min_x, s.min_y, s.max_x, s.max_y);
       }
     }
   }

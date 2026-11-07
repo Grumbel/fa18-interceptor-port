@@ -60,4 +60,53 @@ int main() {
   }
   assert(found);
   assert(found_boundary);
+
+  // Guest bus writes can cross a zone edge or a 40-byte scanline without
+  // falsely attributing pixels outside the observed instrument.
+  trace.cpu_write(0x4a100, base_a + 180 * ROW_BYTES + 28, 2, 30);
+  trace.cpu_write(0x4a100, base_a + 180 * ROW_BYTES + 28, 2, 31);
+  trace.cpu_write(0x4a200, base_b + PLANE_BYTES + 170 * ROW_BYTES + 23,
+                  4, 35);
+  trace.cpu_write(0x4a300, base_a + PLANE_BYTES + 170 * ROW_BYTES + 2,
+                  2, 35);  // Outside every zone.
+  trace.cpu_write(0x4a300, base_a + PLANE_BYTES + 170 * ROW_BYTES + 6,
+                  0, 35);  // Invalid width.
+
+  const auto cpu = trace.ranked_cpu();
+  assert(cpu.size() == 2);
+  assert(cpu[0].first.pc == 0x4a200);
+  assert(cpu[0].first.bank == base_b && cpu[0].first.plane == 1);
+  assert(cpu[0].first.zone == 1 && cpu[0].first.width == 4);
+  assert(cpu[0].second.bytes == 4);
+  assert(cpu[0].second.min_x == 189 && cpu[0].second.max_x == 215);
+  assert(cpu[1].first.pc == 0x4a100 && cpu[1].second.bytes == 2);
+  assert(cpu[1].second.min_x == 224 && cpu[1].second.max_x == 229);
+  assert(cpu[1].second.first_frame == 30 && cpu[1].second.last_frame == 31);
+
+  // A long store ending at the scanline boundary includes only the
+  // status-panel byte at x=312..319, not row 199's unrelated pixels.
+  Trace boundary;
+  boundary.observe_bank(base_a);
+  boundary.cpu_write(0x4b000, base_a + PLANE_BYTES * 3 +
+                               198 * ROW_BYTES + 39, 4, 40);
+  const auto crossed = boundary.ranked_cpu();
+  assert(crossed.size() == 1);
+  assert(crossed[0].first.zone == 2 && crossed[0].first.plane == 3);
+  assert(crossed[0].second.bytes == 1);
+  assert(crossed[0].second.min_x == 312 && crossed[0].second.max_x == 319);
+  assert(crossed[0].second.min_y == 198 && crossed[0].second.max_y == 198);
+
+  // A single byte partially overlapping a zone must not expand the bounds
+  // to the unobserved pixels at x=32 and x=33.
+  boundary.cpu_write(0x4b100, base_a + 193 * ROW_BYTES + 4, 1, 41);
+  const auto clipped = boundary.ranked_cpu();
+  assert(clipped.size() == 2);
+  bool found_clipped = false;
+  for (const auto& [key, site] : clipped) {
+    if (key.pc != 0x4b100) continue;
+    assert(key.zone == 0 && key.plane == 0);
+    assert(site.bytes == 1 && site.min_x == 34 && site.max_x == 39);
+    found_clipped = true;
+  }
+  assert(found_clipped);
 }

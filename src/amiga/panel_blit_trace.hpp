@@ -1,7 +1,6 @@
-// Read-only original-blitter write attribution for moving cockpit instruments.
-// The blitter writes a 16-bit word in one of four separate 320x200 bitplanes.
-// Map its exact destination bits back to source pixels and the 68000 BLTSIZE
-// instruction that launched the blit; no emulated memory is changed here.
+// Read-only original-writer attribution for moving cockpit instruments.
+// Blitter words and guest CPU/HLE bus writes map back to the four bitplanes
+// and the originating 68000 PC. No emulated memory is modified here.
 #pragma once
 
 #include <algorithm>
@@ -40,6 +39,24 @@ struct Key {
 
 struct Site {
   uint64_t words = 0, changed_words = 0, changed_bits = 0;
+  int min_x = W, min_y = H, max_x = -1, max_y = -1;
+  uint32_t first_address = 0;
+  uint64_t first_frame = 0, last_frame = 0;
+};
+
+// CPU/HLE writes are observed *after* their bus stores. Their touched bytes
+// can be attributed exactly, but changed bits cannot be recovered without
+// inserting a pre-write observer into the emulated CPU's hot path.
+struct CpuKey {
+  uint32_t pc = 0, bank = 0;
+  uint8_t zone = 0, plane = 0, width = 0;
+
+  auto tie() const { return std::tie(pc, bank, zone, plane, width); }
+  bool operator<(const CpuKey& other) const { return tie() < other.tie(); }
+};
+
+struct CpuSite {
+  uint64_t bytes = 0;
   int min_x = W, min_y = H, max_x = -1, max_y = -1;
   uint32_t first_address = 0;
   uint64_t first_frame = 0, last_frame = 0;
@@ -100,6 +117,39 @@ public:
     }
   }
 
+  void cpu_write(uint32_t pc, uint32_t address, uint8_t width, uint64_t frame) {
+    if (!width || width > 4) return;
+    for (const uint32_t bank : banks_) {
+      if (!bank || address < bank || address - bank >= PLANE_BYTES * 4) continue;
+      for (unsigned i = 0; i < width; ++i) {
+        const uint32_t delta = address + i - bank;
+        if (delta >= PLANE_BYTES * 4) break;
+        const int plane = int(delta / PLANE_BYTES);
+        const uint32_t offset = delta % PLANE_BYTES;
+        const int y = int(offset / ROW_BYTES);
+        const int x = int((offset % ROW_BYTES) * 8);
+        for (std::size_t z = 0; z < zones.size(); ++z) {
+          const Zone& zone = zones[z];
+          if (y < zone.y0 || y >= zone.y1 || x >= zone.x1 || x + 8 <= zone.x0)
+            continue;
+          const CpuKey key{pc, bank, uint8_t(z), uint8_t(plane), width};
+          CpuSite& site = cpu_sites_[key];
+          if (!site.bytes) {
+            site.first_address = address;
+            site.first_frame = frame;
+          }
+          ++site.bytes;
+          site.last_frame = frame;
+          site.min_x = std::min(site.min_x, std::max(x, zone.x0));
+          site.max_x = std::max(site.max_x, std::min(x + 7, zone.x1 - 1));
+          site.min_y = std::min(site.min_y, y);
+          site.max_y = std::max(site.max_y, y);
+        }
+      }
+      return;
+    }
+  }
+
   using Entry = std::pair<Key, Site>;
   std::vector<Entry> ranked() const {
     std::vector<Entry> out(sites_.begin(), sites_.end());
@@ -114,10 +164,21 @@ public:
 
   std::size_t site_count() const { return sites_.size(); }
 
+  using CpuEntry = std::pair<CpuKey, CpuSite>;
+  std::vector<CpuEntry> ranked_cpu() const {
+    std::vector<CpuEntry> out(cpu_sites_.begin(), cpu_sites_.end());
+    std::sort(out.begin(), out.end(), [](const CpuEntry& a, const CpuEntry& b) {
+      if (a.second.bytes != b.second.bytes) return a.second.bytes > b.second.bytes;
+      return a.first < b.first;
+    });
+    return out;
+  }
+
 private:
   std::array<uint32_t, 8> banks_{};
   std::size_t next_bank_ = 0;
   std::map<Key, Site> sites_;
+  std::map<CpuKey, CpuSite> cpu_sites_;
 };
 
 }  // namespace amiga::panel_blit_trace

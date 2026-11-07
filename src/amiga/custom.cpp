@@ -362,6 +362,7 @@ void Machine::render_frame() {
     render_line(line);
     copper_run_until(line, 0xE2);
   }
+  if (panel_blit_trace_) panel_blit_trace_begin();
 }
 
 // ---- blitter ------------------------------------------------------------------

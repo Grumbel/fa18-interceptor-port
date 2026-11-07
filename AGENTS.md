@@ -217,6 +217,14 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   `panel_blit_trace_test` checks edge-word bit attribution;
   `tests/check_gl_cockpit_blit_trace.sh ORIGINAL.adf` checks that enabling
   the trace leaves framebuffer and RAM hashes unchanged.
+  `FA18_COCKPIT_CPU_TRACE=1` separately attributes 68000/HLE bus writes
+  (1/2/4-byte stores) in the same three instrument zones, including the
+  active/display bank and per-site pixel bounds. The prior **unscripted**
+  `$45350` `$F0` blitter trace only saw a bulk copy on frame 377; use a
+  scripted **flight** replay to observe dynamic writers. CPU records
+  are touched bytes, not proven changed bits (the bus callback runs after
+  the write). It also prints the original blitter sites and changes no
+  game memory. Use `tests/check_gl_cockpit_cpu_trace.sh ORIGINAL.adf`.
   The debugging-only **Ctrl+B** / Graphics > Amiga blitter switch suppresses
   all original area/line blitter destination writes (or set
   `--no-amiga-blitter` at launch). It retains pointer shifts, minterm

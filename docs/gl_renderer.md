@@ -265,6 +265,27 @@ sites are candidate writers, not yet a verified native reconstruction of
 the artificial horizon. The ADF-backed replay still needs a build with
 SDL/OpenGL available.
 
+`FA18_COCKPIT_CPU_TRACE=1` additionally monitors guest CPU and HLE memory
+stores. The earlier **unscripted** 4000-frame run recorded a four-bitplane
+`BLTSIZE` copy at `$45350` (frame 377, minterm `$F0`), but does not establish
+which code updates the instruments during flight. The CPU trace records
+the candidate 68000 PC, write width (1/2/4 bytes), bank, bitplane, zone,
+first/last frame and bounded source pixels. Unlike the blitter's
+before/after comparison, this observer sees writes **after** the bus
+store and reports touched bytes, not proven changed pixels. Its PCs can
+also represent HLE writes; inspect their call sites before translating
+them. The same run also reports blitter sites. To reach actual cockpit
+updates, drive the game into flight using the existing scripted scenario:
+
+```
+FA18_COCKPIT_CPU_TRACE=1 ./build/fa18 --native off --interpret \
+  --fast --gl 3 --gl-direct --frames 4000 \
+  --script tests/scenarios/free1.txt /path/to/FA-18.adf
+```
+
+`tests/check_gl_cockpit_cpu_trace.sh ORIGINAL.adf` verifies screenshot and
+RAM-hash identity with and without this optional instrumentation.
+
 For visual isolation rather than parity checking, press **Ctrl+B** in the
 running game (or use the Graphics > Amiga blitter switch). All subsequent
 Amiga area/line blitter **destination writes** are discarded while their
