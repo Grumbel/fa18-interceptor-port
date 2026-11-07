@@ -102,6 +102,9 @@ NativeHudState prepared_gpu_hud_state();
 struct GpuLayers {
   std::vector<uint8_t> overlay, palette, rows;
   int scene_rows = 0;
+  // Last original 3D palette row. This is used only by widescreen side
+  // extensions; the cockpit/centre reads the live 200-row copper palette.
+  int scene_palette_last = 199;
   // Five independent source glyph values already latched for the displayed
   // fuel-LCD bank. The GL pass draws native strokes over their cleared panel.
   std::array<uint8_t, 5> fuel_strokes{};

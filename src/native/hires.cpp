@@ -18,6 +18,7 @@
 #include "native/hud_glyph.hpp"
 #include "native/cockpit_rail.hpp"
 #include "native/cockpit_front.hpp"
+#include "native/gl_scene_rows.hpp"
 #include "native/cockpit_assets.hpp"
 #include "native/cockpit_instruments.hpp"
 #include "native/remaster.hpp"
@@ -1493,7 +1494,6 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       std::getenv("FA18_HUD_RAIL_ART_BITMAP_REFERENCE") == nullptr;
   const bool front_asset_enabled = cockpit_enabled && hud.frame_from_writer &&
       hud.frame_rails && std::getenv("FA18_COCKPIT_FRONT_BITMAP_REFERENCE") == nullptr;
-  const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
@@ -1508,24 +1508,27 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       int row = int(d / 40);
       if (row < l.rows) { L = &l; ly = row; break; }
     }
+    const auto row_map = gl_scene_rows::select(y, ready->rows,
+        L ? ly : -1, flight, idx[y * W], idx[y * W + W - 1]);
     for (int yy = 0; yy < S; ++yy) {
       uint32_t* dst = &out[size_t(y * S + yy) * size_t(stride)];
       // The display may still point at a previous completed 3D layer
       // (Amiga double buffering) while `cur` holds the newest capture.
       // Use the current GL projection for its side bands whenever the
       // scanline belongs to a 3D layer; the original centre remains exact.
-      if (flight && side > 0) {
-        const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
-        const int palette_y = y < ready->rows ? y : last_scene_row;
-        const uint8_t* scene_row = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride)];
+      if (row_map.side_scene && side > 0) {
+        const uint8_t* scene_row =
+            &scene_pixels[size_t(row_map.scene_y * S + yy) * size_t(stride)];
         // Beyond the old viewport use the last scene palette, not the
         // cockpit's scanline palette (which produces flashing side bands).
-        const uint8_t left_bit = y < ready->rows && L ? idx[y * W] & 16 : 0;
-        const uint8_t right_bit = y < ready->rows && L ? idx[y * W + W - 1] & 16 : 0;
+        const uint8_t left_bit = row_map.left_ehb ? 16 : 0;
+        const uint8_t right_bit = row_map.right_ehb ? 16 : 0;
         for (int x = 0; x < left; ++x)
-          dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | left_bit)];
+          dst[x] = pal[size_t(row_map.side_palette_y) * 32 +
+                       ((scene_row[x] & 15) | left_bit)];
         for (int x = left + W * S; x < stride; ++x)
-          dst[x] = pal[size_t(palette_y) * 32 + ((scene_row[x] & 15) | right_bit)];
+          dst[x] = pal[size_t(row_map.side_palette_y) * 32 +
+                       ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
         if (const auto bg = hud_original_text_background(
@@ -1750,7 +1753,9 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
     std::fprintf(stderr, "HUD state frame=%llu reticle=%d colour=%06x pause_title=%d\n",
                  (unsigned long long)m.frame_count(), int(hud.reticle), hud.reticle_rgb,
                  int(hud.pause_title));
-  const int last_scene_row = std::clamp(ready->rows - 1, 0, 199);
+  out.scene_palette_last = gl_scene_rows::last_palette_row(ready->rows);
+  const bool global_palette_reference =
+      std::getenv("FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE") != nullptr;
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
@@ -1767,14 +1772,21 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const int row = int(d / 40);
       if (row < l.rows) { L = &l; ly = row; break; }
     }
-    const bool scene = L && ly >= 0 && ly < ready->rows;
-    const bool side_scene = flight || scene;
-    out.rows[size_t(y) * 4] = side_scene ? uint8_t(scene ? ly : y) : 255;
-    out.rows[size_t(y) * 4 + 1] = side_scene ? 255 : 0;
-    out.rows[size_t(y) * 4 + 2] = y < ready->rows && scene && (idx[y * W] & 16) ? 255 : 0;
-    out.rows[size_t(y) * 4 + 3] = y < ready->rows && scene && (idx[y * W + W - 1] & 16) ? 255 : 0;
+    const auto row_map = gl_scene_rows::select(y, ready->rows,
+        L ? ly : -1, flight, idx[y * W], idx[y * W + W - 1]);
+    const bool scene = row_map.has_scene_row;
+    out.rows[size_t(y) * 4] = row_map.side_scene ? uint8_t(row_map.scene_y) : 255;
+    out.rows[size_t(y) * 4 + 1] = row_map.side_scene ? 255 : 0;
+    out.rows[size_t(y) * 4 + 2] = row_map.left_ehb ? 255 : 0;
+    out.rows[size_t(y) * 4 + 3] = row_map.right_ehb ? 255 : 0;
+    // The 320-column centre (ADF cockpit indices, native LCD/readouts,
+    // original 2D pens and scene fallback) always uses live copper rows.
+    // The visible shader clamps *only* widescreen side-band lookups.
+    // Reference: restore the old *global* clamp to compare fades/colours.
+    const int palette_y = global_palette_reference ?
+        std::min(y, out.scene_palette_last) : y;
     for (int n = 0; n < 32; ++n) {
-      const uint32_t c = pal[size_t(y < ready->rows ? y : last_scene_row) * 32 + n];
+      const uint32_t c = pal[size_t(palette_y) * 32 + n];
       uint8_t* p = &out.palette[(size_t(y) * 32 + n) * 4];
       p[0] = uint8_t(c >> 16);
       p[1] = uint8_t(c >> 8);

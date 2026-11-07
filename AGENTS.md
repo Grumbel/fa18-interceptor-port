@@ -170,6 +170,16 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   Unobserved screen banks retain the fallback. Set
   `FA18_HUD_RAIL_ART_BITMAP_REFERENCE=1` to recover the neighbour average and
   run `tests/check_gl_hud_rail_art.sh` to check the bounded changes and RAM.
+  Double-buffered 3D-to-screen row selection is now shared by the CPU and
+  direct GPU compositors. Both show a completed scene row even if the flight
+  flag temporarily clears; invalid transition rows extend the last scene
+  without inheriting unrelated EHB bits. The live copper palette must be
+  preserved for **all 200 original cockpit/centre rows**. Only the new
+  widescreen side bands reuse the 3D viewport's last copper row below its
+  bottom edge. `FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE=1` restores the former
+  GPU-only lower-screen palette clamping for diagnosis. Test selection with
+  `gl_scene_rows_test` and check real GPU/CPU and RAM parity via
+  `tests/check_gl_scene_rows.sh`. ADF-backed runtime testing is outstanding.
   The same verified HUD-frame capture can now paint the complete nonblack
   `pix/frnt5` nose silhouette (x=16..303, y=133..144) from native ADF indices
   and the displayed copper row, independent of old bitplane content. Its

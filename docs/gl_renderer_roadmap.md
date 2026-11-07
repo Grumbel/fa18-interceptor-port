@@ -506,6 +506,20 @@ before committing. Note limitations explicitly rather than masking them.
   `tests/check_gl_cockpit_front.sh` for ADF-painted-cell bounds, five
   flight/Pause/bank screenshots, direct GPU parity and RAM comparisons.
   Live GL execution is pending in this environment.
+- [x] Unify the CPU and direct GPU **display-bank scene-row mapping** in a
+  pure helper (including transitional invalid banks and per-edge EHB bits).
+  Match visible completed scene rows even when the flight flag is briefly
+  cleared. Correct the direct GL copper lookup: the live copper palette is
+  uploaded for all original 200 scanlines, including cockpit instruments,
+  while only the widescreen extensions clamp to the 3D viewport's last row.
+  The previous GPU policy wrongly applied the clamp to native cockpit and
+  readout pixels below y=144, even though the CPU path preserved their live
+  scanline pens. A single shader uniform selects the side-only palette row;
+  no extra sampler/readback is required. `gl_scene_rows_test` checks 1/145/
+  168/180/200-row scenes, EHB, missing banks and transition cases.
+  `FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE=1` restores the old policy, and
+  `tests/check_gl_scene_rows.sh` will check GPU/CPU and RAM parity on Mesa.
+  The new real-GPU regression has not been run in this environment.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.

@@ -216,6 +216,22 @@ independently drawn source cells every 400 frames. The ADF-backed
 screen-bank transitions, game RAM and GPU/CPU parity; it still needs running
 on a machine with an SDL/OpenGL build of the application.
 
+The CPU and direct GPU now share the same mapping from each Amiga display
+scanline to the most recent completed 3D bank. A matching completed scene
+row remains eligible for widescreen extension even during the handful of
+transition frames in which the game clears its flight flag. The EHB bits
+for the two outside edges are carried only when the displayed row really
+belongs to a completed scene. In both paths, the widescreen scenery uses
+the last 3D viewport palette row below the old viewport bottom; the
+**central 320 columns always use their actual scanline's copper palette**.
+Previously the direct GPU path mistakenly clamped *all* 200 palette rows,
+including native cockpit textures and LCD stroke colours, to the last 3D
+row. This distinction adds just one uniform to the existing shader, no
+texture, draw call or per-presentation readback. For comparison,
+`FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE=1` restores the former GPU policy;
+`tests/check_gl_scene_rows.sh` covers flight, Pause, bank transitions,
+manoeuvres, CPU/GPU pixel-centre parity and unchanged game RAM.
+
 ## Audit before suppressing the old 3D rasterizer
 
 `FA18_GL_RASTER_AUDIT=1` enables an optional chip-RAM dependency observer.

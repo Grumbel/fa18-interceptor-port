@@ -161,7 +161,7 @@ struct PresentUniforms {
   GLint digits[3]{-1, -1, -1}, digit_ink[4]{-1, -1, -1, -1};
   GLint labels = -1, label_g = -1, label_ink[5]{-1, -1, -1, -1, -1};
   GLint heading_ink = -1, heading_x = -1;
-  GLint dimensions = -1, side = -1, scale = -1;
+  GLint dimensions = -1, side = -1, scale = -1, scene_palette_last = -1;
 
   void query(GLuint program) {
     auto get = [&](const char* name) { return gl.GetUniformLocation(program, name); };
@@ -195,6 +195,7 @@ struct PresentUniforms {
     }
     heading_ink = get("u_heading_ink"); heading_x = get("u_heading_x");
     dimensions = get("u_dimensions"); side = get("u_side"); scale = get("u_scale");
+    scene_palette_last = get("u_scene_palette_last");
   }
 };
 
@@ -409,6 +410,7 @@ precision mediump float;
 uniform sampler2D u_scene, u_overlay, u_palette, u_rows, u_hud, u_pause, u_cockpit;
 uniform vec2 u_dimensions;  // display width in source pixels; scene rows
 uniform float u_side, u_scale, u_hud_visible, u_pause_visible;
+uniform float u_scene_palette_last; // only the side extensions clamp below 3D
 uniform vec4 u_pause_ink; // live copper pen 9, visibility from original title
 uniform vec4 u_reticle;  // live source-screen RGB, then visibility
 uniform vec4 u_fuel_strokes0; // first four fuel-LCD seven-stroke masks
@@ -551,7 +553,8 @@ void main() {
       float tex_y = 1.0 - scene_y / (u_dimensions.y * u_scale);
       float idx = floor(texture2D(u_scene, vec2(v_uv.x, tex_y)).r * 15.0 + 0.5);
       base_colour = texture2D(u_palette,
-        vec2((idx + ehb + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+        vec2((idx + ehb + 0.5) / 32.0,
+             (min(y, u_scene_palette_last) + 0.5) / 200.0)).rgb;
     }
   }
   // 960x720 native-resolution HUD, anchored to the *left viewport edge*,
@@ -2069,6 +2072,7 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                float(layer.scene_rows));
   gl.Uniform1f(u.side, float(side));
   gl.Uniform1f(u.scale, float(S));
+  gl.Uniform1f(u.scene_palette_last, float(layer.scene_palette_last));
   bind_present_quad();
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
   if (std::getenv("FA18_GL_DIRECT_DEBUG")) {
