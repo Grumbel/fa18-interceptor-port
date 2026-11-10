@@ -143,6 +143,7 @@ public:
   bool mouse_grab = false;
   bool fast = false;
   bool widescreen = false;
+  bool fit_screen = false;  // --renderer new: render size follows the window
   bool direct_gl = false;   // --gl-direct / FA18_GL_DIRECT=1
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
   uint64_t last_gl_serial = 0;
@@ -1332,6 +1333,16 @@ public:
     }
   }
   bool display_gpu(int side, float alpha) {
+    if (fit_screen && win && machine->hires_scale > 0) {
+      // --renderer new: render at the screen's resolution, not a fixed 3x.
+      int fw = 0, fh = 0;
+      SDL_GL_GetDrawableSize(win, &fw, &fh);
+      const int want = std::max(1, std::min(8, (fh + 199) / 200));
+      if (fh > 0 && want != machine->hires_scale) {
+        machine->set_hires_scale(want);
+        gpu_layers_frame = -1;
+      }
+    }
     if (gpu_layers_frame != frame_no) {
       if (!remaster::prepare_gpu_layers(*machine, gpu_layers)) return false;
       gpu_layers_frame = frame_no;
@@ -2055,7 +2066,7 @@ int main(int argc, char** argv) {
   } else if (renderer_new) {
     requested_gl = true;
     requested_hires = false;
-    gl_scale = hires = 3;  // one OpenGL mode; the GPU scales to the window
+    gl_scale = hires = 3;  // start size; follows the window when presenting
     state_scene_flag = true;
     gl_direct = true;
     widescreen = true;
@@ -2269,6 +2280,7 @@ int main(int argc, char** argv) {
   host.fast = fast;
   host.widescreen = widescreen;
   host.direct_gl = gl_direct;
+  host.fit_screen = renderer_new;
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
