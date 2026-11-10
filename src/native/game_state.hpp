@@ -17,6 +17,7 @@ using Reader = std::function<uint32_t(uint32_t addr, int size)>;
 
 constexpr uint32_t kScenarioBase = 0x5b47c;  // 16 x 512
 constexpr uint32_t kRecordBase = 0x5d47c;    // 16 x 32
+constexpr uint32_t kTypeTable = 0x36094;     // 20 bytes per object type
 constexpr uint32_t kEffectBase = 0x5af6a;    // 10 x 128
 constexpr int kScenarioCount = 16, kScenarioStride = 512;
 constexpr int kRecordCount = 16, kRecordStride = 32;
@@ -49,6 +50,8 @@ struct Scenario {
   uint8_t seat = 0;          // +98 view/seat mode
   uint8_t lod_byte = 0;      // +123
   std::array<int16_t, 9> body_m{};   // +146 attitude basis
+  // Type table entry $36094 + 20*index (the model installed for this slot).
+  uint32_t draw_fn = 0, model_base = 0, lod_list = 0;
   bool active = false;       // slot in use (unused slots hold flags 0x0010)
 };
 

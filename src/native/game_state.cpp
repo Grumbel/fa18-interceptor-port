@@ -43,6 +43,9 @@ GameState read(const Reader& rd) {
     o.throttle = int8_t(r.u8(a + 43));
     o.seat = r.u8(a + 98);
     o.lod_byte = r.u8(a + 123);
+    o.draw_fn = uint32_t(r.s32(kTypeTable + 20u * uint32_t(i)));
+    o.model_base = uint32_t(r.s32(kTypeTable + 20u * uint32_t(i) + 4));
+    o.lod_list = uint32_t(r.s32(kTypeTable + 20u * uint32_t(i) + 8));
     for (int k = 0; k < 9; ++k) o.body_m[k] = r.s16(a + 146 + 2 * k);
     o.active = (o.flags0 & ~0x0010u) != 0;
   }

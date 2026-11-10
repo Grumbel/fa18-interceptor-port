@@ -37,6 +37,7 @@ struct Lod {
   uint32_t mesh = 0;      // mesh header ($5ad2a)
   uint32_t stream = 0;    // draw stream ($5ad2e)
   uint8_t flags = 0;      // header byte +7
+  int scale_shift = 0;    // header byte +6 low nibble: 1 eye unit (256 world units) = 2^n model units
   int base_verts = 0;     // vertex count of the header
   std::vector<Prim> prims;
   std::vector<std::string> notes;  // ops/paths that could not be decoded

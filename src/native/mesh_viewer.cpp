@@ -816,6 +816,7 @@ std::vector<Model> load_models(const std::vector<uint8_t>& exe) {
     std::set<std::pair<uint32_t, uint32_t>> seen;
     for (int d : dec.lod_distances(e)) {
       Lod l = dec.decode(e, slot, d);
+      if (l.mesh != 0 && l.mesh + 6 < img.size()) l.scale_shift = img[l.mesh + 6] & 15;
       if (l.mesh == 0 && l.prims.empty()) {
         m.cull_distance = std::min(m.cull_distance, d);
         continue;

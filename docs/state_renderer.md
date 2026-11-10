@@ -89,3 +89,20 @@ Next: distance/LOD selection + culling, scenario objects (body_m rotation), far 
 - Primitives entirely outside one frustum plane of the game's projection are dropped.
 - Result: generated object set equals the captured set in all three frames (tower present at
   3966/4000, none at 4655; types 42/74 culled). `$5adb0` shift is still ignored (0 in free flight).
+
+## Scenario objects and per-model scale (mission7_combat, frame 5715)
+
+- The camera for relative positions is `Camera::eye` ($5ad74), not the player's position
+  (seat offset); using it removed the 6/11-unit residue seen on the tower.
+- Model scale: mesh header byte +6, low nibble n: 1 eye unit (256 world units) = 2^n model
+  units (tower n=3, aircraft n=6). The game's per-object vertex-stage unit varies with n and
+  distance, so captured view coordinates differ from ours by a constant per-object factor
+  (1 for the tower, 64 for the aircraft); projection only uses ratios, so it cancels.
+- Scenario objects: `view = view_m * (body_m * v / 16384 / 2^n + (pos - eye) / 256) / 256`
+  with body_m row-major (the transpose is wrong). The model comes from the type-table entry
+  `$36094 + 20*slot` matched to decoded models by (draw_fn, base, lod_list).
+- Result: all 11 captured polygons of the nearby aircraft (scenario 1) match to ~1 view unit.
+  Caveat: scene capture happens before the frame's flight update, so state read at end of
+  frame differs by one step of motion; the renderer must read state at the right point (or
+  interpolate, see gl_camera_interp.hpp). The frustum cull is switchable
+  (`state_scene::set_frustum_cull`) because the game draws polygons outside the view too.
