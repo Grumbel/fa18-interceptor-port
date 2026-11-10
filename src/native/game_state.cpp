@@ -24,6 +24,7 @@ GameState read(const Reader& rd) {
   s.camera.pos = {r.s32(0x5ad5a), r.s32(0x5ad5e), r.s32(0x5ad62)};
   s.camera.eye = r.v3(0x5ad74);
   s.camera.external = r.u8(0x5aa7d) != 0;
+  s.camera.zoom = int16_t(r.u16(0x5ad3a));
   for (int i = 0; i < 9; ++i) s.camera.view_m[i] = r.s16(0x5aed0 + 2 * i);
 
   for (int i = 0; i < kScenarioCount; ++i) {

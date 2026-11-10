@@ -80,3 +80,12 @@ tower) among the generated ones (tolerance 12 view units); the remaining capture
 `object_index == -1` ground/terrain fills, which the existing terrain code covers. Types 42/74
 are generated but the game skips them (distance/clip culling not yet modelled).
 Next: distance/LOD selection + culling, scenario objects (body_m rotation), far maps.
+
+## LOD selection and culling (frames 3966, 4000, 4655)
+
+- Object distance = hypot(pos_obj - pos_cam) / 4096 (world units), matches `$5ae38` (tower 207, type 74 123).
+- LOD limit = distance * `$5ad3a` / 128 (camera zoom, now `Camera::zoom`). The LOD with the largest
+  decoded distance <= limit is used; `Model::cull_distance` (first empty decode) means "not drawn".
+- Primitives entirely outside one frustum plane of the game's projection are dropped.
+- Result: generated object set equals the captured set in all three frames (tower present at
+  3966/4000, none at 4655; types 42/74 culled). `$5adb0` shift is still ignored (0 in free flight).

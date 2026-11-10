@@ -27,6 +27,7 @@ struct Vec3l { int32_t x = 0, y = 0, z = 0; };
 struct Camera {
   Vec3l pos;                 // $5ad5a/e/62: -(eye), world units
   Vec3l eye;                 // $5ad74/78/7c
+  int16_t zoom = 128;        // $5ad3a: LOD distance scale (128 = 1.0)
   bool external = false;     // $5aa7d != 0: chase / external camera
   std::array<int16_t, 9> view_m{};  // $5aed0 world -> view, 8.8 fixed
 };

@@ -47,6 +47,8 @@ struct Model {
   uint32_t draw_fn = 0, base = 0, lod_list = 0;
   bool distant = false;    // $32d64/$32d72 ground-object variant
   std::vector<Lod> lods;   // nearest first
+  // Smallest LOD distance at which nothing is drawn (the chain ends); INT_MAX if never.
+  int cull_distance = 0x7fffffff;
 };
 
 // Decode all models of the type table from the hunk executable.

@@ -1,8 +1,26 @@
 #include "native/state_scene.hpp"
 
+#include <cmath>
 #include <cstdlib>
 
 namespace state_scene {
+
+namespace {
+// Conservative frustum test with the game's projection
+// (sx = 159.5 - 160 vx/vz, sy = 89.5 - 90 vy/vz): drop primitives entirely on
+// one outer side of a plane through the eye (z > 0 is in front).
+bool visible(const std::vector<Vec3f>& v) {
+    bool any_front = false, left = true, right = true, up = true, down = true;
+    for (const auto& p : v) {
+        any_front |= p.z > 0;
+        left &= 159.5f * p.z - 160.0f * p.x < 0;           // sx < 0
+        right &= 159.5f * p.z - 160.0f * p.x > 320.0f * p.z;  // sx > 320
+        up &= 89.5f * p.z - 90.0f * p.y < 0;                // sy < 0
+        down &= 89.5f * p.z - 90.0f * p.y > 180.0f * p.z;   // sy > 180
+    }
+    return any_front && !left && !right && !up && !down;
+}
+}  // namespace
 
 std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::World& w,
                                    const std::vector<mesh_viewer::Model>& models,
@@ -23,21 +41,27 @@ std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::
             int32_t X, Z;
             world::object_units(world::Near, cell, o, X, Z);
             const int32_t pos[3] = {X * 256, 0, Z * 256};
-            for (const auto& p : m->lods[0].prims) {
+            // LOD distance as the game computes it ($30872): hypot of the eye
+            // offset in units of 4096 world units, scaled by the zoom ($5ad3a).
+            const double dx = (double(pos[0]) - cam[0]) / 4096.0, dy = (double(pos[1]) - cam[1]) / 4096.0,
+                         dz = (double(pos[2]) - cam[2]) / 4096.0;
+            const double limit = std::sqrt(dx * dx + dy * dy + dz * dz) * gs.camera.zoom / 128.0;
+            if (limit >= m->cull_distance) continue;
+            const mesh_viewer::Lod* lod = &m->lods[0];
+            for (const auto& l : m->lods)
+                if (l.distance <= limit) lod = &l;
+            for (const auto& p : lod->prims) {
                 ViewPrim vp;
                 vp.kind = p.kind;
                 vp.colour = p.colour;
                 vp.mask = p.mask;
                 vp.xr = p.xr;
                 vp.type = o.type;
-                bool front = false;
                 for (const auto& mv : p.v) {
                     const int32_t v[3] = {mv.x, mv.y, mv.z};
-                    Vec3f r = model_to_view(gs.camera.view_m, pos, cam, v);
-                    front |= r.z > 0;
-                    vp.v.push_back(r);
+                    vp.v.push_back(model_to_view(gs.camera.view_m, pos, cam, v));
                 }
-                if (front) out.push_back(std::move(vp));
+                if (visible(vp.v)) out.push_back(std::move(vp));
             }
         }
     }
