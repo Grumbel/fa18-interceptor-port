@@ -98,6 +98,11 @@ std::vector<ViewPrim> build_scenarios(const gamestate::GameState& gs,
         const mesh_viewer::Model* m = nullptr;
         for (const auto& mm : models)
             if (mm.base == sc.model_base && mm.lod_list == sc.lod_list && mm.draw_fn == sc.draw_fn) m = &mm;
+        // The player's slot uses another draw routine (31c9c) over the same mesh data
+        // as a template: fall back to the mesh identity alone.
+        if (!m)
+            for (const auto& mm : models)
+                if (mm.base == sc.model_base && mm.lod_list == sc.lod_list) { m = &mm; break; }
         if (!m || m->lods.empty()) continue;
         const int32_t pos[3] = {sc.pos.x, sc.pos.y, sc.pos.z};
         const double dx = (double(pos[0]) - cam[0]) / 4096.0, dy = (double(pos[1]) - cam[1]) / 4096.0,
@@ -108,9 +113,18 @@ std::vector<ViewPrim> build_scenarios(const gamestate::GameState& gs,
         for (const auto& l : m->lods)
             if (l.distance <= limit) lod = &l;
         for (const auto& p : lod->prims) {
+            // Colour-0 polygons of aircraft are conditional: a ground shadow (planar, well
+            // below the body) and the engine flame, which the game only paints at afterburner.
+            uint8_t colour = p.colour;
+            if (colour == 0 && p.kind == mesh_viewer::Prim::Poly) {
+                bool planar_below = true;
+                for (const auto& q : p.v) planar_below = planar_below && q.y == p.v[0].y && q.y < -40;
+                if (planar_below || sc.throttle < 100) continue;
+                colour = 9;
+            }
             ViewPrim vp;
             vp.kind = p.kind;
-            vp.colour = p.colour;
+            vp.colour = colour;
             vp.mask = p.mask;
             vp.xr = p.xr;
             vp.type = sc.index;
