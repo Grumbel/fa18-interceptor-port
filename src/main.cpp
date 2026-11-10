@@ -2,6 +2,7 @@
 #include "amiga/machine.hpp"
 #include "control_help.hpp"
 #include "font6x10.hpp"
+#include "native/game_state.hpp"
 #include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/cockpit_assets.hpp"
@@ -1968,6 +1969,8 @@ int main(int argc, char** argv) {
   std::string shot_path, script_path, wav_path, coverage_path, misses_path;
   bool interpret = false, vbl_time = false, det_timing = false;
   int ram_hash = 0, ram_dump_frame = 0;
+  int state_dump_frame = 0;
+  std::string state_dump_path;
   std::string ram_dump_path, mesh_dump_dir, world_dump_path, world_path, map_dump_path;
   std::string native_mode = "on";
   bool grab_mouse = false;
@@ -2016,6 +2019,7 @@ int main(int argc, char** argv) {
     else if (a == "--det-timing") det_timing = true;
     else if (a == "--ram-hash" && i + 1 < argc) ram_hash = std::atoi(argv[++i]);
     else if (a == "--ram-dump" && i + 2 < argc) { ram_dump_frame = std::atoi(argv[++i]); ram_dump_path = argv[++i]; }
+    else if (a == "--state-dump" && i + 2 < argc) { state_dump_frame = std::atoi(argv[++i]); state_dump_path = argv[++i]; }
     else if (a == "--native" && i + 1 < argc) native_mode = argv[++i];
     else if (a == "--misses" && i + 1 < argc) misses_path = argv[++i];
     else if (a == "--script" && i + 1 < argc) script_path = argv[++i];
@@ -2167,6 +2171,19 @@ int main(int argc, char** argv) {
                                                   : amiga::Machine::NativeMode::On;
   if (!machine.boot(data_dir)) return 1;
   native::install_control_hooks(machine);
+  if (state_dump_frame > 0) {
+    machine.frame_hook = [&machine, state_dump_frame, state_dump_path](uint64_t f) {
+      if (f != uint64_t(state_dump_frame)) return;
+      auto st = gamestate::read([&machine](uint32_t a, int n) -> uint32_t {
+        return n == 1 ? machine.r8(a) : n == 2 ? machine.r16(a) : machine.r32(a);
+      });
+      if (FILE* o = std::fopen(state_dump_path.c_str(), "w")) {
+        std::string t = gamestate::to_text(st);
+        std::fwrite(t.data(), 1, t.size(), o);
+        std::fclose(o);
+      }
+    };
+  }
   if (!mesh_dump_dir.empty()) {
     std::filesystem::create_directories(mesh_dump_dir);
     std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");

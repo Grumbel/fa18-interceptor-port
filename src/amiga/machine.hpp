@@ -297,6 +297,8 @@ public:
   int ram_hash_every = 0;       // log a hash of game memory every N frames
   uint64_t ram_dump_frame = 0;  // dump RAM to ram_dump_path at this frame
   std::string ram_dump_path;
+  // Called after every emulated frame (host tooling: state dumps).
+  std::function<void(uint64_t frame)> frame_hook;
 
   // Exposed for debugging tools.
   std::vector<uint32_t> hunk_addrs;

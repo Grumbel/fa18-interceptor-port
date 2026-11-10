@@ -841,6 +841,7 @@ void Machine::idle_until(const std::function<bool()>& done) {
 void Machine::end_of_frame() {
   render_frame();
   ++frame_count_;
+  if (frame_hook) frame_hook(frame_count_);
   if (ram_dump_frame && frame_count_ == ram_dump_frame) {
     if (FILE* f = fopen(ram_dump_path.c_str(), "wb")) {
       fwrite(ram_.data(), 1, heap_hw_, f);
