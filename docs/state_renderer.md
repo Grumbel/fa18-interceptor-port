@@ -124,3 +124,19 @@ ground); the probe matches 28 of 34 captured polygons (the rest are ground/tile 
 Gates run: ctest 25/25, tests/check_gl_scene.sh and tests/check_gl_interpolation.sh pass
 (default path unchanged). Not yet: run-time ops (runway markings), damage/articulation,
 effects, section-script ordering.
+
+## Weapons and the player aircraft (validated)
+
+* Fired missiles and gun rounds are ordinary scenario slots (e.g. slot 2 appears at the
+  player's position with the player's heading and speed 2400+), so `build_scenarios`
+  draws them; the effect slots (`$5af6a`) and the 32-byte records stay idle. The missile
+  exhaust trail is part of the scenario model. Replay: hold `joy f` in `mission7_combat`.
+* The player aircraft in an external camera uses draw routine `31c9c` over the same mesh
+  data as a template (`369cc`): models are matched by (draw_fn, base, lod_list) and fall
+  back to (base, lod_list).
+* Colour-0 polygons of aircraft are conditional: planar ones below the body (y = -55) are
+  the ground shadow (dropped); the two rear quads are the engine flames, painted orange
+  (palette index 9) only at afterburner throttle (>= 100).
+* Pixel check against the capture path at frame 5200 over mission6_1/2/4/5,
+  mission7_1..5, free2: 0.03%-0.29% of pixels differ (fuzz 8%); external view of
+  mission6_3 frame 6000: 0.20%.
