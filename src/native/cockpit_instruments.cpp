@@ -222,6 +222,23 @@ void reset_cockpit_instrument_state() {
 
 void install_cockpit_instrument_hooks(amiga::Machine& m) {
   reset_cockpit_instrument_state();
+  // Test-only forced cockpit pose, matching globe_writer_probe. This changes
+  // guest RAM and must not be used for deterministic RAM comparisons.
+  if (const char* config = std::getenv("FA18_GLOBE_FORCE_ATTITUDE")) {
+    int first = 0, last = 0, pitch = 0, bank = 0;
+    if (std::sscanf(config, "%d:%d:%d:%d", &first, &last, &pitch, &bank) == 4 &&
+        first >= 0 && last >= first && pitch >= -32768 && pitch <= 32767 &&
+        bank >= -32768 && bank <= 32767) {
+      m.add_pc_hook(0x422f8, [&m, first, last, pitch, bank] {
+        const auto frame = m.frame_count();
+        if (frame < uint64_t(first) || frame > uint64_t(last)) return;
+        const uint32_t player = 0x5b47c + m.r16(0x5abd6);
+        if (player + 108 > amiga::RAM_SIZE) return;
+        m.w16(player + 102, uint16_t(pitch));
+        m.w16(player + 106, uint16_t(bank));
+      });
+    }
+  }
   // The original $44da4 worker has already transformed $42f62's projected
   // sky quad into cockpit coordinates at this instruction. Capture the
   // geometry *per destination bank*, before its blits, rather than sampling
@@ -248,12 +265,22 @@ void install_cockpit_instrument_hooks(amiga::Machine& m) {
       candidate.vertices[std::size_t(i)] = {
         int16_t(m.r16(a)), int16_t(m.r16(a + 2))};
     }
-    if (!cockpit::globe::supported_horizon(candidate.vertices[0],
-                                           candidate.vertices[1]) ||
-        candidate.vertices[2].y > candidate.vertices[1].y ||
-        candidate.vertices[3].y > candidate.vertices[0].y) return;
     candidate.offset_x = int16_t(m.r16(0x5ac80));
     candidate.offset_y = int16_t(m.r16(0x5abd0));
+    const auto& v = candidate.vertices;
+    candidate.vertical = v[0].x == v[1].x && v[2].x == v[3].x &&
+                         v[0].x != v[2].x && v[0].y == v[3].y &&
+                         v[1].y == v[2].y && v[0].y < v[1].y;
+    if (candidate.vertical) {
+      candidate.inverted = v[2].x < v[0].x; // sky is to the left
+    } else {
+      if (!cockpit::globe::supported_horizon(v[0], v[1], candidate.offset_x,
+                                             candidate.offset_y)) return;
+      const bool sky_above = v[2].y <= v[1].y && v[3].y <= v[0].y;
+      const bool sky_below = v[2].y >= v[1].y && v[3].y >= v[0].y;
+      if (sky_above == sky_below) return;
+      candidate.inverted = sky_below;
+    }
     const uint32_t base = m.r32(descriptor + 12) & 0x00ffffffu;
     if (base < 0x10000 || base > amiga::RAM_SIZE - 200 * kRowStride) return;
     observe_display_key(base + FuelDigits::Y * kRowStride);
@@ -769,8 +796,11 @@ std::optional<uint8_t> projected_globe_pen(const CapturedGlobe& globe,
   const size_t p = size_t(source_y) * CockpitAtlas::W + size_t(source_x);
   if (!cockpit.valid[p] || !cockpit::globe::is_fill_pen(cockpit.index[p]))
     return std::nullopt;
-  return cockpit::globe::projected_sky_pixel(globe.vertices[0], globe.vertices[1],
-                                             x, y) ? cockpit::globe::kFlightBluePen
+  const bool sky = globe.vertical ?
+      cockpit::globe::vertical_sky_pixel(x, globe.vertices[0].x, globe.inverted) :
+      cockpit::globe::projected_sky_pixel(globe.vertices[0], globe.vertices[1],
+                                         x, y, globe.offset_x, globe.inverted);
+  return sky ? cockpit::globe::kFlightBluePen
                                                    : cockpit::globe::kFlightRedPen;
 }
 

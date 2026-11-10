@@ -142,6 +142,8 @@ struct HudFontCapture {
 struct CapturedGlobe {
   std::array<cockpit::globe::ProjectedPoint, 4> vertices{};
   int16_t offset_x = 0, offset_y = 0;
+  bool inverted = false;
+  bool vertical = false;
   bool active = false;
 };
 

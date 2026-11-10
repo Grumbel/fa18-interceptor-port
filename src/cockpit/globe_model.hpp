@@ -49,22 +49,29 @@ constexpr ProjectedPoint project_sky_point(uint16_t x, uint16_t y,
 // including the upper edge row, matches 356..358 of the 358 visible ILBM
 // fill cells. Do not use this approximation for other polygon layouts or
 // claim it reproduces the original blitter's edge stepping in every pose.
-constexpr bool supported_horizon(ProjectedPoint left, ProjectedPoint right) {
-  return left.x == 193 && right.x == 222 &&
-         left.y >= 140 && left.y <= 195 &&
-         right.y >= 140 && right.y <= 195;
+constexpr bool supported_horizon(ProjectedPoint left, ProjectedPoint right,
+                                 int offset_x = 0, int offset_y = 0) {
+  return int(left.x) - offset_x == 193 && int(right.x) - offset_x == 222 &&
+         int(left.y) - offset_y >= 140 && int(left.y) - offset_y <= 195 &&
+         int(right.y) - offset_y >= 140 && int(right.y) - offset_y <= 195;
 }
 
 constexpr bool projected_sky_pixel(ProjectedPoint left, ProjectedPoint right,
-                                   int x, int y) {
+                                   int x, int y, int offset_x = 0,
+                                   bool inverted = false) {
   // Avoid floating point and retain the same deterministic edge decision on
   // the CPU and for future high-resolution GLSL interpolation.
-  return int64_t(y - left.y - 1) * 31 <
-         int64_t(right.y - left.y) * (x - 192);
+  const bool above = int64_t(y - left.y - 1) * 31 <
+                     int64_t(right.y - left.y) * (x - offset_x - 192);
+  return inverted ? !above : above;
 }
 
 constexpr bool within_globe(int x, int y) {
   return x >= kLeft && x < kRight && y >= kTop && y < kBottom;
+}
+
+constexpr bool vertical_sky_pixel(int x, int edge_x, bool sky_left) {
+  return sky_left ? x <= edge_x : x >= edge_x;
 }
 
 constexpr bool is_fill_pen(uint8_t pen) {

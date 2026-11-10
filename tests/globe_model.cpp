@@ -33,10 +33,20 @@ int main() {
   static_assert(!supported_horizon({194, 167}, {222, 178}));
   static_assert(projected_sky_pixel({193, 167}, {222, 178}, 198, 170));
   static_assert(!projected_sky_pixel({193, 167}, {222, 178}, 198, 171));
+  // Panel shake translates the horizon and stencil together.
+  static_assert(supported_horizon({196, 165}, {225, 176}, 3, -2));
+  static_assert(projected_sky_pixel({196, 165}, {225, 176}, 201, 168, 3));
+  static_assert(!projected_sky_pixel({196, 165}, {225, 176}, 201, 169, 3));
   static_assert(projected_sky_pixel({193, 167}, {222, 178}, 217, 176));
   static_assert(!projected_sky_pixel({193, 167}, {222, 178}, 217, 177));
   static_assert(projected_sky_pixel({193, 172}, {222, 172}, 209, 172));
   static_assert(!projected_sky_pixel({193, 172}, {222, 172}, 209, 173));
+  static_assert(!projected_sky_pixel({193, 172}, {222, 172}, 209, 172, 0, true));
+  static_assert(projected_sky_pixel({193, 172}, {222, 172}, 209, 173, 0, true));
+  static_assert(vertical_sky_pixel(207, 207, false));
+  static_assert(!vertical_sky_pixel(206, 207, false));
+  static_assert(vertical_sky_pixel(207, 207, true));
+  static_assert(!vertical_sky_pixel(208, 207, true));
 
   assert(degrees(0) == 0 && degrees(7200) == 90);
   assert(degrees(14400) == -180 && degrees(28800) == 0);

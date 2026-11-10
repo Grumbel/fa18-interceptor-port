@@ -1827,6 +1827,8 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
   int panel_asset_pixels = 0;
+  int globe_shader_pixels = 0;
+  int globe_inverted_pixels = 0;
   for (int y = 0; y < 200; ++y) {
     const Layer* L = nullptr;
     int ly = -1;
@@ -1972,11 +1974,28 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         continue;
       }
       if (const auto pen = projected_globe_pen(globe, cockpit, x, y)) {
-        const uint32_t c = pal[size_t(y) * 32 + *pen];
-        p[0] = uint8_t(c >> 16);
-        p[1] = uint8_t(c >> 8);
-        p[2] = uint8_t(c);
-        p[3] = 255;
+        // Tokens 64/80 and 72/76 supply horizontal and vertical edges.
+        // The fill stencil is selected here from the ADF; OpenGL determines
+        // the sky/ground side and looks up the live copper colour.
+        const int left_y = globe.vertices[0].y;
+        const int right_y = globe.vertices[1].y;
+        if (left_y >= 0 && left_y <= 255 && right_y >= 0 && right_y <= 255 &&
+            (!globe.vertical || (globe.vertices[0].x >= 0 && globe.vertices[0].x <= 255)) &&
+            globe.offset_x >= -128 && globe.offset_x <= 127) {
+          p[0] = uint8_t(globe.vertical ? globe.vertices[0].x : left_y);
+          p[1] = uint8_t(right_y);
+          p[2] = uint8_t(globe.offset_x + 128);
+          p[3] = globe.vertical ? (globe.inverted ? 76 : 72) :
+                                 (globe.inverted ? 80 : 64);
+          ++globe_shader_pixels;
+          if (globe.inverted) ++globe_inverted_pixels;
+        } else {
+          const uint32_t c = pal[size_t(y) * 32 + *pen];
+          p[0] = uint8_t(c >> 16);
+          p[1] = uint8_t(c >> 8);
+          p[2] = uint8_t(c);
+          p[3] = 255;
+        }
         continue;
       }
       if (panel_asset_enabled && cockpit_panel::painted(cockpit, x, y)) {
@@ -2047,6 +2066,12 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       std::fprintf(stderr, "cockpit panel GPU frame=%llu pixels=%d\n",
                    (unsigned long long)m.frame_count(), panel_asset_pixels);
     }
+  }
+  if (std::getenv("FA18_GL_GLOBE_COMPARE") && m.frame_count() % 30 == 0 &&
+      globe_shader_pixels > 0) {
+    std::fprintf(stderr, "gl: globe shader frame=%llu pixels=%d inverted=%d\n",
+                 (unsigned long long)m.frame_count(), globe_shader_pixels,
+                 globe_inverted_pixels);
   }
   return true;
 }

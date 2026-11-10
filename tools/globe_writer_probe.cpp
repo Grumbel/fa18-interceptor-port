@@ -395,6 +395,24 @@ int main(int argc, char** argv) {
     machine.hires_scale = 1;
     machine.set_host(&host);
     if (!machine.boot(argv[1])) return 1;
+    // Deliberately alter only the cockpit projection inputs, for poses that
+    // are difficult to sustain in a deterministic flight replay. This is a
+    // diagnostic, not a RAM-equivalence run: first:last:pitch:bank.
+    if (const char* config = std::getenv("FA18_GLOBE_FORCE_ATTITUDE")) {
+      int first = 0, last = 0, pitch = 0, bank = 0;
+      if (std::sscanf(config, "%d:%d:%d:%d", &first, &last, &pitch, &bank) != 4 ||
+          first < 0 || last < first || pitch < -32768 || pitch > 32767 ||
+          bank < -32768 || bank > 32767)
+        throw std::runtime_error("expected FA18_GLOBE_FORCE_ATTITUDE=first:last:pitch:bank");
+      machine.add_pc_hook(0x422f8, [&, first, last, pitch, bank] {
+        const auto frame = machine.frame_count();
+        if (frame < uint64_t(first) || frame > uint64_t(last)) return;
+        const uint32_t player = 0x5b47c + machine.r16(0x5abd6);
+        if (player + 108 > amiga::RAM_SIZE) return;
+        machine.w16(player + 102, uint16_t(pitch));
+        machine.w16(player + 106, uint16_t(bank));
+      });
+    }
     SourceWriteWatch source_watch;
     // Locate the producer of the per-bank source pointer words A2=$5a966
     // and A2=$5a976. This observer does not write guest RAM or alter timing.

@@ -7,7 +7,7 @@ if [ "$#" -ne 1 ]; then
 fi
 repo=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'rm -f "$tmp"/probe "$tmp"/replay.log "$tmp"/roll.log "$tmp"/level.log "$tmp"/ground.log; rmdir "$tmp"' EXIT
+trap 'rm -f "$tmp"/probe "$tmp"/replay.log "$tmp"/roll.log "$tmp"/level.log "$tmp"/ground.log "$tmp"/inverted.log; rmdir "$tmp"' EXIT
 FA18_COCKPIT_BLIT_TRACE=1 FA18_GLOBE_PROBE_BIN="$tmp/probe" \
   bash "$repo/tools/run_globe_writer_probe.sh" "$1" \
     "$repo/tests/data/cockpit_radar_maneuver.txt" 4700 100 > "$tmp/replay.log" 2>&1
@@ -38,3 +38,19 @@ FA18_GLOBE_MAP_FRAMES=4150,4240,4360,4440 \
     "$repo/tests/data/cockpit_globe_ground_turn.txt" 4450 100 > "$tmp/ground.log" 2>&1
 python3 -B "$repo/tests/check_globe_writer_probe.py" "$1" \
   "$tmp/replay.log" "$tmp/roll.log" "$tmp/level.log" "$tmp/ground.log"
+# Synthetic attitude changes guest RAM and is kept separate from the normal
+# replay. It checks the original renderer at a level, inverted pose.
+FA18_GLOBE_FORCE_ATTITUDE=4300:4700:0:14400 \
+  FA18_GLOBE_POLY_TRACE=4400:4700:400 FA18_GLOBE_MAP_FRAMES=4700 \
+  "$tmp/probe" "$1" "$repo/tests/data/cockpit_globe_level.txt" 4700 100 \
+  > "$tmp/inverted.log" 2>&1
+python3 -B "$repo/tests/check_globe_inverted.py" "$1" "$tmp/inverted.log"
+for spec in right:7200 left:21600; do
+  mode=${spec%:*}
+  bank=${spec#*:}
+  FA18_GLOBE_FORCE_ATTITUDE="4300:4700:0:$bank" \
+    FA18_GLOBE_POLY_TRACE=4400:4700:400 FA18_GLOBE_MAP_FRAMES=4700 \
+    "$tmp/probe" "$1" "$repo/tests/data/cockpit_globe_level.txt" 4700 100 \
+    > "$tmp/inverted.log" 2>&1
+  python3 -B "$repo/tests/check_globe_inverted.py" "$1" "$tmp/inverted.log" "$mode"
+done

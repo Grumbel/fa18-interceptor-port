@@ -1388,6 +1388,7 @@ public:
         // A stricter output-subpixel oracle for thin native vectors is opt-in.
         const bool subpixel_parity = std::getenv("FA18_GL_DIRECT_SUBPIXEL_PARITY") != nullptr;
         int mismatches = 0, total = 0;
+        int globe_mismatches = 0, globe_total = 0;
         for (int y = 0; y < 200; ++y) {
           const int sy = std::clamp(oy + int((y + 0.5) * vh / 200), 0, dh - 1);
           for (int x = 0; x < wide; ++x) {
@@ -1404,8 +1405,13 @@ public:
               y * S + S / 2;
             const uint32_t colour = view_buf[size_t(cy) * wide * S + cx];
             ++total;
-            if (p[0] != uint8_t(colour >> 16) || p[1] != uint8_t(colour >> 8) ||
-                p[2] != uint8_t(colour)) {
+            const bool different = p[0] != uint8_t(colour >> 16) ||
+                p[1] != uint8_t(colour >> 8) || p[2] != uint8_t(colour);
+            if (x >= side + 189 && x < side + 230 && y >= 146 && y < 194) {
+              ++globe_total;
+              if (different) ++globe_mismatches;
+            }
+            if (different) {
               if (mismatches < 3)
                 fprintf(stderr, "gl: direct diff at %d,%d gpu=%02x%02x%02x cpu=%06x\n",
                         x, y, p[0], p[1], p[2], colour & 0xffffff);
@@ -1415,6 +1421,9 @@ public:
         }
         fprintf(stderr, "gl: direct parity frame %d different %d/%d (%.2f%%)\n",
                 frame_no, mismatches, total, 100.0 * mismatches / total);
+        if (std::getenv("FA18_GL_GLOBE_COMPARE"))
+          fprintf(stderr, "gl: globe parity frame %d different %d/%d\n",
+                  frame_no, globe_mismatches, globe_total);
       }
     }
     SDL_GL_SwapWindow(win);

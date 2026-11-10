@@ -521,6 +521,25 @@ void main() {
       base_colour = texture2D(u_palette,
         vec2((bg_pen + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
     }
+    else if (overlay.a > 0.22) {
+      // Alpha 64/80 selects a horizontal-edge globe; 72/76 selects a
+      // vertical edge. RGB carries the edge and panel X offset.
+      float left_y = floor(overlay.r * 255.0 + 0.5);
+      float right_y = floor(overlay.g * 255.0 + 0.5);
+      float offset_x = floor(overlay.b * 255.0 + 0.5) - 128.0;
+      float token = floor(overlay.a * 255.0 + 0.5);
+      bool sky;
+      if (token > 70.0 && token < 78.0) {
+        sky = token < 74.0 ? centre_x >= left_y : centre_x <= left_y;
+      } else {
+        sky = (y - left_y - 1.0) * 31.0 <
+              (right_y - left_y) * (centre_x - offset_x - 192.0);
+        if (token > 78.0) sky = !sky;
+      }
+      float pen = sky ? 5.0 : 1.0;
+      base_colour = texture2D(u_palette,
+        vec2((pen + 0.5) / 32.0, (y + 0.5) / 200.0)).rgb;
+    }
     else if (overlay.a > 0.10) {
       // 32/255 or 48/255 marks a static cockpit pixel. The source is the original
       // ADF ILBM, not a copy of the emulated framebuffer. Its 5-bit colour
