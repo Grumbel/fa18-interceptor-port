@@ -68,8 +68,14 @@ pos/cam differences (`(pos_obj - pos_cam) / 256` as float) in the real renderer.
 The "/8" is the model scale for this model (header nibble / LOD shift); verify for
 other models (type 74 etc.) before generalising.
 
-## TODO: g-force redout/blackout
-The game dims/reddens the view under g-load. Locate the g-load/vision state in RAM, add it to GameState and render it in the state scene.
+## g-force redout/blackout: not present in the original
+
+Checked with `tests/scenarios/aero_all.txt` (stick held back at the end, HUD G-meter
+reads -7.5 G for ~2000 frames, frames 10800-12500) on the original capture path:
+the view shows no red or black tint, no palette fade (`$5aa3a` stays 3) and the
+manual (`manual.txt`) does not mention it. The state renderer therefore has
+nothing to reproduce; if a different build is found to dim the view, add the
+variable to `GameState` and fade in `state_scene_gl.cpp`.
 
 ## Status: static objects from state (frames 3966 / 4000)
 
