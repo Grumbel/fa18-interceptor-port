@@ -626,6 +626,12 @@ before committing. Note limitations explicitly rather than masking them.
 - [ ] Expand the native text/UI capture path to the rest of Pause and the
   cockpit overlay, preserving palette/copper fades and separating dynamic
   gauges from original bitplane backgrounds.
+- [ ] Inventory each screen and cockpit region with selective scanout masks,
+  recording its native replacement and remaining original pixel sources.
+  Migrate one region at a time, compare both display banks and transitions,
+  then verify guest RAM before bypassing its original drawing operations.
+  Include title, menus, briefing, flight, Pause and view changes in the
+  inventory so that direct presentation can eventually avoid bitplanes.
 - [ ] Replace the remaining bitplane read/modify/write dependencies of the
   HUD writer `$47d2c`→`$47d34`, `$47d4a`→`$47d56` and the point writer
   `$44456`–`$4445c` with native output layers; ensure screen-bank and

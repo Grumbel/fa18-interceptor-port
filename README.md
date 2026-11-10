@@ -14,6 +14,22 @@ reference; both produce bit-identical frames and audio.
 The complete game works: title, enlistment, demo flight, free flight,
 training, qualification, missions and the flight log (saved to disk).
 
+## OpenGL renderer status
+
+`--gl-direct` is an experimental GPU presentation path. It renders captured
+3D geometry in OpenGL and reconstructs parts of the cockpit and HUD, while
+other screens and incomplete instrument updates still use the original
+bitplanes. The Amiga blitter and original rasterizer continue to run, so
+this path is not yet independent of the original rendering code.
+
+The goal is to replace those remaining bitmap dependencies with native
+OpenGL layers, including cockpit instruments, HUD, menus and transitions,
+before bypassing the original drawing operations. The current migration
+status and validation work are tracked in
+[`docs/gl_renderer_roadmap.md`](docs/gl_renderer_roadmap.md). Ctrl+Shift+B
+and Ctrl+Alt+B help expose remaining original pixel contributions without
+changing guest RAM; Ctrl+B disables blitter writes and can alter game state.
+
 ## Requirements
 
 The original game disk image (ADF), e.g. the TOSEC dump

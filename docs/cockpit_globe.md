@@ -458,12 +458,26 @@ source mask to **at most 1, 0, 2, 0 and 0 pixels**, respectively. The
 source stencil moves independently with the original temporary panel
 offset; that displacement is not inferred from bank angle.
 
+The same edge also handles the observed inverted level quad, whose sky lies
+below the boundary. A diagnostic pose injection (`FA18_GLOBE_FORCE_ATTITUDE`)
+sets the cockpit pitch and bank inputs for selected frames and changes guest
+RAM. At bank 14400, all 358 fill cells match the original renderer; the
+direct shader also matches the CPU compositor in the tested globe region.
+Forced 90° and 270° banks produce vertical edges; each native split matches
+all 358 original fill cells in those poses. Other inverted and clipped
+polygons still need validation.
+
 Set `FA18_COCKPIT_GLOBE_NATIVE=1` for this experimental path in either
 the CPU or direct-GPU cockpit compositor, and
 `FA18_COCKPIT_GLOBE_DEBUG=1` to log per-bank geometry captures. It repaints
 only ADF indices 17/21 as live copper pens 1/5. The bezel and all other
 artwork retain the prior compositor. Unsupported polygons, unobserved
 screen banks and inactive panel ownership fall back to source bitplanes.
+In direct GPU presentation, the overlay marks the ADF fill stencil and
+supplies the captured edge coordinates; the fragment shader selects the
+sky or ground pen from the live copper palette. The CPU compositor keeps
+the same integer edge rule for comparison. The captured panel X and Y
+offsets translate the stencil independently of the horizon orientation.
 The original path remains the **default** pending exact raster-edge,
 inverted-flight and transition verification. The full ADF replay in
 `tests/check_globe_writer_probe.sh ORIGINAL.adf` is independent of the
