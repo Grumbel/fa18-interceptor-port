@@ -1537,6 +1537,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
       std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
   const CapturedGlobe globe = panel_asset_enabled ? captured_globe(key) : CapturedGlobe{};
+  const bool pure_gl = strict_renderer && flight && !paused;
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
@@ -1575,6 +1576,17 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                        ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
+        if (pure_gl) {
+          // --renderer new in flight: GL scene only, no Amiga bitmap pixels.
+          {
+            const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
+            const uint8_t* src = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride) +
+                                               size_t(left + x * S)];
+            for (int xx = 0; xx < S; ++xx)
+              dst[left + x * S + xx] = pal[size_t(y) * 32 + (src[xx] & 15)];
+          }
+          continue;
+        }
         if (const auto bg = hud_original_text_background(
                 x, y, hud, rgb, pal, native_text_erase)) {
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = *bg;
@@ -1752,6 +1764,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                    (unsigned long long)m.frame_count(), panel_asset_pixels);
     }
   }
+  if (pure_gl) return true;
   blend_native_reticle(out, side, S, hud);
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
@@ -1831,6 +1844,10 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   out.scene_palette_last = gl_scene_rows::last_palette_row(ready->rows);
   const bool global_palette_reference =
       std::getenv("FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE") != nullptr;
+  if (strict_renderer && flight && !paused) {
+    out.fuel_vector = out.fuel_bar_vector = out.radar_vector = false;
+  }
+  const bool pure_gl = strict_renderer && flight && !paused;
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
@@ -1875,6 +1892,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
+      if (pure_gl) { p[0] = p[1] = p[2] = p[3] = 0; continue; }
       if (radar.source_at(x, y, rgb[size_t(y) * W + x])) {
         const uint32_t c = radar.backing(y);
         p[0] = uint8_t(c >> 16);

@@ -148,7 +148,7 @@ widescreen). `--renderer new` selects the GL scene built from game state
 (`--gl 3 --state-scene` unless `--gl N` is given). In flight the 3D viewport
 is already fully GL (a pure-GL viewport composite was pixel-identical).
 
-Pixels still copied from the Amiga bitmap in the new renderer: HUD text
+(Superseded: in flight `--renderer new` now takes no Amiga bitmap pixels at all; the cockpit and HUD are not drawn.) Previously copied from the Amiga bitmap: HUD text
 ("1.0 G", weapon/ammo, tick numbers), the message line, the compass strip,
 weapon/gear icons, parts of the left panel, and the 2D panel in external
 view. All text goes through the 68000 glyph writer `$47d56` (3x5 font at
