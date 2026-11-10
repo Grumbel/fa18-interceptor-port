@@ -1471,6 +1471,14 @@ static void log_cockpit_dynamics(const char* presenter, const amiga::Machine& m,
   }
 }
 
+bool strict_renderer = false;
+
+// In the strict (--renderer new) mode, black Amiga pixels inside the 3D
+// viewport are leftover 2D clears/specks, never HUD ink: show the GL scene.
+bool strict_speck(bool flight, bool paused, int y, int scene_rows, uint32_t rgb) {
+  return strict_renderer && flight && !paused && y < scene_rows && (rgb & 0xffffff) == 0;
+}
+
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
   amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
@@ -1689,7 +1697,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         // In Pause the bitplanes contain the frozen game's real 2D panel
         // and gauges, not a half-drawn 3D back buffer. Keep them visible.
         const bool missing_3d_row = flight && !paused && y < ready->rows && !L;
-        if (missing_3d_row ||
+        if (missing_3d_row || strict_speck(flight, paused, y, ready->rows, rgb[y * W + x]) ||
             (L && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
           // The screen may point to the preceding Amiga 3D buffer. Its
           // contents are temporally different from the new GL side bands;
@@ -2022,7 +2030,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         ++dynamic_pixels;
       }
       const bool missing_3d_row = flight && !paused && y < ready->rows && !scene;
-      if (missing_3d_row ||
+      if (missing_3d_row || (scene && strict_speck(flight, paused, y, ready->rows, rgb[y * W + x])) ||
           (scene && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
         p[0] = p[1] = p[2] = 0;
         p[3] = !missing_3d_row && (li & 16) ? 16 : 0;

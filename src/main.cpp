@@ -2061,6 +2061,9 @@ int main(int argc, char** argv) {
   } else if (renderer_new) {
     if (!requested_gl && !requested_hires) { requested_gl = true; gl_scale = hires = 3; }
     state_scene_flag = true;
+    gl_direct = true;
+    widescreen = true;
+    remaster::strict_renderer = true;
   }
   if (requested_hires && requested_gl) {
     fprintf(stderr, "--hires and --gl select different 3D renderers; choose one\n");

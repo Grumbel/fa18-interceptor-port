@@ -9,6 +9,8 @@
 namespace amiga { struct Machine; }
 
 namespace remaster {
+
+extern bool strict_renderer;  // --renderer new: no raw Amiga specks in the 3D view
 extern bool scene_hooks;   // set by install()
 void install(amiga::Machine& m);  // PC hooks for prim observation + hires layer
 void scene_begin();        // start of the 3D scene draw ($2fc14)
