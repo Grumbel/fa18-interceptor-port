@@ -15,6 +15,7 @@ const std::array<int16_t, 9>& identity_basis() {
 // (sx = 159.5 - 160 vx/vz, sy = 89.5 - 90 vy/vz): drop primitives entirely on
 // one outer side of a plane through the eye (z > 0 is in front).
 bool g_cull = true;
+int next_object_id = 0;
 bool visible(const std::vector<Vec3f>& v) {
     if (!g_cull) return true;
     bool any_front = false, left = true, right = true, up = true, down = true;
@@ -35,10 +36,13 @@ std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::
                                    const std::vector<mesh_viewer::Model>& models,
                                    int radius_cells) {
     std::vector<ViewPrim> out;
-    if (gs.player < 0 || !w.has_map[world::Near]) return out;
+    if (gs.player < 0) return out;
     const int32_t cam[3] = {gs.camera.eye.x, gs.camera.eye.y, gs.camera.eye.z};
-    const int ccx = cam[0] >> 22, ccz = cam[2] >> 22;
-    for (const auto& cell : w.maps[world::Near].cells) {
+    for (int map_id = 0; map_id < world::kMaps; ++map_id) {
+    if (!w.has_map[map_id]) continue;
+    const int cell_shift = map_id == world::Near ? 22 : 24;   // far maps: 4x4-cell sectors
+    const int ccx = cam[0] >> cell_shift, ccz = cam[2] >> cell_shift;
+    for (const auto& cell : w.maps[map_id].cells) {
         if (std::abs(cell.x - ccx) > radius_cells || std::abs(cell.z - ccz) > radius_cells) continue;
         for (const auto& o : cell.objects) {
             const mesh_viewer::Model* m = nullptr;
@@ -47,7 +51,7 @@ std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::
                     if (t == o.type) m = &mm;
             if (!m || m->lods.empty()) continue;
             int32_t X, Z;
-            world::object_units(world::Near, cell, o, X, Z);
+            world::object_units(world::MapId(map_id), cell, o, X, Z);
             const int32_t pos[3] = {X * 256, 0, Z * 256};
             // LOD distance as the game computes it ($30872): hypot of the eye
             // offset in units of 4096 world units, scaled by the zoom ($5ad3a).
@@ -65,13 +69,18 @@ std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::
                 vp.mask = p.mask;
                 vp.xr = p.xr;
                 vp.type = o.type;
+                vp.object = next_object_id;
+                vp.flat = m->distant || ((lod->flags & 2) && !(lod->flags & 1));
+                vp.distance = float(limit);
                 for (const auto& mv : p.v) {
                     const int32_t v[3] = {mv.x, mv.y, mv.z};
                     vp.v.push_back(model_to_view(gs.camera.view_m, identity_basis(), pos, cam, v, lod->scale_shift));
                 }
                 if (visible(vp.v)) out.push_back(std::move(vp));
             }
+            ++next_object_id;
         }
+    }
     }
     return out;
 }
@@ -105,12 +114,16 @@ std::vector<ViewPrim> build_scenarios(const gamestate::GameState& gs,
             vp.mask = p.mask;
             vp.xr = p.xr;
             vp.type = sc.index;
+            vp.object = next_object_id;
+            vp.flat = m->distant || ((lod->flags & 2) && !(lod->flags & 1));
+            vp.distance = float(limit);
             for (const auto& mv : p.v) {
                 const int32_t v[3] = {mv.x, mv.y, mv.z};
                 vp.v.push_back(model_to_view(gs.camera.view_m, sc.body_m, pos, cam, v, lod->scale_shift));
             }
             if (visible(vp.v)) out.push_back(std::move(vp));
         }
+        ++next_object_id;
     }
     return out;
 }

@@ -64,6 +64,16 @@ void note_line(const double a[3], const double b[3], const Ops& o);
 // kind 0: 1x1, 1: 2x1, 2: 2x2 low-res pixels, 3: disc of `radius` pixels
 void note_point(const double p[3], int kind, int radius, const Ops& o);
 
+// State-driven scene (--state-scene): at the end of each captured 3D frame the
+// injector replaces the captured object primitives; it calls inject_* below.
+// Coordinates are camera view space in eye units (256 world units), i.e. after
+// the view matrix, before the perspective division.
+void set_scene_injector(std::function<void()> f);
+void inject_begin_object(bool flat);
+void inject_poly(const double (*v)[3], int n, const Ops& o);
+void inject_line(const double a[3], const double b[3], const Ops& o);
+void inject_point(const double p[3], int kind, int radius, const Ops& o);
+
 // Render the frame into a hi-res layer of palette indices (w x h, top row
 // first, h = rows * S).  Returns false when nothing was rendered.
 // A wider `w` extends the horizontal field of view while preserving the

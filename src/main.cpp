@@ -3,6 +3,7 @@
 #include "control_help.hpp"
 #include "font6x10.hpp"
 #include "native/game_state.hpp"
+#include "native/state_scene.hpp"
 #include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/cockpit_assets.hpp"
@@ -1840,6 +1841,7 @@ void usage() {
           "  --hires N        software 3D upscaling (1-8x); no OpenGL\n"
           "  --gl N           OpenGL 3D scene renderer (1-8x)\n"
           "  --gl-direct      present the GL scene/HUD with the GPU, without readback\n"
+          "  --state-scene    (with --gl) build objects from game state, not the captured primitives\n"
           "                   implies --gl 3 if no 3D renderer was specified\n"
           "  --widescreen     extend OpenGL view horizontally (16:9; resizable)\n"
           "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (not physics)\n"
@@ -1963,6 +1965,7 @@ int main(int argc, char** argv) {
   bool disable_amiga_scanout = false;
   amiga::ScanoutRegion hidden_scanout_region = amiga::ScanoutRegion::None;
   bool gl_direct = false;
+  bool state_scene_flag = false;
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
   bool requested_hires = false, requested_gl = false;
@@ -2010,6 +2013,7 @@ int main(int argc, char** argv) {
       gl_scale = hires = std::atoi(argv[++i]);
     }
     else if (a == "--gl-direct") gl_direct = true;
+    else if (a == "--state-scene") state_scene_flag = true;
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -2185,6 +2189,7 @@ int main(int argc, char** argv) {
       }
     };
   }
+  if (state_scene_flag || std::getenv("FA18_STATE_SCENE")) state_scene::install_gl(machine.disk_read("F-18 Interceptor"));
   if (std::getenv("FA18_STATE_CALIB")) state_calib_install(machine.disk_read("F-18 Interceptor"));
   if (!mesh_dump_dir.empty()) {
     std::filesystem::create_directories(mesh_dump_dir);

@@ -36,6 +36,9 @@ struct ViewPrim {
     mesh_viewer::Prim::Kind kind = mesh_viewer::Prim::Poly;
     uint8_t colour = 0, mask = 15, xr = 0;
     int type = 0;                 // object type index
+    int object = 0;               // instance id (prims of one object are contiguous)
+    bool flat = false;            // lies on the ground: painter's order, no depth
+    float distance = 0;           // LOD distance (for ordering)
     std::vector<Vec3f> v;
 };
 
@@ -59,4 +62,10 @@ std::vector<ViewPrim> build_static(const gamestate::GameState& gs, const world::
                                    const std::vector<mesh_viewer::Model>& models,
                                    int radius_cells = 1);
 
+}  // namespace state_scene
+
+namespace state_scene {
+// Install the state-driven scene as the GL renderer's primitive source
+// (--state-scene).  Loads the models and the world from the executable image.
+void install_gl(const std::vector<uint8_t>& exe);
 }  // namespace state_scene

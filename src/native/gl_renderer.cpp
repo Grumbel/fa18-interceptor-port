@@ -805,6 +805,8 @@ struct State {
   GLint u_coloured = -1, u_water_class = -1;
   // current frame
   bool capturing = false;
+  bool injecting = false;   // state-driven scene injection (inject_*)
+  std::function<void()> injector;
   bool has_frame = false, has_previous = false;
   uint64_t serial = 0, capture_tick = 0;
   uint64_t last_rendered_serial = 0;
@@ -959,12 +961,13 @@ void build_terrain() {
 
 // World units per view unit of the current object's vertex stage.
 double stage_unit() {
+  if (st.injecting) return 256.0;  // injected primitives are in eye units
   const uint32_t fp = native::cpu().a[6];
   if (st.distant) return std::ldexp(1.0, 8 + int16_t(rd16(fp - 8)));
   return std::ldexp(1.0, int16_t(rd16(0x5adb0)) + 8 - int16_t(rd16(fp - 6)));
 }
 
-bool capture_ok() { return st.ready && st.enabled && st.capturing && st.object >= 0; }
+bool capture_ok() { return st.ready && st.enabled && (st.injecting || (st.capturing && st.object >= 0)); }
 
 Prim& add_prim(GLenum mode, const Ops& o) {
   Prim p{};
@@ -1458,8 +1461,41 @@ bool interpolation_available() { return active() && st.has_frame && st.has_previ
 uint64_t capture_serial() { return st.serial; }
 int capture_interval_vblanks() { return st.interval_vblanks; }
 
+void set_scene_injector(std::function<void()> f) { st.injector = std::move(f); }
+void inject_begin_object(bool flat) {
+  if (!st.injecting) return;
+  ++st.object;
+  st.mesh = 0;
+  st.stream = 0;
+  st.prims_in_object = 0;
+  st.distant = flat;
+  st.flat = flat;
+}
+void inject_poly(const double (*v)[3], int n, const Ops& o) {
+  if (!st.injecting || o.copy || n < 3) return;
+  std::vector<P3> pts;
+  for (int i = 0; i < n; ++i) pts.push_back({v[i][0] * 256.0, v[i][1] * 256.0, v[i][2] * 256.0});
+  clip_near(pts, true);
+  if (pts.size() < 3) return;
+  Prim& p = add_prim(GL_TRIANGLES, o);
+  for (size_t i = 1; i + 1 < pts.size(); ++i)
+    for (size_t j : {size_t(0), i, i + 1}) push(pts[j].x, pts[j].y, pts[j].z);
+  p.count = GLsizei(st.verts.size() / 3) - p.first;
+}
+void inject_line(const double a[3], const double b[3], const Ops& o) { note_line(a, b, o); }
+void inject_point(const double p[3], int kind, int radius, const Ops& o) { note_point(p, kind, radius, o); }
+
 void finish_capture() {
   if (!active() || !st.capturing) return;
+  if (st.injector) {
+    // State-driven scene: replace the captured object primitives.
+    st.verts.clear();
+    st.prims.clear();
+    st.object = -1;
+    st.injecting = true;
+    st.injector();
+    st.injecting = false;
+  }
   st.capturing = false;
   st.camera = capture_camera();
   st.has_frame = true;

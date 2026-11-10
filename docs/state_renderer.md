@@ -106,3 +106,15 @@ Next: distance/LOD selection + culling, scenario objects (body_m rotation), far 
   frame differs by one step of motion; the renderer must read state at the right point (or
   interpolate, see gl_camera_interp.hpp). The frustum cull is switchable
   (`state_scene::set_frustum_cull`) because the game draws polygons outside the view too.
+
+## --state-scene (GL objects from state)
+
+`fa18 --gl N --state-scene` (or `FA18_STATE_SCENE=1`) replaces the captured object primitives with
+`state_scene::build_static` (near + far maps within one cell/sector) and `build_scenarios`, injected
+at `finish_capture` through `glr::set_scene_injector` (src/native/state_scene_gl.cpp).
+Flat objects (runway etc.) go first, far to near; solids use the depth buffer. On the free-flight
+start frame the screenshot is visually near-identical to the capture path (runway, tower, sky,
+ground); the probe matches 28 of 34 captured polygons (the rest are ground/tile fills).
+Gates run: ctest 25/25, tests/check_gl_scene.sh and tests/check_gl_interpolation.sh pass
+(default path unchanged). Not yet: run-time ops (runway markings), damage/articulation,
+effects, section-script ordering.

@@ -105,7 +105,7 @@ struct Probe : scene::ISceneRenderer {
       for (auto& g : gen) {
         if (g.kind != mesh_viewer::Prim::Poly || g.v.size() != size_t(p.n)) continue;
         bool ok = false;
-        for (float fac : {1.f, 64.f}) {   // game vertex-stage unit differs per object
+        for (float fac : {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f, 128.f, 256.f}) {   // game vertex-stage unit differs per object
           bool o2 = true;
           for (int k = 0; k < p.n && o2; ++k)
             o2 = std::abs(fac * g.v[k].x - p.xyz[k][0]) < TOL && std::abs(fac * g.v[k].y - p.xyz[k][1]) < TOL &&
