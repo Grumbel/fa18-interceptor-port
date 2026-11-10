@@ -1952,6 +1952,7 @@ EMSCRIPTEN_KEEPALIVE void fa18_request_mesh_viewer() {
 }
 #endif
 
+void state_calib_install(const std::vector<uint8_t>& exe);
 int main(int argc, char** argv) {
   std::string data_dir, save_dir;
   int scale = 3;
@@ -2184,6 +2185,7 @@ int main(int argc, char** argv) {
       }
     };
   }
+  if (std::getenv("FA18_STATE_CALIB")) state_calib_install(machine.disk_read("F-18 Interceptor"));
   if (!mesh_dump_dir.empty()) {
     std::filesystem::create_directories(mesh_dump_dir);
     std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");
