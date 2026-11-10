@@ -992,13 +992,8 @@ public:
           case 1: {
           // original, 2x-4x software, 2x-4x OpenGL (when a context is available).
           // WebAssembly: OpenGL modes are omitted — a second WebGL context aborts.
-#if defined(__EMSCRIPTEN__)
-          static const int order[][2] = {{0, 0}, {2, 0}, {3, 0}, {4, 0}};
-          const int n = 4;
-#else
-          static const int order[][2] = {{0, 0}, {2, 0}, {3, 0}, {4, 0}, {2, 1}, {3, 1}, {4, 1}};
-          const int n = 7;
-#endif
+          static const int order[][2] = {{0, 0}, {3, 0}, {3, 1}};
+          const int n = 3;
           const int s = machine->hires_scale;
           const int g = s > 0 && glr::active() ? 1 : 0;
           int idx = 0;
@@ -1841,7 +1836,6 @@ void usage() {
           "  --renderer R     original: the Amiga picture as-is\n"
           "                   new:      OpenGL scene built from game state, widescreen\n"
           "                   hires:    software upscaling of the original renderer\n"
-          "  --gl N           resolution multiplier for 'new' (default 3)\n"
           "  --render-fps N   'new' presentation: 60, 120, 180 or 240 Hz (not physics)\n"
           "                   (--hires N, --gl-direct, --state-scene, --widescreen are\n"
           "                   still accepted for scripts but are not needed)\n"
@@ -2059,7 +2053,9 @@ int main(int argc, char** argv) {
     widescreen = false;
     render_fps = 60;
   } else if (renderer_new) {
-    if (!requested_gl && !requested_hires) { requested_gl = true; gl_scale = hires = 3; }
+    requested_gl = true;
+    requested_hires = false;
+    gl_scale = hires = 3;  // one OpenGL mode; the GPU scales to the window
     state_scene_flag = true;
     gl_direct = true;
     widescreen = true;
