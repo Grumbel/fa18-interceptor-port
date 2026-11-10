@@ -1476,7 +1476,10 @@ bool strict_renderer = false;
 // In the strict (--renderer new) mode, black Amiga pixels inside the 3D
 // viewport are leftover 2D clears/specks, never HUD ink: show the GL scene.
 bool strict_speck(bool flight, bool paused, int y, int scene_rows, uint32_t rgb) {
-  return strict_renderer && flight && !paused && y < scene_rows && (rgb & 0xffffff) == 0;
+  if (!strict_renderer || !flight || paused || y >= scene_rows) return false;
+  // Chase/external camera ($5aa7d): the viewport holds no HUD ink at all, so
+  // every remaining Amiga pixel there is a blitter leftover.
+  return native::rd8(0x5aa7d) != 0 || (rgb & 0xffffff) == 0;
 }
 
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,

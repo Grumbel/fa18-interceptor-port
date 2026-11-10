@@ -1838,14 +1838,13 @@ void usage() {
           "                   (default: looks for a nearby .adf or ./assets)\n"
           "\n"
           "Graphics (the original renderer is the default):\n"
-          "  --hires N        software 3D upscaling (1-8x); no OpenGL\n"
-          "  --gl N           OpenGL 3D scene renderer (1-8x)\n"
-          "  --gl-direct      present the GL scene/HUD with the GPU, without readback\n"
-          "  --renderer R     original (pure Amiga output) or new (GL scene built from game state)\n"
-          "  --state-scene    (with --gl) build objects from game state, not the captured primitives\n"
-          "                   implies --gl 3 if no 3D renderer was specified\n"
-          "  --widescreen     extend OpenGL view horizontally (16:9; resizable)\n"
-          "  --render-fps N   GL presentation: 60, 120, 180 or 240 Hz (not physics)\n"
+          "  --renderer R     original: the Amiga picture as-is\n"
+          "                   new:      OpenGL scene built from game state, widescreen\n"
+          "                   hires:    software upscaling of the original renderer\n"
+          "  --gl N           resolution multiplier for 'new' (default 3)\n"
+          "  --render-fps N   'new' presentation: 60, 120, 180 or 240 Hz (not physics)\n"
+          "                   (--hires N, --gl-direct, --state-scene, --widescreen are\n"
+          "                   still accepted for scripts but are not needed)\n"
           "  --full-detail    nearest level of detail for every 3D object\n"
           "  --stats          show game-world statistics\n"
           "  --fps            show observed presentation FPS\n"
@@ -2020,7 +2019,8 @@ int main(int argc, char** argv) {
       const std::string r = argv[++i];
       if (r == "original") renderer_original = true;
       else if (r == "new") renderer_new = true;
-      else { fprintf(stderr, "--renderer must be original or new\n"); return 2; }
+      else if (r == "hires") { requested_hires = true; if (!hires) hires = 3; }
+      else { fprintf(stderr, "--renderer must be original, new or hires\n"); return 2; }
     }
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
