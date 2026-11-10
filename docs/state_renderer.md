@@ -140,3 +140,17 @@ effects, section-script ordering.
 * Pixel check against the capture path at frame 5200 over mission6_1/2/4/5,
   mission7_1..5, free2: 0.03%-0.29% of pixels differ (fuzz 8%); external view of
   mission6_3 frame 6000: 0.20%.
+
+## Renderer toggle and remaining Amiga-bitmap leaks
+
+`--renderer original` forces pure Amiga output (no GL, no overlays, no
+widescreen). `--renderer new` selects the GL scene built from game state
+(`--gl 3 --state-scene` unless `--gl N` is given). In flight the 3D viewport
+is already fully GL (a pure-GL viewport composite was pixel-identical).
+
+Pixels still copied from the Amiga bitmap in the new renderer: HUD text
+("1.0 G", weapon/ammo, tick numbers), the message line, the compass strip,
+weapon/gear icons, parts of the left panel, and the 2D panel in external
+view. All text goes through the 68000 glyph writer `$47d56` (3x5 font at
+`$52900..$52b00`, offset table `$528c0`); capturing those writes decoded to
+characters is the planned route to replace them natively.

@@ -1841,6 +1841,7 @@ void usage() {
           "  --hires N        software 3D upscaling (1-8x); no OpenGL\n"
           "  --gl N           OpenGL 3D scene renderer (1-8x)\n"
           "  --gl-direct      present the GL scene/HUD with the GPU, without readback\n"
+          "  --renderer R     original (pure Amiga output) or new (GL scene built from game state)\n"
           "  --state-scene    (with --gl) build objects from game state, not the captured primitives\n"
           "                   implies --gl 3 if no 3D renderer was specified\n"
           "  --widescreen     extend OpenGL view horizontally (16:9; resizable)\n"
@@ -1965,6 +1966,8 @@ int main(int argc, char** argv) {
   amiga::ScanoutRegion hidden_scanout_region = amiga::ScanoutRegion::None;
   bool gl_direct = false;
   bool state_scene_flag = false;
+  bool renderer_original = false;  // --renderer original: pure Amiga output
+  bool renderer_new = false;       // --renderer new: GL scene from game state
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
   bool requested_hires = false, requested_gl = false;
@@ -2013,6 +2016,12 @@ int main(int argc, char** argv) {
     }
     else if (a == "--gl-direct") gl_direct = true;
     else if (a == "--state-scene") state_scene_flag = true;
+    else if (a == "--renderer" && i + 1 < argc) {
+      const std::string r = argv[++i];
+      if (r == "original") renderer_original = true;
+      else if (r == "new") renderer_new = true;
+      else { fprintf(stderr, "--renderer must be original or new\n"); return 2; }
+    }
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -2043,6 +2052,16 @@ int main(int argc, char** argv) {
   }
   if (const char* direct = std::getenv("FA18_GL_DIRECT");
       direct && std::strcmp(direct, "0") != 0) gl_direct = true;
+  if (renderer_original) {
+    // Hard toggle: nothing but the original Amiga bitmap, no GL layers.
+    requested_hires = requested_gl = gl_direct = state_scene_flag = false;
+    gl_scale = hires = 0;
+    widescreen = false;
+    render_fps = 60;
+  } else if (renderer_new) {
+    if (!requested_gl && !requested_hires) { requested_gl = true; gl_scale = hires = 3; }
+    state_scene_flag = true;
+  }
   if (requested_hires && requested_gl) {
     fprintf(stderr, "--hires and --gl select different 3D renderers; choose one\n");
     return 2;
