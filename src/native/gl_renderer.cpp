@@ -1510,8 +1510,15 @@ void finish_capture() {
   ++st.frames;
 }
 
-static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alpha) {
-  if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
+// `S` is the vertical scale (output pixels per original row, 200 rows) and
+// `xs` the horizontal one (output pixels per original column). They are equal
+// for the integer layers (non-square display pixels are stretched later); the
+// window-sized renderer passes arbitrary floats with xs = h/240 so that pixels
+// stay square on a 4:3 presentation of the original image.
+static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float alpha,
+                       float xs = 0.f) {
+  if (xs <= 0.f) xs = S;
+  if (!active() || (!st.capturing && !st.has_frame) || w < 320 * xs - 0.5f || S <= 0.f) return false;
   if (st.capturing) {
     // VBL presentation can occur halfway through the next 3D draw.  The
     // completed scene was moved into previous_* by scene_begin(); drawing
@@ -1525,7 +1532,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
     st.capturing = false;
     st.has_frame = true;
     st.has_previous = false;
-    const bool rendered = draw_layer(px, w, h, S, 1.f);
+    const bool rendered = draw_layer(px, w, h, S, 1.f, xs);
     st.has_previous = true;
     st.has_frame = false;
     st.capturing = true;
@@ -1623,7 +1630,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   const auto t0 = std::chrono::steady_clock::now();
   frame_draw_calls = frame_draw_vertices = 0;
   if (!ensure_fbo(w, h)) return false;
-  const float rows = float(h / S);
+  const float rows = float(h) / S;
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
@@ -1631,7 +1638,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   gl.Uniform1f(st.u_water_class, 0.f);
   // A wider FBO must reveal more of the world, not stretch the central view.
   // With w=320*S this is exactly 1.0 and preserves the original projection.
-  gl.Uniform1f(st.u_xscale, float(320 * S) / float(w));
+  gl.Uniform1f(st.u_xscale, float(320.f * xs) / float(w));
 #ifndef FA18_OPENGLES2
   gl.Enable(GL_PROGRAM_POINT_SIZE);  // desktop GL; GLES always uses gl_PointSize
 #endif
@@ -1807,7 +1814,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   // two draw calls + uniforms for each flat primitive. a_style stores
   // (palette-on-land, palette-on-water); u_water_class selects a channel.
   set_view(ident);
-  auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
+  auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * S : 1.f; };
   if (!st.flat_batch.empty()) {
     GLsizei flat_count = GLsizei(st.flat_batch.size() / 5);
     if (reference_batches) {
@@ -1936,7 +1943,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alph
   return true;
 }
 
-bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
+bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {  // integer layers
   return draw_layer(&px, w, h, S, alpha);
 }
 
@@ -1945,17 +1952,27 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba, bool hud_visible,
                  const uint8_t* pause_rgba, bool pause_visible,
-                 const uint8_t* cockpit_rgba) {
+                 const uint8_t* cockpit_rgba, bool fit) {
   if (!active() || S <= 0 || side < 0 || layer.scene_rows <= 0 ||
       layer.overlay.size() != size_t(320 * 200 * 4) ||
       layer.palette.size() != size_t(32 * 200 * 4) ||
       layer.rows.size() != size_t(200 * 4) ||
       drawable_w <= 0 || drawable_h <= 0) return false;
-  const remaster::NativeHudState hud_state = remaster::prepared_gpu_hud_state();
+  // Pure GL mode draws nothing derived from Amiga 2D writes: no HUD state.
+  const remaster::NativeHudState hud_state =
+      layer.pure ? remaster::NativeHudState{} : remaster::prepared_gpu_hud_state();
   st.make_current();
   if (st.present_failed) return false;
-  const int wide = 320 + side * 2;
-  const int width = wide * S, height = layer.scene_rows * S;
+  // fit: render at the drawable's own pixel size. The view is 200 rows tall
+  // and as wide as the window aspect allows (4:3 == 320 columns).
+  const double wide_d = fit && drawable_h > 0 ? double(drawable_w) / drawable_h * 240.0
+                                              : double(320 + side * 2);
+  const int wide = int(wide_d);
+  const double side_d = (wide_d - 320.0) / 2.0;
+  const int width = fit ? drawable_w : wide * S;
+  const int height = fit ? drawable_h : layer.scene_rows * S;
+  const float scene_sy = fit ? float(drawable_h) / float(layer.scene_rows) : float(S);
+  const float scene_sx = fit ? float(drawable_h) / 240.f : float(S);
 
   if (!st.present_prog) {
     std::string err;
@@ -1991,7 +2008,7 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
     gl.Uniform1i(u.pause, 5);
     gl.Uniform1i(u.cockpit, 6);
   }
-  if (!draw_layer(nullptr, width, height, S, alpha)) return false;
+  if (!draw_layer(nullptr, width, height, scene_sy, alpha, scene_sx)) return false;
 
   auto bind_texture = [&](GLuint& tex, int unit, int w, int h, const void* pixels,
                           bool upload_pixels = true) {
@@ -2068,7 +2085,7 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
   gl.ColorMask(1, 1, 1, 1);
   gl.ClearColor(0, 0, 0, 1);
   gl.Clear(GL_COLOR_BUFFER_BIT);
-  const double aspect = double(wide) / 240.0;
+  const double aspect = fit ? double(drawable_w) / drawable_h : double(wide) / 240.0;
   const int vw = std::min(drawable_w, int(std::round(drawable_h * aspect)));
   const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
   gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
@@ -2123,10 +2140,10 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                    u.reticle, int(hud_state.reticle),
                    hud_state.reticle_rgb);
   }
-  gl.Uniform2f(u.dimensions, float(wide),
+  gl.Uniform2f(u.dimensions, fit ? float(wide_d) : float(wide),
                float(layer.scene_rows));
-  gl.Uniform1f(u.side, float(side));
-  gl.Uniform1f(u.scale, float(S));
+  gl.Uniform1f(u.side, fit ? float(side_d) : float(side));
+  gl.Uniform1f(u.scale, scene_sy);
   gl.Uniform1f(u.scene_palette_last, float(layer.scene_palette_last));
   bind_present_quad();
   gl.DrawArrays(GL_TRIANGLES, 0, 6);

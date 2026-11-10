@@ -1333,16 +1333,6 @@ public:
     }
   }
   bool display_gpu(int side, float alpha) {
-    if (fit_screen && win && machine->hires_scale > 0) {
-      // --renderer new: render at the screen's resolution, not a fixed 3x.
-      int fw = 0, fh = 0;
-      SDL_GL_GetDrawableSize(win, &fw, &fh);
-      const int want = std::max(1, std::min(8, (fh + 199) / 200));
-      if (fh > 0 && want != machine->hires_scale) {
-        machine->set_hires_scale(want);
-        gpu_layers_frame = -1;
-      }
-    }
     if (gpu_layers_frame != frame_no) {
       if (!remaster::prepare_gpu_layers(*machine, gpu_layers)) return false;
       gpu_layers_frame = frame_no;
@@ -1375,8 +1365,23 @@ public:
                           side, machine->hires_scale, alpha, dw, dh,
                           new_hud, show_hud,
                           pause_visible ? pause_rgba.data() : nullptr, pause_visible,
-                          remaster::cockpit_atlas(*machine).rgba.data()))
+                          remaster::cockpit_atlas(*machine).rgba.data(),
+                          fit_screen))
       return false;
+    if (const char* dump = std::getenv("FA18_GL_DIRECT_DUMP");
+        dump && std::getenv("FA18_GL_DIRECT_DUMP_FRAME") &&
+        frame_no == std::atoi(std::getenv("FA18_GL_DIRECT_DUMP_FRAME"))) {
+      // Test/diagnostic: save the GPU-owned window (RGBA, bottom-up) as PPM.
+      std::vector<uint8_t> px;
+      if (glr::read_gpu_window(px, dw, dh)) {
+        if (FILE* f = fopen(dump, "wb")) {
+          fprintf(f, "P6\n%d %d\n255\n", dw, dh);
+          for (int y = dh - 1; y >= 0; --y)
+            for (int x = 0; x < dw; ++x) fwrite(&px[(size_t(y) * dw + x) * 4], 1, 3, f);
+          fclose(f);
+        }
+      }
+    }
     if (std::getenv("FA18_GL_DIRECT_COMPARE") && frame_no % 30 == 0) {
       // Diagnostic only: compare the GPU-owned window against the existing
       // CPU compositor at corresponding output sample centres. Normal GL

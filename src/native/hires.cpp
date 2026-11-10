@@ -1847,6 +1847,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   if (strict_renderer && flight && !paused) {
     out.fuel_vector = out.fuel_bar_vector = out.radar_vector = false;
   }
+  out.pure = strict_renderer && flight && !paused;
   const bool pure_gl = strict_renderer && flight && !paused;
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);

@@ -103,6 +103,7 @@ NativeHudState prepared_gpu_hud_state();
 // Row RGBA: scene row, validity, left/right EHB bits.
 struct GpuLayers {
   std::vector<uint8_t> overlay, palette, rows;
+  bool pure = false;  // --renderer new in flight: GL scene only
   int scene_rows = 0;
   // Last original 3D palette row. This is used only by widescreen side
   // extensions; the cockpit/centre reads the live 200-row copper palette.

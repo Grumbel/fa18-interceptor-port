@@ -91,7 +91,8 @@ bool present_gpu(const remaster::GpuLayers& layers, uint64_t layer_revision,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba = nullptr, bool hud_visible = false,
                  const uint8_t* pause_rgba = nullptr, bool pause_visible = false,
-                 const uint8_t* cockpit_rgba = nullptr);
+                 const uint8_t* cockpit_rgba = nullptr,
+                 bool fit = false);  // fit: scene at the drawable's own pixel size
 // Show a framebuffer that has no usable captured 3D scene (title, menu,
 // transitions, original/software graphics mode) on the same visible GL
 // window. The caller swaps the GL window after presenting; the original
