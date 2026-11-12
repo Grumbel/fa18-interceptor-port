@@ -8,9 +8,10 @@
 // between begin_eye() / end_eye(); end_frame() hands the pictures to the
 // headset.  mirror() shows them in the window.
 //
-// Everything is drawn at infinity: the head's rotation is followed, its
-// position is not (the view-space units of the display list differ per
-// object, and the cockpit is a picture; see docs/vr.md).
+// The scene is seen from each eye's own place (Prim::unit gives the
+// distances): stereo depth, and the head's movements relative to where it
+// was when the view was centred.  The game's screen (cockpit, HUD) is a
+// picture at infinity (see docs/vr.md).
 //
 // Without OpenXR (not built in, or Options::simulate) the same path runs
 // with a fixed head and both eyes go to the window only; tests use that.
@@ -33,6 +34,10 @@ class Vr {
     float yaw = 0, pitch = 0, roll = 0, fov = 90;
     int eye_size = 1024;
     int samples = 4;  // multisampling of the eyes' pictures
+    // Stereo: false puts both eyes at the head's centre (everything at
+    // infinity, as before).  The simulated eyes are `ipd` metres apart.
+    bool stereo = true;
+    float ipd = 0.064f;
   };
 
   Vr();

@@ -2259,6 +2259,7 @@ void usage() {
           "  --render-fps N   'new': pictures per second without vsync (120, 180, 240)\n"
           "  --vr             'new' on a head-mounted display (OpenXR); Ctrl+R looks\n"
           "                   straight ahead from where the head is turned\n"
+          "  --vr-mono        both eyes see the same picture (no stereo depth)\n"
           "                   (--hires N, --gl N, --gl-direct, --widescreen select the\n"
           "                   older enhancement layers)\n"
           "  --full-detail    nearest level of detail for every 3D object\n"
@@ -2383,6 +2384,7 @@ int main(int argc, char** argv) {
   bool renderer_original = false;  // --renderer original: pure Amiga output
   bool renderer_new = false;       // --renderer new: GL scene from game state
   bool vr = false;                 // --vr: --renderer new on a head-mounted display
+  bool vr_mono = false;            // --vr-mono: both eyes at the head's centre
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
   bool requested_hires = false, requested_gl = false;
@@ -2438,6 +2440,7 @@ int main(int argc, char** argv) {
       else { fprintf(stderr, "--renderer must be original, new or hires\n"); return 2; }
     }
     else if (a == "--vr") vr = renderer_new = true;
+    else if (a == "--vr-mono") vr = renderer_new = vr_mono = true;
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -2702,13 +2705,17 @@ int main(int argc, char** argv) {
   host.new_renderer = renderer_new;
   host.new_max_fps = render_fps > 60 ? render_fps : 0;
   host.vr_on = vr;
-  // Test aid: FA18_VR_SIM="yaw,pitch,roll[,fov[,size]]" (degrees; right, up,
-  // clockwise) draws --vr for a fixed head without a headset, both eyes
+  host.vr_options.stereo = !vr_mono;
+  // Test aid: FA18_VR_SIM="yaw,pitch,roll[,fov[,size[,ipd]]]" (degrees; right, up,
+  // clockwise; ipd in mm, 0: mono) draws --vr for a fixed head without a headset, both eyes
   // side by side in the window.
   if (const char* sim = std::getenv("FA18_VR_SIM"); sim && vr) {
     host.vr_options.simulate = true;
-    std::sscanf(sim, "%f,%f,%f,%f,%d", &host.vr_options.yaw, &host.vr_options.pitch, &host.vr_options.roll,
-                &host.vr_options.fov, &host.vr_options.eye_size);
+    float ipd_mm = host.vr_options.ipd * 1000.f;
+    std::sscanf(sim, "%f,%f,%f,%f,%d,%f", &host.vr_options.yaw, &host.vr_options.pitch, &host.vr_options.roll,
+                &host.vr_options.fov, &host.vr_options.eye_size, &ipd_mm);
+    host.vr_options.ipd = ipd_mm / 1000.f;
+    if (ipd_mm <= 0.f) host.vr_options.stereo = false;
   }
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);

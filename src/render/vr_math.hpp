@@ -105,8 +105,11 @@ inline Mat midway(const Mat eye_pose[2]) {
 
 // The two eyes (orientation in the reference space, OpenXR axes; field of
 // view as angles in radians: left, right, up, down; picture size) and the
-// seat's yaw.
-inline HeadView head_view(const Mat eye_pose[2], const double fov[2][4], const int size[2][2], double seat_yaw) {
+// seat's yaw.  `eye_pos` (metres, reference space, OpenXR axes) is where
+// the eyes are relative to the point the game's camera stands for; null:
+// both at that point (everything at infinity).
+inline HeadView head_view(const Mat eye_pose[2], const double fov[2][4], const int size[2][2], double seat_yaw,
+                          const double (*eye_pos)[3] = nullptr) {
   HeadView h;
   const Mat head = midway(eye_pose);
   h.head_from_seat = to_display(mul(transpose(head), about_y(seat_yaw)));
@@ -120,6 +123,13 @@ inline HeadView head_view(const Mat eye_pose[2], const double fov[2][4], const i
     v.tan_down = float(std::tan(fov[e][3]));
     v.width = size[e][0];
     v.height = size[e][1];
+    if (eye_pos) {
+      // into the head's axes (head transposed), then x left and z forward
+      double q[3];
+      for (int r = 0; r < 3; ++r)
+        q[r] = head[size_t(r)] * eye_pos[e][0] + head[size_t(3 + r)] * eye_pos[e][1] + head[size_t(6 + r)] * eye_pos[e][2];
+      v.pos = {float(-q[0]), float(q[1]), float(-q[2])};
+    }
     // the corners of the eye's picture, as directions of the head
     for (float tx : {v.tan_left, v.tan_right})
       for (float ty : {v.tan_up, v.tan_down}) {

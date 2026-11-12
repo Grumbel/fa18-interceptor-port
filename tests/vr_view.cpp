@@ -78,6 +78,19 @@ int main() {
     const auto& m = h.eye[1].from_head;
     check(near(m[2], std::sin(5 * deg)) && near(m[8], std::cos(5 * deg)), "right eye turned right");
   }
+  {  // eye positions: OpenXR axes in the reference space -> head axes (x left, z forward)
+    const Mat p = vr_math::from_angles(90 * deg, 0, 0);  // turned right
+    const Mat pose[2] = {p, p};
+    // the left eye of a head turned right is in front of the centre (-z in
+    // OpenXR), the right eye behind it; and both 10 cm up
+    const double pos[2][3] = {{0, 0.1, -0.032}, {0, 0.1, 0.032}};
+    const HeadView h = vr_math::head_view(pose, fov, size, 0, pos);
+    check(near(h.eye[0].pos[0], 0.032) && near(h.eye[0].pos[1], 0.1) && near(h.eye[0].pos[2], 0),
+          "left eye to the head's left");
+    check(near(h.eye[1].pos[0], -0.032) && near(h.eye[1].pos[2], 0), "right eye to the head's right");
+    const HeadView m = vr_math::head_view(pose, fov, size, 0);
+    check(m.eye[0].pos[0] == 0 && m.eye[1].pos[0] == 0, "no positions: both eyes at the centre");
+  }
   {  // a quaternion: 90 degrees about the vertical, to the left
     const double s = std::sqrt(0.5);
     const Mat q = vr_math::from_quat(0, s, 0, s);

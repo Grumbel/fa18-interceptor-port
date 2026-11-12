@@ -16,6 +16,11 @@
 //   original maps it to column 159 - 160 x/z and row 89 - 90 y/z (points:
 //   row 90 - 90 y/z) of the 320x200 screen, truncating; rows below the
 //   cockpit edge are covered by the panel.
+// - Distance: the view-space words of the original are in a fixed-point
+//   unit of their own per object and level of detail, so equal numbers are
+//   not equal distances.  Prim::unit says how many world units one unit of
+//   the primitive's vertices is; with it a primitive can be seen from a
+//   point beside the camera (the two eyes of a headset).
 #pragma once
 
 #include <array>
@@ -43,7 +48,14 @@ struct Prim {
   uint16_t count = 0;
   uint8_t w = 1, h = 1; // Point
   int16_t radius = 0;   // Disc
+  // World units per unit of this primitive's vertices; 0: not known, or a
+  // direction only (the sun, screen-space fills): drawn at infinity.
+  float unit = 0;
 };
+
+// World units (those of Camera) per metre: an altitude of 1024 units is
+// 5 ft on the game's own altimeter.
+constexpr float kUnitsPerMetre = 1024.f / (5.f * 0.3048f);
 
 struct Vec3 {
   float x = 0, y = 0, z = 0;
@@ -64,6 +76,9 @@ struct Camera {
 // spaces with x left, y up, z forward.
 struct EyeView {
   std::array<float, 9> from_head{1, 0, 0, 0, 1, 0, 0, 0, 1};  // head -> eye
+  // Where the eye is, in the head's axes and metres, from the point the
+  // game's camera stands for (the head's place when the view was centred).
+  std::array<float, 3> pos{0, 0, 0};
   // Tangents of the half angles, signed as in OpenXR (left and down negative).
   float tan_left = -1, tan_right = 1, tan_up = 1, tan_down = -1;
   int width = 0, height = 0;  // pixels of the eye's picture

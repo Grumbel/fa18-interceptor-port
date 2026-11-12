@@ -299,6 +299,11 @@ struct GlScene::Impl {
     // of this frame (clip -1..1) would make: sets the stroke of the lines.
     double vw = 0, vh = 0;
     float clip[9] = {};                // view space -> clip (x, y, w), column-major
+    // A headset's eye: where it is from the camera, in world units along
+    // the axes of the frame's view space (unscaled), and the scales from the
+    // frame's view space to those axes (x widen / s0, y heighten / s1, z / s2).
+    bool offset = false;
+    double eye[3] = {}, axis[3] = {1, 1, 1};
   };
   void scene(const Frame& f, const uint32_t* palette, const Target& t);
   void upload(int slot, const uint32_t* argb, int w, int h, bool blend);
@@ -525,6 +530,13 @@ void GlScene::draw_scene_eye(const Frame& f, const uint32_t* palette, const EyeV
   // centre of the eye's picture
   t.vw = 2.0 * double(eye.width) / (double(eye.tan_right) - double(eye.tan_left)) * k[0] / k[2];
   t.vh = 2.0 * double(eye.height) / (double(eye.tan_up) - double(eye.tan_down)) * k[1] / k[2] / 0.9;
+  // Stereo: every primitive whose distance is known is seen from the eye's
+  // own place.
+  for (int i = 0; i < 3; ++i) {
+    t.eye[i] = double(eye.pos[size_t(i)]) * double(kUnitsPerMetre);
+    t.axis[i] = k[i];
+    t.offset = t.offset || eye.pos[size_t(i)] != 0.f;
+  }
   s.scene(f, palette, t);
 }
 
@@ -588,6 +600,13 @@ void GlScene::Impl::scene(const Frame& f, const uint32_t* palette, const Target&
     const size_t start = s.buf.size();
     v.clear();
     for (int i = 0; i < p.count; ++i) v.push_back(xform(f.refine, f.verts[p.first + size_t(i)]));
+    if (target.offset && p.unit > 0) {
+      // the eye in the primitive's own units, in the frame's view space
+      const double u = double(p.unit);
+      const V3 e{target.eye[0] / u / target.axis[0], target.eye[1] / u / target.axis[1],
+                 target.eye[2] / u / target.axis[2]};
+      for (V3& q : v) q = {q.x - e.x, q.y - e.y, q.z - e.z};
+    }
     switch (p.kind) {
       case Prim::Poly: {
         // triangulate in the polygon's plane (it may be concave and may
@@ -673,10 +692,14 @@ void GlScene::Impl::scene(const Frame& f, const uint32_t* palette, const Target&
 
   // ---- ground: water polygons at sea level, relative to the camera ----
   const size_t water_first = s.buf.size() / 3;
+  double eye_world[3] = {0, 0, 0};  // the eye relative to the camera, world axes
+  if (target.offset)
+    for (int c = 0; c < 3; ++c)
+      for (int r = 0; r < 3; ++r) eye_world[c] += double(f.camera.rot[size_t(r * 3 + c)]) * target.eye[r];
   for (const Impl::WaterTri& t : s.water) {
     if (t.min_alt > f.ground_altitude) continue;
     for (int i = 0; i < 3; ++i)
-      s.push(t.x[i] - f.camera.x, -f.camera.y, t.z[i] - f.camera.z);
+      s.push(t.x[i] - f.camera.x - eye_world[0], -f.camera.y - eye_world[1], t.z[i] - f.camera.z - eye_world[2]);
     ++s.stats.water_triangles;
   }
   const size_t water_count = s.buf.size() / 3 - water_first;

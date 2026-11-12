@@ -42,10 +42,36 @@ middle of the left eye's picture.
   the HUD the shadow gets the game's own matrix back, so they are the
   original's whatever the head does.  Outside the flight the screen is
   shown at 80% of that size.
-- **Everything is at infinity**: both eyes see the same, and moving the
-  head does nothing.  For what is seen from a flying aircraft that is
-  right, and a real HUD is collimated as well; on the ground near objects
-  have no depth, and the cockpit is flat.
+- **Stereo**: each eye sees the scene from its own position (the
+  runtime's eye poses, so the headset's IPD), and moving the head moves
+  the eyes (relative to where the head was at the last recentring,
+  clamped to 0.5 m).  `--vr-mono` puts both eyes at the head's centre.
+  The game's screen (cockpit, HUD) stays at infinity: a real HUD is
+  collimated, the cockpit is still flat; the panel cannot be put at a
+  finite distance alone because the HUD's frame runs down into it.
+
+## Depth of the captured primitives
+
+The captured view-space vertices are in units that differ per object
+(level-of-detail scaling).  The capture records for each primitive its
+unit in world units (`Prim::unit`, `display_list.hpp`; 0 = a direction,
+drawn at infinity); `kUnitsPerMetre` = 1024 / (5 ft) ≈ 672.  The renderer
+subtracts the eye's offset, in that unit, from every vertex before the
+projection (`GlScene::scene`, `Target::eye`); the water polygons are
+offset in world space.
+
+| Source | Hook (`Capture`) | Unit |
+|---|---|---|
+| object body (`$31d6c`) | `on_object`, polygons and lines in that frame | 2^(`$5adb0` + 8 - fp-6) |
+| distant object (`$32d7e`) | same | 2^(8 + fp-8) |
+| ground dots / triangles (`$3c1bc`) | `ground_vertex` | 256 / 2^(fp-22 & 3) |
+| gun round, missile (`$41666` from `$414ea` / `$41620`) | `on_transform` | 256 |
+| smoke trail (op `$35884`) | `on_transform` (shift in a3) | 2^a3 |
+| explosions (`$41866`) | `on_blast_vertex` (`$41ac4`), fill `$44b50` / disc `$43dcc` | 256 · 4^shift |
+| sun (`$43306`), other 2D fills | — | infinity |
+
+Checked on the runway: ground vertices of all units put the ground 4.6 to
+6.3 m below the eye.  Explosion lines (`$44686`) are not captured.
 
 ## Pacing
 
@@ -59,13 +85,16 @@ One picture costs one run of the shadow (about 2.5 ms) and two draws.
 
 ## Testing without a headset
 
-- `ctest`: `vr_view` checks the geometry (axes, recentring, canted eyes).
-- `tests/check_vr.sh ORIGINAL.adf`: `FA18_VR_SIM="yaw,pitch,roll[,fov[,size]]"`
+- `ctest`: `vr_view` checks the geometry (axes, recentring, canted eyes,
+  eye positions).
+- `tests/check_vr.sh ORIGINAL.adf`: `FA18_VR_SIM="yaw,pitch,roll[,fov[,size[,ipd_mm]]]"`
   (degrees: right, up, clockwise; field of view and size of an eye's
-  picture) replaces the headset by a fixed head and puts both eyes side by
-  side into the window.  Head straight: the original's pixels are where
-  its projection puts them; turned and raised head; RAM hashes as the
-  original renderer's.
+  picture; distance of the eyes, default 64, 0 = mono) replaces the
+  headset by a fixed head and puts both eyes side by side into the
+  window.  Head straight (mono): the original's pixels are where its
+  projection puts them; turned and raised head; stereo (1 m apart, to
+  make it measurable): sky and panel the same in both eyes, the runway
+  further right in the left eye; RAM hashes as the original renderer's.
 - The OpenXR session, with Monado's simulated headset and no display
   (stdin must be a pipe):
 
@@ -94,10 +123,7 @@ to look when SteamVR refuses something.
 
 ## Open
 
-- Depth: stereo and head position for near objects.  The view-space units
-  of the captured primitives differ per object (level-of-detail scaling,
-  `$328ea`: 2^(8 - fp-6) world units); 672 world units are a metre
-  (1024 units = 5 ft).  The capture has to record the unit per primitive.
+- Stereo and head position not yet judged in a real headset.
 - A 3D cockpit instead of the flat screen.
 - Controllers (OpenXR actions), Windows, OpenGL ES.
 - The stats / fps overlay is only in the window.

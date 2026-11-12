@@ -10,7 +10,10 @@
 #     instrument panel), in both eyes.
 #  2. Head turned: the view turns the other way; the panel leaves the
 #     picture, sky and ground remain.
-#  3. The game is not affected: the RAM hashes equal the original renderer's.
+#  3. Stereo: with the eyes apart, sky, HUD and instrument panel (at
+#     infinity) are the same in both eyes, the runway is not, and the left
+#     eye sees it further right.
+#  4. The game is not affected: the RAM hashes equal the original renderer's.
 #
 # The OpenXR session itself is not covered; try it with any runtime, e.g.
 # Monado's simulated headset (docs/vr.md).
@@ -28,12 +31,14 @@ trap 'rm -rf "$tmp"' EXIT
 export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
 
 args=(--det-timing --fast --frames 4010 --script "$repo/tests/scenarios/free1.txt" --ram-hash 50)
-FA18_VR_SIM=0,0,0,90,640 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/ahead.ppm" "$adf" >"$tmp/ahead.log" 2>&1
-FA18_VR_SIM=90,0,0,90,640 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/right.ppm" "$adf" >"$tmp/right.log" 2>&1
-FA18_VR_SIM=0,60,0,90,640 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/up.ppm" "$adf" >"$tmp/up.log" 2>&1
+FA18_VR_SIM=0,0,0,90,640,0 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/ahead.ppm" "$adf" >"$tmp/ahead.log" 2>&1
+FA18_VR_SIM=90,0,0,90,640,0 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/right.ppm" "$adf" >"$tmp/right.log" 2>&1
+FA18_VR_SIM=0,60,0,90,640,0 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/up.ppm" "$adf" >"$tmp/up.log" 2>&1
+# eyes 1 m apart, so that the runway's disparity is a few pixels
+FA18_VR_SIM=0,0,0,90,640,1000 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/stereo.ppm" "$adf" >"$tmp/stereo.log" 2>&1
 "$bin" --renderer original "${args[@]}" --screenshot 4000 "$tmp/orig.ppm" "$adf" >"$tmp/orig.log" 2>&1
 
-python3 - "$tmp/orig.ppm" "$tmp/ahead.ppm" "$tmp/right.ppm" "$tmp/up.ppm" <<'EOF2'
+python3 - "$tmp/orig.ppm" "$tmp/ahead.ppm" "$tmp/right.ppm" "$tmp/up.ppm" "$tmp/stereo.ppm" <<'EOF2'
 import sys
 
 def ppm(path):
@@ -48,6 +53,7 @@ assert (ow, oh) == (320, 200), (ow, oh)
 w, h, ahead = ppm(sys.argv[2])
 _, _, right = ppm(sys.argv[3])
 _, _, up = ppm(sys.argv[4])
+_, _, stereo = ppm(sys.argv[5])
 E = 640                      # an eye's picture, 90 degrees wide and high
 assert w == 2 * E and h >= E, f'window is {w}x{h}'
 top = (h - E) // 2
@@ -89,10 +95,31 @@ if ahead(E // 2, top + 5) != sky:
     sys.exit('FAIL: no sky above the original picture')
 if ahead(E // 2, top + E - 5) != (0, 0, 0):
     sys.exit('FAIL: no console below the instrument panel')
-# both eyes show the same (everything is at infinity)
+# mono: both eyes show the same
 diff = sum(ahead(x, y) != ahead(E + x, y) for y in range(top, top + E, 7) for x in range(0, E, 7))
 if diff:
-    sys.exit(f'FAIL: the eyes differ in {diff} sampled pixels')
+    sys.exit(f'FAIL: mono, the eyes differ in {diff} sampled pixels')
+
+# stereo: what is at infinity is the same in both eyes ...
+for x, y in [(20, 10), (300, 20), (160, 5)]:
+    ex, ey = eye_pixel(x, y)
+    if stereo(ex, ey) != stereo(E + ex, ey) or stereo(ex, ey) != orig(x, y):
+        sys.exit(f'FAIL: stereo, sky at ({x},{y}) differs')
+_, py0 = eye_pixel(0, 150)
+panel_diff = sum(stereo(x, y) != stereo(E + x, y) for y in range(py0, top + E, 3) for x in range(0, E, 3))
+if panel_diff:
+    sys.exit(f'FAIL: stereo, the instrument panel differs between the eyes in {panel_diff} pixels')
+# ... the runway (rows just below the horizon) is not; the left eye sees it
+# further right: find the shift that matches the rows best
+_, hy = eye_pixel(0, 95)
+_, ly = eye_pixel(0, 125)
+rows = range(hy, ly)
+def mismatch(shift):
+    return sum(stereo(x, y) != stereo(E + x - shift, y) for y in rows for x in range(40, E - 40))
+base = mismatch(0)
+best = min(range(-12, 13), key=mismatch)
+if base == 0 or best <= 0:
+    sys.exit(f'FAIL: stereo, the runway has no disparity (mismatch {base}, best shift {best})')
 
 # head turned right by 90 degrees: horizon in the middle, no panel
 ex, ey = eye_pixel(60, 170)
@@ -103,10 +130,11 @@ if right(E // 2, top + 40) != sky or right(E // 2, top + E - 40) == sky or panel
 # head up by 60 degrees: only sky
 if any(up(x, top + y) != sky for x in (10, E // 2, E - 10) for y in (10, E // 2, E - 10)):
     sys.exit('FAIL: head up: not only sky')
-print(f'head straight: panel {same}/{total} pixels as the original; turned and raised head ok')
+print(f'head straight: panel {same}/{total} pixels as the original; turned and raised head ok; '
+      f'stereo: runway {best} pixels further right in the left eye')
 EOF2
 
-for run in ahead right up; do
+for run in ahead right up stereo; do
   if ! diff <(grep -a 'ram hash\|\[hash\]' "$tmp/$run.log") <(grep -a 'ram hash\|\[hash\]' "$tmp/orig.log") >/dev/null; then
     echo "FAIL: --vr changed the game's memory ($run)" >&2
     exit 1

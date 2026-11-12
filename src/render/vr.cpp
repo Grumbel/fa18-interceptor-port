@@ -212,6 +212,7 @@ struct Vr::Impl {
   bool sim = true;
   int samples = 0;
   double seat_yaw = 0;
+  double origin[3] = {0, 0, 0};  // the head's centre when the view was centred
   bool recentre_pending = true;
   std::string description;
 
@@ -435,7 +436,7 @@ bool Vr::Impl::init_xr(std::string& err) {
     if (!make_eye(e, int(ci.width), int(ci.height), err)) return false;
   }
   description = std::string("OpenXR, ") + ip.runtimeName + ", " + sp.systemName + ", " + std::to_string(eye[0].w) +
-                "x" + std::to_string(eye[0].h) + " per eye, " + (use_glx ? "GLX" : "EGL");
+                "x" + std::to_string(eye[0].h) + " per eye, " + (use_glx ? "GLX" : "EGL") + (opt.stereo ? ", stereo" : ", mono");
   sim = false;
   return true;
 }
@@ -532,8 +533,10 @@ bool Vr::init(GetProc proc, const Options& opt, std::string& err) {
     for (Impl::Eye& e : s.eye)
       if (!s.make_eye(e, size, size, err)) return false;
     char text[160];
-    std::snprintf(text, sizeof text, "simulated headset, head %g right, %g up, %g clockwise, %dx%d per eye",
-                  double(opt.yaw), double(opt.pitch), double(opt.roll), size, size);
+    std::snprintf(text, sizeof text, "simulated headset, head %g right, %g up, %g clockwise, %dx%d per eye, %s",
+                  double(opt.yaw), double(opt.pitch), double(opt.roll), size, size,
+                  opt.stereo ? ("eyes " + std::to_string(int(std::lround(opt.ipd * 1000))) + " mm apart").c_str()
+                             : "mono");
     s.description = text;
     s.sim = true;
     return true;
@@ -558,11 +561,15 @@ Vr::Step Vr::begin_frame(HeadView& head) {
   const int size[2][2] = {{s.eye[0].w, s.eye[0].h}, {s.eye[1].w, s.eye[1].h}};
   if (s.sim) {
     const double k = kPi / 180.0, half = std::clamp(double(s.opt.fov), 10.0, 170.0) * k / 2;
+    double pos[2][3];
     for (int i = 0; i < 2; ++i) {
       pose[i] = vr_math::from_angles(double(s.opt.yaw) * k, double(s.opt.pitch) * k, double(s.opt.roll) * k);
       fov[i][0] = -half, fov[i][1] = half, fov[i][2] = half, fov[i][3] = -half;
+      // eye 0 is the left one: OpenXR's x points right
+      const double side = (i == 0 ? -0.5 : 0.5) * double(s.opt.ipd);
+      for (int r = 0; r < 3; ++r) pos[i][r] = pose[i][size_t(r * 3)] * side;
     }
-    head = vr_math::head_view(pose, fov, size, 0.0);
+    head = vr_math::head_view(pose, fov, size, 0.0, s.opt.stereo ? pos : nullptr);
     return Step::Render;
   }
 #if defined(FA18_OPENXR)
@@ -595,11 +602,28 @@ Vr::Step Vr::begin_frame(HeadView& head) {
     fov[i][2] = double(s.views[i].fov.angleUp);
     fov[i][3] = double(s.views[i].fov.angleDown);
   }
+  const bool tracked = vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT;
+  double at[2][3];
+  for (int i = 0; i < 2; ++i) {
+    at[i][0] = double(s.views[i].pose.position.x);
+    at[i][1] = double(s.views[i].pose.position.y);
+    at[i][2] = double(s.views[i].pose.position.z);
+  }
   if (s.recentre_pending) {
     s.seat_yaw = vr_math::yaw_of(vr_math::midway(pose));
+    for (int r = 0; r < 3; ++r) s.origin[r] = tracked ? (at[0][r] + at[1][r]) / 2 : 0.0;
     s.recentre_pending = false;
   }
-  head = vr_math::head_view(pose, fov, size, s.seat_yaw);
+  // The eyes relative to the head's centre when the view was centred; a
+  // head that moves further than half a metre stays at that distance.
+  double pos[2][3];
+  double mid[3];
+  for (int r = 0; r < 3; ++r) mid[r] = tracked ? (at[0][r] + at[1][r]) / 2 - s.origin[r] : 0.0;
+  const double reach = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
+  const double keep = reach > 0.5 ? 0.5 / reach : 1.0;
+  for (int i = 0; i < 2; ++i)
+    for (int r = 0; r < 3; ++r) pos[i][r] = mid[r] * keep + (at[i][r] - (at[0][r] + at[1][r]) / 2);
+  head = vr_math::head_view(pose, fov, size, s.seat_yaw, s.opt.stereo ? pos : nullptr);
   return Step::Render;
 #else
   return Step::Idle;

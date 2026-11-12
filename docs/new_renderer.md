@@ -118,5 +118,6 @@ Environment switches: `FA18_NO_INTERPOLATION`, `FA18_SHADOW_ALPHA=x`
   a third of the shadow's time.
 - Not yet tried on a real display by the author: vsync pacing at 120/144
   Hz, GLES 2 devices, the web build (single canvas).
-- VR: `--vr` (docs/vr.md) follows the head's rotation with everything at
-  infinity; stereo depth and a 3D cockpit are open.
+- VR: `--vr` (docs/vr.md) follows the head and draws the scene in stereo
+  (each primitive carries its unit, `Prim::unit`); the cockpit and HUD
+  are at infinity, a 3D cockpit is open.

@@ -12,8 +12,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <map>
-#include <string>
 
 namespace render {
 namespace {
@@ -213,6 +211,10 @@ struct Capture {
   bool in_object = false;
   uint32_t mesh = 0;
   uint8_t mesh_flags = 0;
+  // The object stage that is transforming vertices: its frame holds the
+  // fixed-point unit of the view-space words, see stage_unit().
+  enum class Stage { None, Body, Distant } stage = Stage::None;
+  uint32_t stage_fp = 0;
   bool snap_on = false;
   uint64_t snapped = 0, unsnapped = 0;
   bool stubbed = false;
@@ -221,15 +223,28 @@ struct Capture {
   bool ground_pending = false;
   Vec3 ground{};
   std::vector<Vec3> ground_tri;
+  float ground_unit = 0;
   double row = 1.0 / 90.0;  // one low-res row in view-space y at z = 1
+  // An explosion's polygon or disc ($41950), see on_blast_vertex().
+  std::vector<Vec3> blast;
+  float blast_unit = 0;
+  float point_unit = 0;
+  // Unit of the view-space point $41666 made last (outside an object).
+  float xform_unit = 0;
 
   void clear() {
     verts.clear();
     prims.clear();
     point_pending = false;
-    in_object = false; obj_distant = false;
+    leave_object();
     ground_pending = false;
     ground_tri.clear();
+    blast.clear();
+    xform_unit = 0;
+  }
+  void leave_object() {
+    in_object = false;
+    stage = Stage::None;
   }
 
   uint16_t w(uint32_t a) const { return m->r16(a); }
@@ -275,21 +290,11 @@ struct Capture {
     return o;
   }
 
-  // UNITDEBUG
-  std::map<std::string, int> dbg; bool dbg_proj = false; uint32_t dbg_projret = 0;
-  uint32_t obj_fp = 0; bool obj_distant = false;
-  Prim& add(Prim::Kind kind, const PlaneOp& op, int count) {
-    if (std::getenv("FA18_UNIT_DEBUG")) {
-      char b[200];
-      const uint32_t fp = m->cpu.a[6];
-      const bool same = (in_object || obj_distant) && fp == obj_fp;
-      if (same) std::snprintf(b, sizeof b, "object kind %d", int(kind));
-      else std::snprintf(b, sizeof b, "OTHER kind %d ret %05x ret2 %05x proj %d projret %05x", int(kind), m->r32(m->cpu.a[7]), m->r32(m->cpu.a[7] + 4), int(dbg_proj), dbg_projret);
-      ++dbg[b];
-    }
+  Prim& add(Prim::Kind kind, const PlaneOp& op, int count, float unit) {
     Prim p;
     p.kind = kind;
     p.op = op;
+    p.unit = unit;
     p.first = uint32_t(verts.size());
     p.count = uint16_t(count);
     prims.push_back(p);
@@ -298,9 +303,22 @@ struct Capture {
 
   void on_object(uint32_t mesh_header, bool distant) {
     in_object = on && !distant;  // distant ground objects: other frame layout, not snapped
-    obj_fp = m->cpu.a[6]; obj_distant = on && distant;
+    stage = !on ? Stage::None : distant ? Stage::Distant : Stage::Body;
+    stage_fp = m->cpu.a[6];
     mesh = mesh_header;
     mesh_flags = m->r8(mesh_header + 7);
+  }
+  // World units per unit of the view-space words the object stage in
+  // progress makes (0: none is).  $31d6c takes a model's vertices and the
+  // object's place, which the dispatch has shifted right by the level of
+  // detail $5adb0, to 1 / 2^(fp-6) of a whole unit (256 world units);
+  // $32d7e (distant ground objects) shifts whole units right by fp-8.  A
+  // handler with a frame of its own (the trail of $35884) is not the stage.
+  float stage_unit() const {
+    if (stage == Stage::None || m->cpu.a[6] != stage_fp) return 0;
+    const int e = stage == Stage::Distant ? 8 + s16(w(stage_fp - 8))
+                                          : s16(w(0x5adb0)) + 8 - s16(w(stage_fp - 6));
+    return e >= -8 && e <= 28 ? float(std::ldexp(1.0, e)) : 0.f;
   }
 
   // The original transforms model vertices to 16-bit view-space words, so a
@@ -389,7 +407,7 @@ struct Capture {
     const int shift = s16(w(0x61284)) & 31;
     const int n = s16(w(0x61286));
     if (n < 3 || n > 40) return;
-    add(Prim::Poly, poly_op(), n);
+    add(Prim::Poly, poly_op(), n, stage_unit());
     for (int i = 0; i < n; ++i) verts.push_back(vertex(0x61288 + 6u * uint32_t(i), shift));
   }
   void on_line(bool clipped) {  // $43a56 (clips) / $4397c (rejects)
@@ -403,7 +421,9 @@ struct Capture {
     }
     if (clipped && p[0].z < 1 && p[1].z < 1) return;
     for (int i = 0; i < 2; ++i) p[i] = vertex(0x61886 + 6u * uint32_t(i), 0);
-    add(Prim::Line, line_op(), 2);
+    const float unit = stage_unit();
+    add(Prim::Line, line_op(), 2, unit != 0 ? unit : xform_unit);
+    xform_unit = 0;
     verts.push_back(p[0]);
     verts.push_back(p[1]);
   }
@@ -414,9 +434,10 @@ struct Capture {
   // smoothly.  This is the same transform without the rounding, with the
   // fraction of the camera position put back: (rx, rz) is the dot relative
   // to the camera, fp-4 the height, both shifted left by fp-22.
-  Vec3 ground_vertex(int16_t rx, int16_t rz) const {
+  Vec3 ground_vertex(int16_t rx, int16_t rz) {
     const uint32_t fp = m->cpu.a[6];
     const double unit = double(1 << (w(fp - 22) & 3));
+    ground_unit = float(256.0 / unit);
     double frac[3];
     for (uint32_t i = 0; i < 3; ++i) {
       const int32_t neg = int32_t(m->r32(0x5ad5a + 4 * i));
@@ -440,21 +461,49 @@ struct Capture {
     if (!on || !snap_on) return;
     ground_tri.push_back(ground_vertex(s16(m->cpu.d[3]), s16(m->cpu.d[4])));
   }
+  // $41666 takes d3-d5 to view space with $5aed0, outside the objects'
+  // vertex stages: for a round of the gun ($41484) and a missile ($41578)
+  // in whole units relative to the camera, for the points of a smoke trail
+  // ($35884) in world units shifted right by a3.
+  void on_transform() {
+    if (!on) return;
+    const m68k::Cpu& c = m->cpu;
+    const uint32_t ret = m->r32(c.a[7]);
+    const int shift = s16(uint16_t(c.a[3]));
+    if (ret == 0x414ea || ret == 0x41620) xform_unit = 256;
+    else xform_unit = shift >= 0 && shift <= 16 ? float(1 << shift) : 0.f;
+  }
+  // $41950 draws an explosion: it transforms the corners of its triangles
+  // (or the centre of its disc) itself and hands screen positions to the
+  // fill.  Centre and corners are whole units relative to the camera,
+  // shifted right twice by fp-24 ($41866 shifts the centre once and $41950
+  // everything again; fp-24 is $5adb0 for a model's explosion, else 0).
+  // At $41ac4 d6 / d2 / d5 are a corner in view space.
+  void on_blast_vertex() {
+    if (!on) return;
+    const m68k::Cpu& c = m->cpu;
+    const int shift = s16(w(c.a[6] - 24));
+    blast_unit = shift >= 0 && shift <= 8 ? float(std::ldexp(256.0, 2 * shift)) : 0.f;
+    blast.push_back({float(s16(c.d[6])), float(s16(c.d[2])), float(s16(c.d[5]))});
+  }
   void on_project() {  // $4389c..$438b4: d0-d2 = view-space point
     const m68k::Cpu& c = m->cpu;
     const int16_t x = s16(c.d[0]), y = s16(c.d[1]), z = s16(c.d[2]);
     point = {float(x), float(y), float(z)};
     // the projector's own tests: outside the view nothing is plotted
     point_pending = on && z > 0 && std::abs(int(x)) < z && std::abs(int(y)) < z;
-    dbg_projret = m->r32(c.a[7]);
+    point_unit = stage_unit();
+    if (point_unit == 0) point_unit = xform_unit;
+    xform_unit = 0;
     if (point_pending) snap(x, y, z, point);
   }
   void on_plot(int leaf) {  // $441fc 1x1, $44212 2x1, $44276 2x2, $43dcc disc
     if (!on) return;
     const m68k::Cpu& c = m->cpu;
     Vec3 at = point;
-    dbg_proj = point_pending;
+    float unit = point_unit;
     if (!point_pending) {
+      unit = 0;
       // Not a primitive of its own: the fill and line routines plot
       // polygons and lines of one or two pixels as points ($44dfe, $44686),
       // and $44212 plots twice.  The
@@ -468,15 +517,20 @@ struct Capture {
       if (!stubbed && std::getenv("FA18_SHADOW_PLOTS"))
         std::fprintf(stderr, "plot leaf %d ret %06x ret2 %06x\n", leaf, ret, m->r32(c.a[7] + 4));
       at = {(159.f - float(s16(c.d[0]))) / 160.f, (90.f - float(s16(c.d[1]))) / 90.f, 1.f};
-      if (ground_pending && (ret == 0x3c4ee || ret == 0x3c4f6) && ground.z > 0)
+      if (ground_pending && (ret == 0x3c4ee || ret == 0x3c4f6) && ground.z > 0) {
         at = {ground.x, float(double(ground.y) + double(ground.z) * row), ground.z};
+        unit = ground_unit;
+      } else if (ret == 0x41b6e && blast.size() == 1 && blast[0].z > 0) {
+        at = {blast[0].x, float(double(blast[0].y) + double(blast[0].z) * row), blast[0].z};
+        unit = blast_unit;
+      }
       ground_pending = false;
     }
     point_pending = false;
     if (leaf == 3) {
       const int r = s16(c.d[6]);
       if (r >= 1) {
-        Prim& p = add(Prim::Disc, poly_op(), 1);
+        Prim& p = add(Prim::Disc, poly_op(), 1, unit);
         p.radius = int16_t(std::min(r, 127));
         verts.push_back(at);
         return;
@@ -484,7 +538,7 @@ struct Capture {
       leaf = 1;  // $43dc4: radius 0 plots 2x1
     }
     if (leaf == 2 && s16(c.d[1]) >= s16(w(0x5ac7c))) leaf = 1;  // last row
-    Prim& p = add(Prim::Point, point_op(), 1);
+    Prim& p = add(Prim::Point, point_op(), 1, unit);
     p.w = leaf == 0 ? 1 : 2;
     p.h = leaf == 2 ? 2 : 1;
     verts.push_back(at);
@@ -495,11 +549,18 @@ struct Capture {
     const int n = s16(w(0x60684));
     if (n < 3 || n > 60) return;
     ++fills_2d;
-    add(Prim::Poly, poly_op(), n);
-    if (n == 3 && ground_tri.size() == 3 && m->r32(m->cpu.a[7]) == 0x3c426) {
+    const uint32_t ret = m->r32(m->cpu.a[7]);
+    if (n == 3 && ground_tri.size() == 3 && ret == 0x3c426) {
+      add(Prim::Poly, poly_op(), n, ground_unit);
       verts.insert(verts.end(), ground_tri.begin(), ground_tri.end());
       return;
     }
+    if (ret == 0x41b76 && blast.size() == size_t(n)) {
+      add(Prim::Poly, poly_op(), n, blast_unit);
+      verts.insert(verts.end(), blast.begin(), blast.end());
+      return;
+    }
+    add(Prim::Poly, poly_op(), n, 0);
     for (int i = 0; i < n; ++i) {
       const float x = float(s16(w(0x60686 + 4u * uint32_t(i))));
       const float y = float(s16(w(0x60688 + 4u * uint32_t(i))));
@@ -523,6 +584,9 @@ struct Capture {
     machine.add_pc_hook(0x3c37e, [this] { ground_tri.clear(); });
     machine.add_pc_hook(0x3c390, [this] { on_ground_corner(); });
     machine.add_pc_hook(0x3c452, [this] { on_ground_point(); });
+    machine.add_pc_hook(0x41666, [this] { on_transform(); });
+    machine.add_pc_hook(0x41a64, [this] { blast.clear(); });
+    machine.add_pc_hook(0x41ac4, [this] { on_blast_vertex(); });
     stubbed = stub;
     if (!stub) return;
     // Nothing is drawn on the shadow: fills, lines and point plots return
@@ -913,14 +977,6 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
       }
     }
     cap.on = false;
-    if (std::getenv("FA18_UNIT_DEBUG")) {
-      static int n = 0;
-      if (++n % 1 == 0) {
-        std::fprintf(stderr, "unitdebug frame %llu\n", (unsigned long long)cur.image.frame);
-        for (auto& [k, v] : cap.dbg) std::fprintf(stderr, "  %6d %s\n", v, k.c_str());
-        cap.dbg.clear();
-      }
-    }
     scene_cam = read_camera(sm);
     t_scene = Clock::now();
     if (overlay_enabled) {
@@ -968,13 +1024,6 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
   }
 
   t_2d = Clock::now();
-  if (const char* f = std::getenv("FA18_OVL_DUMP")) {
-    if (FILE* fp = std::fopen(f, "wb")) {
-      std::fwrite(out.overlay_index.data(), 1, out.overlay_index.size(), fp);
-      std::fwrite(out.overlay_mask.data(), 1, out.overlay_mask.size(), fp);
-      std::fclose(fp);
-    }
-  }
   if (profile) {
     auto ms = [](Clock::time_point a, Clock::time_point b) {
       return std::chrono::duration<double, std::milli>(b - a).count();
