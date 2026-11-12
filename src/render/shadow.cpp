@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 
 namespace render {
 namespace {
@@ -757,6 +758,23 @@ struct Shadow::Impl {
 
   Machine::Image before_2d;
   std::vector<uint8_t> planes_a;
+  std::vector<uint8_t> last_planes = std::vector<uint8_t>(4 * 8000);
+  std::vector<uint32_t> owner, owner_a;  // draw_2d: routine that last changed each pixel
+  uint32_t cur_owner = 0;
+  std::function<void()> checkpoint;  // set by draw_2d
+  // The routines $47ec0 (HUD) calls.  $48d4a draws the crosshair and the
+  // two waterline marks, then from $48e22 on the HUD's frame (in the
+  // cockpit views), which belongs to the cockpit.
+  static constexpr uint32_t hud_frame = 0x48e22;
+  static constexpr uint32_t hud_parts[] = {0x47f02, 0x48d4a, hud_frame, 0x48ed4, 0x489cc,
+                                           0x46864, 0x46968, 0x47f74, 0x4873c};
+  static bool hud_part(uint32_t a) { return std::find(std::begin(hud_parts), std::end(hud_parts), a) != std::end(hud_parts); }
+  void enter_part(uint32_t addr) {
+    // only as parts of the HUD: some may be called from elsewhere too
+    if (!checkpoint || !(cur_owner == 0x47ec0 || hud_part(cur_owner))) return;
+    checkpoint();
+    cur_owner = addr;
+  }
   bool overlay_enabled = true;
   bool snap_enabled = std::getenv("FA18_NO_SNAP") == nullptr;
   uint64_t partial_pixels = 0;
@@ -768,6 +786,35 @@ struct Shadow::Impl {
 
   bool run(float alpha, const View& view, Frame& out);
   void draw_2d();
+  void trace_owners(uint64_t frame) {
+    std::map<uint32_t, std::array<int, 5>> by;  // count, x0, y0, x1, y1
+    for (int i = 0; i < 320 * 200; ++i) {
+      const uint32_t o = owner[size_t(i)] ? owner[size_t(i)] : owner_a[size_t(i)];
+      if (!o) continue;
+      auto it = by.find(o);
+      const int x = i % 320, y = i / 320;
+      if (it == by.end()) by[o] = {1, x, y, x, y};
+      else {
+        auto& v = it->second;
+        ++v[0];
+        v[1] = std::min(v[1], x), v[2] = std::min(v[2], y), v[3] = std::max(v[3], x), v[4] = std::max(v[4], y);
+      }
+    }
+    std::fprintf(stderr, "2d frame %llu:", (unsigned long long)frame);
+    for (auto& [a, v] : by) std::fprintf(stderr, " %x:%d[%d,%d-%d,%d]", a, v[0], v[1], v[2], v[3], v[4]);
+    std::fprintf(stderr, "\n");
+    if (const char* f = std::getenv("FA18_SHADOW_2D_DUMP"))
+      if (FILE* o = std::fopen(f, "wb")) {
+        std::fprintf(o, "P6\n320 200\n255\n");
+        for (int i = 0; i < 320 * 200; ++i) {
+          const uint32_t w = owner[size_t(i)] ? owner[size_t(i)] : owner_a[size_t(i)];
+          const uint8_t c[3] = {uint8_t(w ? (w * 2654435761u) >> 24 | 64 : 0), uint8_t(w ? (w * 40503u) >> 8 | 64 : 0),
+                                uint8_t(w ? (w * 97u) | 64 : 0)};
+          std::fwrite(c, 1, 3, o);
+        }
+        std::fclose(o);
+      }
+  }
   void fill_view(uint8_t value);
   void read_planes(std::vector<uint8_t>& out);
 };
@@ -780,51 +827,85 @@ void Shadow::Impl::draw_2d() {
   using namespace native::g;
   using namespace native::v;
   const int16_t frame = int16_t(rd16(0x5abd2));  // frame counter
-  sub_23d54();
+  // Which routine drew each pixel: the planes are compared after each one.
+  const uint32_t tbl = sm.r32(0x5a9ae);
+  uint8_t* plane[4] = {};
+  for (int pl = 0; pl < 4; ++pl) {
+    const uint32_t base = sm.r32(tbl + 4u * uint32_t(pl));
+    if (base >= 0x400 && base + 8000 <= sm.ram_used()) plane[pl] = sm.ram_data() + base;
+  }
+  for (int pl = 0; pl < 4; ++pl)
+    if (plane[pl]) std::memcpy(&last_planes[size_t(pl) * 8000], plane[pl], 8000);
+  owner.assign(320 * 200, 0);
+  checkpoint = [this, plane] {
+    for (int pl = 0; pl < 4; ++pl) {
+      if (!plane[pl]) continue;
+      uint8_t* old = &last_planes[size_t(pl) * 8000];
+      if (std::memcmp(old, plane[pl], 8000) == 0) continue;
+      for (int b = 0; b < 8000; ++b) {
+        if ((b & 7) == 0 && b + 8 <= 8000 && std::memcmp(old + b, plane[pl] + b, 8) == 0) {
+          b += 7;
+          continue;
+        }
+        const uint8_t d = uint8_t(plane[pl][b] ^ old[b]);
+        if (!d) continue;
+        for (int k = 0; k < 8; ++k)
+          if (d & (0x80 >> k)) owner[size_t(b * 8 + k)] = cur_owner;
+        old[b] = plane[pl][b];
+      }
+    }
+  };
+  auto step = [&](uint32_t addr, auto fn) {
+    cur_owner = addr;
+    fn();
+    checkpoint();
+  };
+  step(0x23d54, [] { sub_23d54(); });
   if (b_5aa7d == 0 || b_5ab2e != 0) {
     const uint32_t plane = uint32_t(int32_t(int16_t(w_5abd4))) << 9;
     const uint8_t c = rd8(0x5b47c + plane + 98);
     if (c != '0' || b_5ab2e != 0) {
-      sub_45368();
-      sub_455ba();
-      sub_45e2a();
-      sub_47ec0();
-      sub_45d2e();
-      sub_45b7c();
+      step(0x45368, [] { sub_45368(); });
+      step(0x455ba, [] { sub_455ba(); });
+      step(0x45e2a, [] { sub_45e2a(); });
+      step(0x47ec0, [] { sub_47ec0(); });
+      step(0x45d2e, [] { sub_45d2e(); });
+      step(0x45b7c, [] { sub_45b7c(); });
       const int8_t boost = b_5ab2f;
       if (boost > 0 || (frame & 3) > 1) {
-        sub_46aba();
-        sub_46b50();
+        step(0x46aba, [] { sub_46aba(); });
+        step(0x46b50, [] { sub_46b50(); });
       }
-      if (b_5ab2f > 0 || (frame & 3) < 2) sub_46d7c();
-      if (b_5ab2f > 0 || (frame & 3) < 2 || l_5ad5e > -32768) sub_46c1e();
-      if (b_5ab2f > 0 || (frame & 7) < 2) sub_46d2e();
-      if (b_5ab2f > 0 || (frame & 15) < 2) sub_4551c();
-      sub_44c42();
-      sub_474ac();
-      sub_45604();
-      sub_46dd6();
-      sub_46e64();
-      sub_466d0();
-      sub_45938();
-      sub_46668();
-      sub_46ef2();
-      sub_45760();
+      if (b_5ab2f > 0 || (frame & 3) < 2) step(0x46d7c, [] { sub_46d7c(); });
+      if (b_5ab2f > 0 || (frame & 3) < 2 || l_5ad5e > -32768) step(0x46c1e, [] { sub_46c1e(); });
+      if (b_5ab2f > 0 || (frame & 7) < 2) step(0x46d2e, [] { sub_46d2e(); });
+      if (b_5ab2f > 0 || (frame & 15) < 2) step(0x4551c, [] { sub_4551c(); });
+      step(0x44c42, [] { sub_44c42(); });
+      step(0x474ac, [] { sub_474ac(); });
+      step(0x45604, [] { sub_45604(); });
+      step(0x46dd6, [] { sub_46dd6(); });
+      step(0x46e64, [] { sub_46e64(); });
+      step(0x466d0, [] { sub_466d0(); });
+      step(0x45938, [] { sub_45938(); });
+      step(0x46668, [] { sub_46668(); });
+      step(0x46ef2, [] { sub_46ef2(); });
+      step(0x45760, [] { sub_45760(); });
     }
   } else if (b_5aa7d != 0) {
     b_5aad1 = 1;
-    sub_46b50();
-    sub_46c1e();
-    sub_46aba();
-    if (rd8(0x5ab9e) == 2) sub_46ef2();  // selected mission
+    step(0x46b50, [] { sub_46b50(); });
+    step(0x46c1e, [] { sub_46c1e(); });
+    step(0x46aba, [] { sub_46aba(); });
+    if (rd8(0x5ab9e) == 2) step(0x46ef2, [] { sub_46ef2(); });  // selected mission
   }
-  sub_2439a();
-  sub_46b4e();
+  step(0x2439a, [] { sub_2439a(); });
+  step(0x46b4e, [] { sub_46b4e(); });
   if (b_5aaaa != 0) {
-    sub_440a4();
-    sub_4677a();
+    step(0x440a4, [] { sub_440a4(); });
+    step(0x4677a, [] { sub_4677a(); });
   }
-  sub_478f2();
+  step(0x478f2, [] { sub_478f2(); });
+  checkpoint = nullptr;
 }
 
 // The four bitplanes of the buffer the game draws into ($5a9ae).
@@ -996,11 +1077,18 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
       fill_view(0x00);
       draw_2d();
       read_planes(planes_a);
+      owner_a = owner;
       sm.restore_image(before_2d);
       fill_view(0xFF);
       draw_2d();
       read_planes(out.overlay_index);
       cap.stubs_on = true;
+      if (std::getenv("FA18_SHADOW_2D_TRACE")) trace_owners(out.game_frame);
+      out.overlay_hud.assign(320 * 200, 0);
+      for (size_t i = 0; i < out.overlay_hud.size(); ++i) {
+        const uint32_t o = owner[i] ? owner[i] : owner_a[i];
+        out.overlay_hud[i] = o != 0 && (o == 0x47ec0 || hud_part(o)) && o != hud_frame;
+      }
       out.overlay_mask.assign(320 * 200, 0);
       for (size_t i = 0; i < out.overlay_index.size(); ++i) {
         const uint8_t a = planes_a[i], b = out.overlay_index[i];
@@ -1014,10 +1102,12 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
     } else {
       out.overlay_index.clear();
       out.overlay_mask.clear();
+      out.overlay_hud.clear();
     }
   } catch (...) {
     cap.stubs_on = true;
     cap.on = false;
+    checkpoint = nullptr;
     failed = true;
     std::fprintf(stderr, "shadow: the scene pipeline did not return; new renderer disabled\n");
     return false;
@@ -1098,6 +1188,8 @@ bool Shadow::init(amiga::Machine& game, const std::string& disk_path, std::strin
     }
   }
   s.cap.install(s.sm, true);
+  // which part of the HUD draws a pixel (Frame::overlay_hud)
+  for (uint32_t a : Impl::hud_parts) s.sm.add_pc_hook(a, [&s, a] { s.enter_part(a); });
   glr::set_object_observer([&s](uint32_t mesh, uint32_t, bool distant) {
     if (native::g_machine == &s.sm) s.cap.on_object(mesh, distant);
   });

@@ -59,9 +59,12 @@ class GlScene {
   // the directions the original's projection (row scales `scale`) gives its
   // pixels, as seen from a head turned by `head_from_seat`.  `size` scales
   // it about the view direction; `console` continues its lower edge
-  // downwards in black (the instrument panel does not float).
+  // downwards in black (the instrument panel does not float).  With
+  // `distance` (metres) > 0 the picture is a plane that far ahead of the
+  // seat instead, seen from the eye's place (EyeView::pos): the cockpit.
   void draw_screen_eye(int slot, const EyeView& eye, const std::array<float, 9>& head_from_seat,
-                       const std::array<float, 3>& scale, float size, bool blend, bool console);
+                       const std::array<float, 3>& scale, float size, bool blend, bool console,
+                       float distance = 0);
   // The size of the bound framebuffer, without clearing it.
   void set_size(int win_w, int win_h);
 

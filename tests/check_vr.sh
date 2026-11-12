@@ -10,9 +10,9 @@
 #     instrument panel), in both eyes.
 #  2. Head turned: the view turns the other way; the panel leaves the
 #     picture, sky and ground remain.
-#  3. Stereo: with the eyes apart, sky, HUD and instrument panel (at
-#     infinity) are the same in both eyes, the runway is not, and the left
-#     eye sees it further right.
+#  3. Stereo: with the eyes apart, sky and HUD symbols (at infinity) are the
+#     same in both eyes, the runway is not, and the left eye sees it further
+#     right; the cockpit (0.7 m ahead) is shifted the same way, by more.
 #  4. The game is not affected: the RAM hashes equal the original renderer's.
 #
 # The OpenXR session itself is not covered; try it with any runtime, e.g.
@@ -36,9 +36,11 @@ FA18_VR_SIM=90,0,0,90,640,0 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/rig
 FA18_VR_SIM=0,60,0,90,640,0 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/up.ppm" "$adf" >"$tmp/up.log" 2>&1
 # eyes 1 m apart, so that the runway's disparity is a few pixels
 FA18_VR_SIM=0,0,0,90,640,1000 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/stereo.ppm" "$adf" >"$tmp/stereo.log" 2>&1
+# a real eye distance for the cockpit
+FA18_VR_SIM=0,0,0,90,640,64 "$bin" --vr "${args[@]}" --screenshot 4000 "$tmp/cockpit.ppm" "$adf" >"$tmp/cockpit.log" 2>&1
 "$bin" --renderer original "${args[@]}" --screenshot 4000 "$tmp/orig.ppm" "$adf" >"$tmp/orig.log" 2>&1
 
-python3 - "$tmp/orig.ppm" "$tmp/ahead.ppm" "$tmp/right.ppm" "$tmp/up.ppm" "$tmp/stereo.ppm" <<'EOF2'
+python3 - "$tmp/orig.ppm" "$tmp/ahead.ppm" "$tmp/right.ppm" "$tmp/up.ppm" "$tmp/stereo.ppm" "$tmp/cockpit.ppm" <<'EOF2'
 import sys
 
 def ppm(path):
@@ -54,6 +56,7 @@ w, h, ahead = ppm(sys.argv[2])
 _, _, right = ppm(sys.argv[3])
 _, _, up = ppm(sys.argv[4])
 _, _, stereo = ppm(sys.argv[5])
+_, _, cockpit = ppm(sys.argv[6])
 E = 640                      # an eye's picture, 90 degrees wide and high
 assert w == 2 * E and h >= E, f'window is {w}x{h}'
 top = (h - E) // 2
@@ -105,10 +108,6 @@ for x, y in [(20, 10), (300, 20), (160, 5)]:
     ex, ey = eye_pixel(x, y)
     if stereo(ex, ey) != stereo(E + ex, ey) or stereo(ex, ey) != orig(x, y):
         sys.exit(f'FAIL: stereo, sky at ({x},{y}) differs')
-_, py0 = eye_pixel(0, 150)
-panel_diff = sum(stereo(x, y) != stereo(E + x, y) for y in range(py0, top + E, 3) for x in range(0, E, 3))
-if panel_diff:
-    sys.exit(f'FAIL: stereo, the instrument panel differs between the eyes in {panel_diff} pixels')
 # ... the runway (rows just below the horizon) is not; the left eye sees it
 # further right: find the shift that matches the rows best
 _, hy = eye_pixel(0, 95)
@@ -121,6 +120,35 @@ best = min(range(-12, 13), key=mismatch)
 if base == 0 or best <= 0:
     sys.exit(f'FAIL: stereo, the runway has no disparity (mismatch {base}, best shift {best})')
 
+# the HUD's symbols and the sky inside its frame: at infinity, the same in
+# both eyes and as without stereo
+hx0, hy0 = eye_pixel(110, 42)
+hx1, hy1 = eye_pixel(210, 80)
+hud = [(x, y) for y in range(hy0, hy1) for x in range(hx0, hx1)]
+marks = sum(ahead(x, y) != sky for x, y in hud)
+hud_diff = sum(cockpit(x, y) != cockpit(E + x, y) or cockpit(x, y) != ahead(x, y) for x, y in hud)
+if marks < 50 or hud_diff:
+    sys.exit(f'FAIL: stereo, HUD symbols ({marks} pixels) differ between the eyes in {hud_diff} pixels')
+# the cockpit 0.7 m ahead: the left eye sees it further right than the
+# head's centre does, the right eye further left
+_, py0 = eye_pixel(0, 150)
+_, py1 = eye_pixel(0, 198)
+def panel_mismatch(eye, shift):
+    return sum(cockpit(eye * E + x, y) != ahead(x - shift, y) for y in range(py0, py1, 2) for x in range(60, E - 60, 2))
+# expected: half the eye distance over 0.7 m, in pixels (E / 2 per unit of
+# tangent); the panel's enlarged pixels land on other output pixels after a
+# fractional shift, so the best shift only halves the mismatch
+expect = 0.032 / 0.7 * E / 2
+shifts = []
+for eye in (0, 1):
+    s = min(range(-40, 41), key=lambda d: panel_mismatch(eye, d))
+    shifts.append(s)
+    if panel_mismatch(eye, s) > panel_mismatch(eye, 0) * 0.7:
+        sys.exit(f'FAIL: stereo, eye {eye}: the panel is not the shifted panel '
+                 f'(shift {s}: {panel_mismatch(eye, s)} vs {panel_mismatch(eye, 0)} unshifted)')
+if abs(shifts[0] - expect) > 2 or abs(shifts[1] + expect) > 2:
+    sys.exit(f'FAIL: stereo, panel shifts {shifts}, expected +-{expect:.1f}')
+
 # head turned right by 90 degrees: horizon in the middle, no panel
 ex, ey = eye_pixel(60, 170)
 panel = sum(right(x, y) == ahead(x, y) and ahead(x, y) not in (sky, ground, (0, 0, 0))
@@ -131,10 +159,11 @@ if right(E // 2, top + 40) != sky or right(E // 2, top + E - 40) == sky or panel
 if any(up(x, top + y) != sky for x in (10, E // 2, E - 10) for y in (10, E // 2, E - 10)):
     sys.exit('FAIL: head up: not only sky')
 print(f'head straight: panel {same}/{total} pixels as the original; turned and raised head ok; '
-      f'stereo: runway {best} pixels further right in the left eye')
+      f'stereo: runway {best} pixels further right in the left eye (eyes 1 m apart); '
+      f'with 64 mm the HUD is the same in both eyes, the panel shifted by {shifts[0]} / {shifts[1]} pixels')
 EOF2
 
-for run in ahead right up stereo; do
+for run in ahead right up stereo cockpit; do
   if ! diff <(grep -a 'ram hash\|\[hash\]' "$tmp/$run.log") <(grep -a 'ram hash\|\[hash\]' "$tmp/orig.log") >/dev/null; then
     echo "FAIL: --vr changed the game's memory ($run)" >&2
     exit 1

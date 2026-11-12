@@ -57,7 +57,9 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   on a head-mounted display through OpenXR (docs/vr.md; optional at build
   time, `FA18_OPENXR`): head rotation on top of the game's camera, one
   display list per picture drawn once per eye, the game's screen as a
-  picture where the original shows it (at infinity); the scene in stereo
+  picture where the original shows it (HUD symbols at infinity, the rest
+  of the cockpit 0.7 m ahead, split by drawing routine:
+  `Frame::overlay_hud`); the scene in stereo
   from each eye's position (`Prim::unit`: world units per captured
   vertex unit, 672 per metre).  Runs with SteamVR and Monado;
   `FA18_VR_SIM=yaw,pitch,roll[,fov,size,ipd_mm]` draws it without one (`tests/check_vr.sh ORIGINAL.adf`).  Check with

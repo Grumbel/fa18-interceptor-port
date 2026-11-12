@@ -49,9 +49,22 @@ middle of the left eye's picture.
   Debug menu, Extras, "VR eye distance": the headset's own (the entry
   shows the distance it reports), mono, or a fixed 32 mm to 5 m; larger
   distances make the world look smaller and the depth stronger.
-  The game's screen (cockpit, HUD) stays at infinity: a real HUD is
-  collimated, the cockpit is still flat; the panel cannot be put at a
-  finite distance alone because the HUD's frame runs down into it.
+- **Cockpit and HUD apart**: the game's screen is split by the routine
+  that drew each pixel.  The HUD's symbols (everything `$47ec0` draws,
+  crosshair and waterline marks included) stay at infinity, as a real
+  HUD is collimated.  The rest (instrument panel, nose `$455ba`, the HUD's
+  frame, drawn by `$48d4a` from `$48e22` on, messages) is a flat picture
+  0.7 m ahead of the seat, so it has depth and moves against the world
+  when the head moves.  Debug menu, Extras, "VR cockpit": 0.5 to 1.5 m,
+  or at infinity (the whole screen as one picture, as before).
+
+  How: the shadow runs the 2D block (`Shadow::Impl::draw_2d`) with the
+  bitplanes compared after each routine and at the entries of `$47ec0`'s
+  parts (PC hooks); the last routine to change a pixel owns it, in either
+  of the two passes (`Frame::overlay_hud`).  The panel's static pixels are
+  drawn by no routine in the frame (cockpit).  `FA18_SHADOW_2D_TRACE=1`
+  prints the owners per picture, `FA18_SHADOW_2D_DUMP=file.ppm` draws
+  them.
 
 ## Depth of the captured primitives
 

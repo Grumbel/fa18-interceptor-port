@@ -112,6 +112,10 @@ struct Frame {
   // palette index of each of the 320x200 pixels, and whether the pixel was
   // drawn at all (0: the 3D view shows through).  Empty if not available.
   std::vector<uint8_t> overlay_index, overlay_mask;
+  // Of the drawn pixels, those of the HUD's symbols (1; the routines under
+  // $47ec0 except its frame, drawn from $48e22), which a headset shows at infinity;
+  // the rest (panel, nose, HUD frame, messages) is the cockpit.
+  std::vector<uint8_t> overlay_hud;
   uint64_t game_frame = 0;       // machine frame of the newer snapshot
 };
 

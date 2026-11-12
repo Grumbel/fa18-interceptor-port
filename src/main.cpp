@@ -159,12 +159,16 @@ public:
   uint64_t new_build_ticks = 0, new_draw_ticks = 0;  // shadow / OpenGL time of the 3D pictures
   render::Frame new_frame;
   std::vector<uint32_t> new_overlay;
+  std::vector<uint32_t> new_hud;  // --vr: the HUD's symbols, apart from the cockpit
   // --vr: the pictures go to a head-mounted display (render::Vr); the
   // window mirrors them.
   bool vr_on = false;
   render::Vr vr;
   render::Vr::Options vr_options;
   render::HeadView vr_head;
+  // --vr: how far ahead of the seat the cockpit (panel, nose, HUD frame)
+  // stands, metres; 0 = at infinity like the HUD (debug menu)
+  float vr_cockpit_distance = 0.7f;
   bool vr_hotkey_held = false;
   bool direct_gl = false;   // --gl-direct / FA18_GL_DIRECT=1
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
@@ -921,7 +925,7 @@ public:
         case Page::Main: return 8;
         case Page::Graphics: return 8;
         case Page::Controls: return 3;
-        case Page::Extras: return vr_on ? 4 : 3;
+        case Page::Extras: return vr_on ? 5 : 3;
       }
       return 0;
     };
@@ -932,6 +936,20 @@ public:
       int i = 0;
       while (i < n_eye_choices - 1 && eye_choices[i] != vr.eye_distance()) ++i;
       vr.set_eye_distance(eye_choices[(i + (delta < 0 ? n_eye_choices - 1 : 1)) % n_eye_choices]);
+    };
+    // --vr: the cockpit's distance (metres, 0 = infinity)
+    constexpr float cockpit_choices[] = {0.5f, 0.6f, 0.7f, 0.8f, 1.f, 1.5f, 0.f};
+    constexpr int n_cockpit_choices = int(sizeof cockpit_choices / sizeof cockpit_choices[0]);
+    auto change_cockpit_distance = [&](int delta) {
+      int i = 0;
+      while (i < n_cockpit_choices - 1 && cockpit_choices[i] != vr_cockpit_distance) ++i;
+      vr_cockpit_distance = cockpit_choices[(i + (delta < 0 ? n_cockpit_choices - 1 : 1)) % n_cockpit_choices];
+    };
+    auto cockpit_distance_label = [&] {
+      if (vr_cockpit_distance <= 0.f) return std::string("VR cockpit: at infinity");
+      char b[48];
+      std::snprintf(b, sizeof b, "VR cockpit: %.1f m ahead", double(vr_cockpit_distance));
+      return std::string(b);
     };
     auto eye_distance_label = [&] {
       const auto mm = [](float m) { return std::to_string(int(std::lround(m * 1000.f))) + " mm"; };
@@ -1084,6 +1102,7 @@ public:
           case 1: if (dir == 0) run_mesh_viewer(); break;
           case 2: machine->text_pace = !machine->text_pace; break;
           case 3: change_eye_distance(dir); break;
+          case 4: change_cockpit_distance(dir); break;
         }
       }
     };
@@ -1226,7 +1245,10 @@ public:
           heading = "EXTRAS";
           items = {"Back", "Mesh viewer", std::string("Text pacing: ") +
                                              (machine->text_pace ? "on" : "off")};
-          if (vr_on) items.push_back(eye_distance_label());
+          if (vr_on) {
+            items.push_back(eye_distance_label());
+            items.push_back(cockpit_distance_label());
+          }
           break;
       }
       int px = 8 * sc, py = 8 * sc;
@@ -1677,15 +1699,24 @@ public:
   }
   // Cockpit, HUD and messages as the game drew them, with the palette of
   // each screen row (the panel has its own colours); false if there is none.
-  bool new_make_overlay(const uint32_t* rows) {
+  // With `split` the HUD's symbols go to new_hud instead (Frame::overlay_hud).
+  bool new_make_overlay(const uint32_t* rows, bool split = false) {
     if (!rows || new_frame.overlay_index.size() != size_t(amiga::FB_W) * amiga::FB_H) return false;
+    split = split && new_frame.overlay_hud.size() == new_frame.overlay_index.size();
     new_overlay.resize(new_frame.overlay_index.size());
+    new_hud.assign(split ? new_overlay.size() : 0, 0u);
     for (int y = 0; y < amiga::FB_H; ++y)
       for (int x = 0; x < amiga::FB_W; ++x) {
         const size_t i = size_t(y) * amiga::FB_W + size_t(x);
-        new_overlay[i] = new_frame.overlay_mask[i]
-                             ? 0xFF000000u | (rows[size_t(y) * 32 + (new_frame.overlay_index[i] & 31)] & 0xFFFFFFu)
-                             : 0u;
+        const uint32_t c = new_frame.overlay_mask[i]
+                               ? 0xFF000000u | (rows[size_t(y) * 32 + (new_frame.overlay_index[i] & 31)] & 0xFFFFFFu)
+                               : 0u;
+        if (split && new_frame.overlay_hud[i]) {
+          new_hud[i] = c;
+          new_overlay[i] = 0u;
+        } else {
+          new_overlay[i] = c;
+        }
       }
     return true;
   }
@@ -1717,13 +1748,21 @@ public:
       // otherwise a little smaller, to be read without turning the head.
       std::array<float, 3> scale{168.f / 256.f, 252.f / 256.f, 128.f / 256.f};
       float size = 0.8f;
-      bool screen = true, console = false;
+      bool screen = true, console = false, hud = false;
+      float distance = 0.f;  // of the screen (cockpit); 0 = infinity
       if (flight) {
         scale = new_frame.camera.scale;
         size = 1.f;
-        screen = new_make_overlay(rows);
+        // the cockpit at its distance, the HUD's symbols at infinity
+        const bool split = vr_cockpit_distance > 0.f;
+        screen = new_make_overlay(rows, split);
         if (screen) {
           gls.set_image(1, new_overlay.data(), amiga::FB_W, amiga::FB_H, true);
+          hud = !new_hud.empty();
+          if (hud) {
+            gls.set_image(3, new_hud.data(), amiga::FB_W, amiga::FB_H, true);
+            distance = vr_cockpit_distance;
+          }
           // the instrument panel reaches the lower edge of the screen
           int drawn = 0;
           for (int x = 0; x < amiga::FB_W; ++x)
@@ -1740,7 +1779,8 @@ public:
         vr.begin_eye(i);
         gls.begin(eye.width, eye.height);
         if (flight) gls.draw_scene_eye(new_frame, palette, eye);
-        if (screen) gls.draw_screen_eye(1, eye, vr_head.head_from_seat, scale, size, flight, console);
+        if (screen) gls.draw_screen_eye(1, eye, vr_head.head_from_seat, scale, size, flight, console, distance);
+        if (hud) gls.draw_screen_eye(3, eye, vr_head.head_from_seat, scale, size, true, false);
         vr.end_eye(i);
       }
       if (flight) {

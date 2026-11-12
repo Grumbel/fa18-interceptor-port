@@ -871,7 +871,8 @@ void GlScene::set_image(int slot, const uint32_t* argb, int w, int h, bool blend
 }
 
 void GlScene::draw_screen_eye(int slot, const EyeView& eye, const std::array<float, 9>& head_from_seat,
-                              const std::array<float, 3>& scale, float size, bool blend, bool console) {
+                              const std::array<float, 3>& scale, float size, bool blend, bool console,
+                              float distance) {
   Impl& s = *p_;
   if (slot < 0 || slot >= 4 || !s.tex[slot].id || eye.width <= 0 || eye.height <= 0) return;
   // The 320x200 screen in the directions the original's projection gives
@@ -879,15 +880,31 @@ void GlScene::draw_screen_eye(int slot, const EyeView& eye, const std::array<flo
   // (1 - 0.105) / 0.9 .. (-1 - 0.105) / 0.9 of y/z in the scaled view space.
   const float ax = size * scale[2] / scale[0], ay = size * scale[2] / scale[1];
   const float xl = ax, xr = -ax, yt = ay * (1.f - 0.105f) / 0.9f, yb = ay * (-1.f - 0.105f) / 0.9f;
-  const float q[] = {xl, yt, 1, 0, 0, xr, yt, 1, 1, 0, xr, yb, 1, 1, 1,
-                     xl, yt, 1, 0, 0, xr, yb, 1, 1, 1, xl, yb, 1, 0, 1};
+  float q[] = {xl, yt, 1, 0, 0, xr, yt, 1, 1, 0, xr, yb, 1, 1, 1,
+               xl, yt, 1, 0, 0, xr, yb, 1, 1, 1, xl, yb, 1, 0, 1};
   double pe[9];
   Impl::eye_projection(eye, pe);
   float clip[9];
+  // At infinity the vertices are seat-space directions; at a distance they
+  // are placed in head space (seat direction * distance, turned into the
+  // head, minus the eye's place) and only the eye's projection remains.
+  const bool near = distance > 0;
+  auto place = [&](float* v) {
+    if (!near) return;
+    double h[3];
+    for (int r = 0; r < 3; ++r) {
+      h[r] = -double(eye.pos[size_t(r)]);
+      for (int c = 0; c < 3; ++c) h[r] += double(head_from_seat[size_t(r * 3 + c)]) * double(v[c]) * double(distance);
+    }
+    for (int r = 0; r < 3; ++r) v[r] = float(h[r]);
+  };
+  for (int i = 0; i < 6; ++i) place(&q[i * 5]);
   for (int r = 0; r < 3; ++r)
     for (int c = 0; c < 3; ++c) {
       double v = 0;
-      for (int k = 0; k < 3; ++k) v += pe[r * 3 + k] * double(head_from_seat[size_t(k * 3 + c)]);
+      if (near) v = pe[r * 3 + c];
+      else
+        for (int k = 0; k < 3; ++k) v += pe[r * 3 + k] * double(head_from_seat[size_t(k * 3 + c)]);
       clip[c * 3 + r] = float(v);
     }
   // output pixels per texel where the eye looks straight at the screen
@@ -897,7 +914,8 @@ void GlScene::draw_screen_eye(int slot, const EyeView& eye, const std::array<flo
   if (console) {
     // what the panel stands on: black from its lower edge downwards
     const float below = -60.f * ay;
-    const float c[] = {xl, yb, 1, xr, yb, 1, xr, below, 1, xl, yb, 1, xr, below, 1, xl, below, 1};
+    float c[] = {xl, yb, 1, xr, yb, 1, xr, below, 1, xl, yb, 1, xr, below, 1, xl, below, 1};
+    for (int i = 0; i < 6; ++i) place(&c[i * 3]);
     const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     const GL& gl = s.gl;
     gl.UseProgram(s.scene_prog);

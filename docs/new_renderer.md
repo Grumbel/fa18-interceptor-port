@@ -119,5 +119,6 @@ Environment switches: `FA18_NO_INTERPOLATION`, `FA18_SHADOW_ALPHA=x`
 - Not yet tried on a real display by the author: vsync pacing at 120/144
   Hz, GLES 2 devices, the web build (single canvas).
 - VR: `--vr` (docs/vr.md) follows the head and draws the scene in stereo
-  (each primitive carries its unit, `Prim::unit`); the cockpit and HUD
-  are at infinity, a 3D cockpit is open.
+  (each primitive carries its unit, `Prim::unit`); the HUD's symbols are
+  at infinity, the rest of the cockpit a flat picture 0.7 m ahead
+  (`Frame::overlay_hud`); a 3D cockpit is open.
