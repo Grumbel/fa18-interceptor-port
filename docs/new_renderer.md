@@ -94,8 +94,9 @@ flags consumed before `$4217c`).
 ## Presentation
 
 `present_new` draws once per emulated frame and then, until the next one
-is due, further pictures of the moments in between (vsync paces the loop;
-without vsync `--render-fps`, default 60).  The picture lags one game
+is due, further pictures of the moments in between: with vsync as many as
+fit (the swap paces the loop), without vsync evenly spaced, `--render-fps`
+or the display's rate per second (measured offscreen: 120 and 240 of 240).  The picture lags one game
 frame, so every moment shown lies between two frames the game computed.
 `FA18_PRESENT_DEBUG=1` reports pictures per second and the time per
 picture; `FA18_SHADOW_PROFILE=N` the shadow's stages.

@@ -153,6 +153,7 @@ public:
   SDL_GLContext new_ctx = nullptr;
   int new_max_fps = 0;          // presentations per second without vsync (0: display rate)
   uint64_t new_last_present = 0;
+  uint64_t new_picture_ticks = 0;  // duration of the last extra picture incl. swap
   uint64_t new_presents = 0, new_flight_presents = 0;
   uint64_t new_build_ticks = 0, new_draw_ticks = 0;  // shadow / OpenGL time of the 3D pictures
   render::Frame new_frame;
@@ -1698,27 +1699,46 @@ public:
       return;
     }
     // Until the next emulated frame is due: more pictures of the moments in
-    // between.  With vsync the swap paces the loop; otherwise new_max_fps.
-    const uint64_t min_gap = freq / uint64_t(std::max(30, new_max_fps > 0 ? new_max_fps : 60));
-    for (;;) {
-      now = SDL_GetPerformanceCounter();
-      const int64_t left = int64_t(next_frame - now);
-      // not enough time for another picture before the game continues
-      if (left < int64_t(min_gap) / 2 + int64_t(freq / 1000)) break;
-      const int64_t since = int64_t(now - new_last_present);
-      if (since < int64_t(min_gap)) {
-        const int64_t wait_us = (int64_t(min_gap) - since) * 1000000 / int64_t(freq);
-        if (wait_us > 1500) SDL_Delay(uint32_t(wait_us / 1000 - 1));
-        continue;
-      }
-      if (!new_in_flight()) break;  // a still picture needs no more presentations
-      const float sub = float(double(now - tick_start) / double(freq / 60));
+    // between.
+    auto extra = [&](float sub) {
+      const uint64_t t0 = SDL_GetPerformanceCounter();
       new_draw(fb, std::clamp(sub, 0.f, 1.f));
       SDL_GL_SwapWindow(win);
       new_last_present = SDL_GetPerformanceCounter();
+      new_picture_ticks = new_last_present - t0;
       ++new_presents;
       handle_events();
       if (quit) throw amiga::QuitRequested{};
+    };
+    const uint64_t tick = freq / 60;
+    if (SDL_GL_GetSwapInterval() != 0) {
+      // vsync: the swap waits for the display, so draw as long as another
+      // picture (as long as the last one took) fits before the game continues
+      while (new_in_flight()) {
+        now = SDL_GetPerformanceCounter();
+        if (int64_t(next_frame - now) < int64_t(new_picture_ticks) + int64_t(freq / 2000)) break;
+        extra(float(double(now - tick_start) / double(tick)));
+      }
+    } else {
+      // no vsync: evenly spaced pictures, new_max_fps (or the display's rate) per second
+      int rate = new_max_fps;
+      if (rate <= 0) {
+        SDL_DisplayMode mode{};
+        rate = SDL_GetWindowDisplayMode(win, &mode) == 0 && mode.refresh_rate > 0 ? mode.refresh_rate : 60;
+      }
+      const int n = std::clamp((rate + 30) / 60, 1, 8);
+      for (int k = 1; k < n && new_in_flight(); ++k) {
+        const uint64_t target = tick_start + tick * uint64_t(k) / uint64_t(n);
+        now = SDL_GetPerformanceCounter();
+        if (int64_t(now - target) > int64_t(tick / uint64_t(2 * n))) continue;  // slot missed
+        for (;;) {
+          const int64_t wait = int64_t(target - SDL_GetPerformanceCounter());
+          if (wait <= 0) break;
+          const int64_t wait_us = wait * 1000000 / int64_t(freq);
+          if (wait_us > 1500) SDL_Delay(uint32_t(wait_us / 1000 - 1));
+        }
+        extra(float(k) / float(n));
+      }
     }
     while (true) {
       const int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
