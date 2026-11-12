@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <string>
 
 namespace render {
 namespace {
@@ -215,12 +217,19 @@ struct Capture {
   uint64_t snapped = 0, unsnapped = 0;
   bool stubbed = false;
   bool stubs_on = true;  // off while the cockpit is drawn for real
+  // Ground dots ($3c1bc), see ground_vertex().
+  bool ground_pending = false;
+  Vec3 ground{};
+  std::vector<Vec3> ground_tri;
+  double row = 1.0 / 90.0;  // one low-res row in view-space y at z = 1
 
   void clear() {
     verts.clear();
     prims.clear();
     point_pending = false;
-    in_object = false;
+    in_object = false; obj_distant = false;
+    ground_pending = false;
+    ground_tri.clear();
   }
 
   uint16_t w(uint32_t a) const { return m->r16(a); }
@@ -266,7 +275,18 @@ struct Capture {
     return o;
   }
 
+  // UNITDEBUG
+  std::map<std::string, int> dbg; bool dbg_proj = false; uint32_t dbg_projret = 0;
+  uint32_t obj_fp = 0; bool obj_distant = false;
   Prim& add(Prim::Kind kind, const PlaneOp& op, int count) {
+    if (std::getenv("FA18_UNIT_DEBUG")) {
+      char b[200];
+      const uint32_t fp = m->cpu.a[6];
+      const bool same = (in_object || obj_distant) && fp == obj_fp;
+      if (same) std::snprintf(b, sizeof b, "object kind %d", int(kind));
+      else std::snprintf(b, sizeof b, "OTHER kind %d ret %05x ret2 %05x proj %d projret %05x", int(kind), m->r32(m->cpu.a[7]), m->r32(m->cpu.a[7] + 4), int(dbg_proj), dbg_projret);
+      ++dbg[b];
+    }
     Prim p;
     p.kind = kind;
     p.op = op;
@@ -278,6 +298,7 @@ struct Capture {
 
   void on_object(uint32_t mesh_header, bool distant) {
     in_object = on && !distant;  // distant ground objects: other frame layout, not snapped
+    obj_fp = m->cpu.a[6]; obj_distant = on && distant;
     mesh = mesh_header;
     mesh_flags = m->r8(mesh_header + 7);
   }
@@ -386,18 +407,53 @@ struct Capture {
     verts.push_back(p[0]);
     verts.push_back(p[1]);
   }
+  // $3c1bc transforms a ground dot itself: position relative to the camera
+  // in whole world units ($5ad6a = $5ad5a >> 8), 16-bit view-space words,
+  // then whole pixels.  Seen at the window's resolution and between game
+  // frames the dots would move in those steps, against a ground that moves
+  // smoothly.  This is the same transform without the rounding, with the
+  // fraction of the camera position put back: (rx, rz) is the dot relative
+  // to the camera, fp-4 the height, both shifted left by fp-22.
+  Vec3 ground_vertex(int16_t rx, int16_t rz) const {
+    const uint32_t fp = m->cpu.a[6];
+    const double unit = double(1 << (w(fp - 22) & 3));
+    double frac[3];
+    for (uint32_t i = 0; i < 3; ++i) {
+      const int32_t neg = int32_t(m->r32(0x5ad5a + 4 * i));
+      const uint16_t used = i == 1 ? w(0x5ad72) : w(0x5ad6a + 2 * i);
+      frac[i] = uint16_t(neg >> 8) == used ? double(neg & 255) / 256.0 * unit : 0.0;
+    }
+    const double x = double(rx) + frac[0], h = double(s16(w(fp - 4))) + frac[1],
+                 z = double(rz) + frac[2];
+    double v[3];
+    for (uint32_t r = 0; r < 3; ++r)
+      v[r] = (double(s16(w(0x5aed0 + 6 * r))) * x + double(s16(w(0x5aed2 + 6 * r))) * h +
+              double(s16(w(0x5aed4 + 6 * r))) * z) / 256.0;
+    return {float(v[0]), float(v[1]), float(v[2])};
+  }
+  void on_ground_point() {  // $3c452: d3 / d4 = the dot
+    if (!on || !snap_on) return;
+    ground = ground_vertex(s16(m->cpu.d[3]), s16(m->cpu.d[4]));
+    ground_pending = true;
+  }
+  void on_ground_corner() {  // $3c390: d3 / d4 = a corner of a near dot's triangle
+    if (!on || !snap_on) return;
+    ground_tri.push_back(ground_vertex(s16(m->cpu.d[3]), s16(m->cpu.d[4])));
+  }
   void on_project() {  // $4389c..$438b4: d0-d2 = view-space point
     const m68k::Cpu& c = m->cpu;
     const int16_t x = s16(c.d[0]), y = s16(c.d[1]), z = s16(c.d[2]);
     point = {float(x), float(y), float(z)};
     // the projector's own tests: outside the view nothing is plotted
     point_pending = on && z > 0 && std::abs(int(x)) < z && std::abs(int(y)) < z;
+    dbg_projret = m->r32(c.a[7]);
     if (point_pending) snap(x, y, z, point);
   }
   void on_plot(int leaf) {  // $441fc 1x1, $44212 2x1, $44276 2x2, $43dcc disc
     if (!on) return;
     const m68k::Cpu& c = m->cpu;
     Vec3 at = point;
+    dbg_proj = point_pending;
     if (!point_pending) {
       // Not a primitive of its own: the fill and line routines plot
       // polygons and lines of one or two pixels as points ($44dfe, $44686),
@@ -412,6 +468,9 @@ struct Capture {
       if (!stubbed && std::getenv("FA18_SHADOW_PLOTS"))
         std::fprintf(stderr, "plot leaf %d ret %06x ret2 %06x\n", leaf, ret, m->r32(c.a[7] + 4));
       at = {(159.f - float(s16(c.d[0]))) / 160.f, (90.f - float(s16(c.d[1]))) / 90.f, 1.f};
+      if (ground_pending && (ret == 0x3c4ee || ret == 0x3c4f6) && ground.z > 0)
+        at = {ground.x, float(double(ground.y) + double(ground.z) * row), ground.z};
+      ground_pending = false;
     }
     point_pending = false;
     if (leaf == 3) {
@@ -437,6 +496,10 @@ struct Capture {
     if (n < 3 || n > 60) return;
     ++fills_2d;
     add(Prim::Poly, poly_op(), n);
+    if (n == 3 && ground_tri.size() == 3 && m->r32(m->cpu.a[7]) == 0x3c426) {
+      verts.insert(verts.end(), ground_tri.begin(), ground_tri.end());
+      return;
+    }
     for (int i = 0; i < n; ++i) {
       const float x = float(s16(w(0x60686 + 4u * uint32_t(i))));
       const float y = float(s16(w(0x60688 + 4u * uint32_t(i))));
@@ -457,6 +520,9 @@ struct Capture {
     machine.add_pc_hook(0x44276, [this] { on_plot(2); });
     machine.add_pc_hook(0x43dcc, [this] { on_plot(3); });
     machine.add_pc_hook(0x44b50, [this] { on_fill(); });
+    machine.add_pc_hook(0x3c37e, [this] { ground_tri.clear(); });
+    machine.add_pc_hook(0x3c390, [this] { on_ground_corner(); });
+    machine.add_pc_hook(0x3c452, [this] { on_ground_point(); });
     stubbed = stub;
     if (!stub) return;
     // Nothing is drawn on the shadow: fills, lines and point plots return
@@ -830,6 +896,7 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
     if (sm.r8(0x5ab93) == 0 || sm.r8(0x5aaa8) != 0) sub_3f284();
     cap.on = true;
     cap.snap_on = snap_enabled && !verify;
+    cap.row = 1.0 / (90.0 * heighten);
     sub_43306();
     if (int32_t(sm.r32(0x5ad5e)) > -0x8000000) {
       call_c(0x2fa6c);  // the two ground-layer passes over the object list
@@ -846,6 +913,14 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
       }
     }
     cap.on = false;
+    if (std::getenv("FA18_UNIT_DEBUG")) {
+      static int n = 0;
+      if (++n % 1 == 0) {
+        std::fprintf(stderr, "unitdebug frame %llu\n", (unsigned long long)cur.image.frame);
+        for (auto& [k, v] : cap.dbg) std::fprintf(stderr, "  %6d %s\n", v, k.c_str());
+        cap.dbg.clear();
+      }
+    }
     scene_cam = read_camera(sm);
     t_scene = Clock::now();
     if (overlay_enabled) {
@@ -893,6 +968,13 @@ bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
   }
 
   t_2d = Clock::now();
+  if (const char* f = std::getenv("FA18_OVL_DUMP")) {
+    if (FILE* fp = std::fopen(f, "wb")) {
+      std::fwrite(out.overlay_index.data(), 1, out.overlay_index.size(), fp);
+      std::fwrite(out.overlay_mask.data(), 1, out.overlay_mask.size(), fp);
+      std::fclose(fp);
+    }
+  }
   if (profile) {
     auto ms = [](Clock::time_point a, Clock::time_point b) {
       return std::chrono::duration<double, std::milli>(b - a).count();

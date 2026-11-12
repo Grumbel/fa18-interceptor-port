@@ -64,7 +64,11 @@ inverse of the quantised one) takes the captured view-space words to the
 exact camera.  A captured vertex that is the transform of a vertex of the
 model being drawn (`glr::set_object_observer`, pool `$5d684`, checked
 against the captured words) is replaced by its unrounded transform; see
-`Capture::snap`.  Derived vertices (runway markings, extrusions), shadows
+`Capture::snap`.  The ground dots (`$3c1bc`) are transformed by their own
+code from a camera position in whole world units and plotted at whole
+pixels; they are captured before that (`Capture::ground_vertex`, hooks at
+`$3c390` and `$3c452`) and transformed again without rounding, with the
+fraction of the camera position (`$5ad5a`).  Derived vertices (runway markings, extrusions), shadows
 and effects keep the original's one-unit rounding.
 
 `FA18_SHADOW_VERIFY=1 fa18 --renderer original ...` compares the shadow at
