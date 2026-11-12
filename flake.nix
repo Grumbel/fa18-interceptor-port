@@ -70,6 +70,7 @@
 
           buildInputs = with pkgs; [
             SDL2
+            openxr-loader  # --vr (optional: found by CMake, FA18_OPENXR)
           ];
 
           cmakeFlags = [
@@ -245,6 +246,7 @@
             cmake
             pkg-config
             SDL2
+            openxr-loader
             python3
             xxd
             file

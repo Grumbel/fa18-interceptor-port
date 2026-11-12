@@ -5,6 +5,7 @@
 #include "native/game_state.hpp"
 #include "render/gl_scene.hpp"
 #include "render/shadow.hpp"
+#include "render/vr.hpp"
 #include "native/terrain.hpp"
 #include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
@@ -158,6 +159,13 @@ public:
   uint64_t new_build_ticks = 0, new_draw_ticks = 0;  // shadow / OpenGL time of the 3D pictures
   render::Frame new_frame;
   std::vector<uint32_t> new_overlay;
+  // --vr: the pictures go to a head-mounted display (render::Vr); the
+  // window mirrors them.
+  bool vr_on = false;
+  render::Vr vr;
+  render::Vr::Options vr_options;
+  render::HeadView vr_head;
+  bool vr_hotkey_held = false;
   bool direct_gl = false;   // --gl-direct / FA18_GL_DIRECT=1
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
   uint64_t last_gl_serial = 0;
@@ -346,6 +354,15 @@ public:
                 set_original_blitter_writes(!machine->original_blitter_writes());
             }
             if (!down) blitter_hotkey_held = false;
+            break;
+          }
+          // Ctrl+R: the direction the head looks in becomes straight ahead.
+          if (vr_on && sc == SDL_SCANCODE_R && ((e.key.keysym.mod & KMOD_CTRL) || vr_hotkey_held)) {
+            if (down && !e.key.repeat) {
+              vr_hotkey_held = true;
+              vr.recentre();
+            }
+            if (!down) vr_hotkey_held = false;
             break;
           }
           if (sc == SDL_SCANCODE_F12 && down) { set_grab(!mouse_grab); break; }
@@ -1533,6 +1550,12 @@ public:
 #endif
     int want_samples = 4;
     if (const char* v = std::getenv("FA18_MSAA")) want_samples = std::atoi(v);
+    if (vr_on) {
+      // the eyes' pictures are multisampled; the window only mirrors them
+      // (a scaled copy into a multisampled window is not possible)
+      vr_options.samples = want_samples;
+      want_samples = 0;
+    }
     std::string err = "no OpenGL context";
     for (int attempt = 0; attempt < 4 && !new_ctx; ++attempt) {
       const bool es = prefer_es ? attempt < 2 : attempt >= 2;
@@ -1567,8 +1590,17 @@ public:
               err.c_str());
       return false;
     }
-    // Present with the display; without vsync the loop paces itself.
-    if (fast || SDL_GL_SetSwapInterval(std::getenv("FA18_NO_VSYNC") ? 0 : 1) != 0)
+    if (vr_on) {
+      if (!vr.init([](const char* n) { return SDL_GL_GetProcAddress(n); }, vr_options, err)) {
+        fprintf(stderr, "--vr: %s\n", err.c_str());
+        return false;
+      }
+      fprintf(stderr, "graphics: %s\n", vr.description().c_str());
+    }
+    // Present with the display; without vsync the loop paces itself.  A
+    // headset paces the loop itself: the window must not wait as well.
+    const bool headset = vr_on && !vr.simulated();
+    if (fast || headset || SDL_GL_SetSwapInterval(std::getenv("FA18_NO_VSYNC") ? 0 : 1) != 0)
       SDL_GL_SetSwapInterval(0);
     return true;
   }
@@ -1594,7 +1626,7 @@ public:
     gls.draw_image(2, stats_buf.data(), STATS_W, STATS_H, r, true, true);
   }
   void new_present_bitmap(const uint32_t* px, int w, int h) {
-    new_draw_bitmap(px, w, h);
+    if (!vr_on || !vr_picture(nullptr, 0.f, px, w, h)) new_draw_bitmap(px, w, h);
     SDL_GL_SwapWindow(win);
   }
   void new_save_window(const std::string& path) {
@@ -1615,7 +1647,102 @@ public:
   }
   // Draw one picture for the moment `sub` (0..1) into the current emulated
   // frame; false if the 3D view is not available.
+  // Interpolation phase of a picture `sub` (0..1) into the current emulated
+  // frame.  The picture lags one game frame behind the newest state, so
+  // that every moment shown lies between two frames the game computed.
+  float new_alpha(float sub) const {
+    const double newest = double(shadow.newest_frame());
+    const double interval = std::clamp(newest - double(shadow.previous_frame()), 1.0, 12.0);
+    const double now = double(machine->frame_count()) + double(sub);
+    float alpha = float(std::clamp((now - newest) / interval, 0.0, 1.0));
+    if (std::getenv("FA18_NO_INTERPOLATION")) alpha = 1.f;
+    if (const char* forced = std::getenv("FA18_SHADOW_ALPHA")) alpha = float(std::atof(forced));  // tests
+    return alpha;
+  }
+  // Cockpit, HUD and messages as the game drew them, with the palette of
+  // each screen row (the panel has its own colours); false if there is none.
+  bool new_make_overlay(const uint32_t* rows) {
+    if (!rows || new_frame.overlay_index.size() != size_t(amiga::FB_W) * amiga::FB_H) return false;
+    new_overlay.resize(new_frame.overlay_index.size());
+    for (int y = 0; y < amiga::FB_H; ++y)
+      for (int x = 0; x < amiga::FB_W; ++x) {
+        const size_t i = size_t(y) * amiga::FB_W + size_t(x);
+        new_overlay[i] = new_frame.overlay_mask[i]
+                             ? 0xFF000000u | (rows[size_t(y) * 32 + (new_frame.overlay_index[i] & 31)] & 0xFFFFFFu)
+                             : 0u;
+      }
+    return true;
+  }
+  // One picture for the headset: the 3D view around the head with the
+  // game's screen (cockpit, HUD) where the original shows it, or, outside
+  // the flight and for `bitmap` (menus), that screen alone.  The window gets
+  // a copy.  False if the headset takes no pictures now; the caller then
+  // draws the window as usual.
+  bool vr_picture(const uint32_t* fb, float sub, const uint32_t* bitmap = nullptr, int bw = 0, int bh = 0) {
+    if (vr.exit_requested()) quit = true;
+    const render::Vr::Step step = vr.begin_frame(vr_head);
+    if (step == render::Vr::Step::Idle) return false;
+    bool flight = false;
+    if (step == render::Vr::Step::Render) {
+      const uint64_t t0 = SDL_GetPerformanceCounter();
+      if (!bitmap && new_in_flight()) {
+        render::Shadow::View view;
+        view.head = true;
+        view.head_from_seat = vr_head.head_from_seat;
+        view.tan_h = vr_head.tan_h;
+        view.tan_v = vr_head.tan_v;
+        flight = shadow.build(new_alpha(sub), view, new_frame);
+      }
+      const uint64_t t1 = SDL_GetPerformanceCounter();
+      uint32_t palette[16];
+      const uint32_t* rows = machine->frame_row_pal();
+      for (int i = 0; i < 16; ++i) palette[i] = rows ? rows[size_t(20) * 32 + size_t(i)] : 0;
+      // The game's screen: in flight where its pixels belong in the view,
+      // otherwise a little smaller, to be read without turning the head.
+      std::array<float, 3> scale{168.f / 256.f, 252.f / 256.f, 128.f / 256.f};
+      float size = 0.8f;
+      bool screen = true, console = false;
+      if (flight) {
+        scale = new_frame.camera.scale;
+        size = 1.f;
+        screen = new_make_overlay(rows);
+        if (screen) {
+          gls.set_image(1, new_overlay.data(), amiga::FB_W, amiga::FB_H, true);
+          // the instrument panel reaches the lower edge of the screen
+          int drawn = 0;
+          for (int x = 0; x < amiga::FB_W; ++x)
+            drawn += new_frame.overlay_mask[size_t(amiga::FB_H - 1) * amiga::FB_W + size_t(x)] != 0;
+          console = drawn > amiga::FB_W * 3 / 4;
+        }
+      } else if (bitmap) {
+        gls.set_image(1, bitmap, bw, bh, false);
+      } else {
+        gls.set_image(1, fb, amiga::FB_W, amiga::FB_H, false);
+      }
+      for (int i = 0; i < 2; ++i) {
+        const render::EyeView& eye = vr_head.eye[i];
+        vr.begin_eye(i);
+        gls.begin(eye.width, eye.height);
+        if (flight) gls.draw_scene_eye(new_frame, palette, eye);
+        if (screen) gls.draw_screen_eye(1, eye, vr_head.head_from_seat, scale, size, flight, console);
+        vr.end_eye(i);
+      }
+      if (flight) {
+        ++new_flight_presents;
+        new_build_ticks += t1 - t0;
+        new_draw_ticks += SDL_GetPerformanceCounter() - t1;
+      }
+    }
+    vr.end_frame();
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    vr.mirror(dw, dh);
+    gls.set_size(dw, dh);
+    if (!bitmap) new_draw_overlays();
+    return true;
+  }
   bool new_draw(const uint32_t* fb, float sub) {
+    if (vr_on && vr_picture(fb, sub)) return true;
     if (!new_in_flight()) {
       new_draw_bitmap(fb, amiga::FB_W, amiga::FB_H);
       new_draw_overlays();
@@ -1623,19 +1750,14 @@ public:
     }
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
-    // The picture lags one game frame behind the newest state, so that
-    // every moment shown lies between two frames the game computed.
-    const double newest = double(shadow.newest_frame());
-    const double interval = std::clamp(newest - double(shadow.previous_frame()), 1.0, 12.0);
-    const double now = double(machine->frame_count()) + double(sub);
-    float alpha = float(std::clamp((now - newest) / interval, 0.0, 1.0));
-    if (std::getenv("FA18_NO_INTERPOLATION")) alpha = 1.f;
-    if (const char* forced = std::getenv("FA18_SHADOW_ALPHA")) alpha = float(std::atof(forced));  // tests
+    const float alpha = new_alpha(sub);
     const render::Rect centre = render::GlScene::centre_4x3(dw, dh);
     const render::Rect area = widescreen ? render::GlScene::wide_area(dw, dh) : centre;
     const float widen = float(area.w) / float(centre.w);
     const uint64_t t0 = SDL_GetPerformanceCounter();
-    if (!shadow.build(alpha, widen, new_frame)) {
+    render::Shadow::View view;
+    view.widen = widen;
+    if (!shadow.build(alpha, view, new_frame)) {
       new_draw_bitmap(fb, amiga::FB_W, amiga::FB_H);
       return false;
     }
@@ -1645,19 +1767,8 @@ public:
     for (int i = 0; i < 16; ++i) palette[i] = rows ? rows[size_t(20) * 32 + size_t(i)] : 0;
     gls.begin(dw, dh);
     gls.draw_scene(new_frame, palette, area);
-    if (rows && new_frame.overlay_index.size() == size_t(amiga::FB_W) * amiga::FB_H) {
-      // cockpit, HUD and messages as the game drew them, with the palette
-      // of each screen row (the panel has its own colours)
-      new_overlay.resize(new_frame.overlay_index.size());
-      for (int y = 0; y < amiga::FB_H; ++y)
-        for (int x = 0; x < amiga::FB_W; ++x) {
-          const size_t i = size_t(y) * amiga::FB_W + size_t(x);
-          new_overlay[i] = new_frame.overlay_mask[i]
-                               ? 0xFF000000u | (rows[size_t(y) * 32 + (new_frame.overlay_index[i] & 31)] & 0xFFFFFFu)
-                               : 0u;
-        }
+    if (new_make_overlay(rows))
       gls.draw_image(1, new_overlay.data(), amiga::FB_W, amiga::FB_H, centre, true, false);
-    }
     new_draw_overlays();
     ++new_flight_presents;
     new_build_ticks += t1 - t0;
@@ -1679,8 +1790,20 @@ public:
     const uint64_t tick_start = next_frame;
     next_frame += freq / 60;
     const bool shot = frame_no == screenshot_frame || !pending_shot.empty();
-    if (!fast || shot) {
-      new_draw(fb, 0.f);
+    const uint64_t tick = freq / 60;
+    // A headset's display paces the pictures (each waits for its turn), so
+    // the game's frames do not start at regular times: every picture shows
+    // the moment it is drawn at.
+    bool headset = vr_on && vr.paced();
+    auto phase = [&] {
+      const uint64_t now = SDL_GetPerformanceCounter();
+      return std::clamp(float(double(int64_t(now - tick_start)) / double(tick)), 0.f, 1.f);
+    };
+    // (A headset slower than the game's 60 frames per second, or a runtime
+    // that halves the rate, must not slow the game down: no picture then.)
+    const bool behind = headset && int64_t(next_frame - SDL_GetPerformanceCounter()) < int64_t(freq / 1000);
+    if ((!fast && !behind) || shot) {
+      new_draw(fb, headset ? phase() : 0.f);
       if (frame_no == screenshot_frame) new_save_window(screenshot_path);
       if (!pending_shot.empty()) {
         new_save_window(pending_shot);
@@ -1710,8 +1833,16 @@ public:
       handle_events();
       if (quit) throw amiga::QuitRequested{};
     };
-    const uint64_t tick = freq / 60;
-    if (SDL_GL_GetSwapInterval() != 0) {
+    headset = vr_on && vr.paced();
+    if (headset) {
+      // More pictures until the game's next frame is due; no sleeping past
+      // a turn of the display afterwards.
+      while (vr.paced()) {
+        now = SDL_GetPerformanceCounter();
+        if (int64_t(next_frame - now) < int64_t(freq / 1000)) break;
+        extra(phase());
+      }
+    } else if (SDL_GL_GetSwapInterval() != 0) {
       // vsync: the swap waits for the display, so draw as long as another
       // picture (as long as the last one took) fits before the game continues
       while (new_in_flight()) {
@@ -1740,7 +1871,7 @@ public:
         extra(float(k) / float(n));
       }
     }
-    while (true) {
+    while (!headset) {
       const int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
       if (left <= 0) break;
       const int64_t left_us = left * 1000000 / int64_t(freq);
@@ -2126,6 +2257,8 @@ void usage() {
           "                             frame rate, widescreen; the game itself is unchanged\n"
           "                   hires:    software upscaling of the original renderer\n"
           "  --render-fps N   'new': pictures per second without vsync (120, 180, 240)\n"
+          "  --vr             'new' on a head-mounted display (OpenXR); Ctrl+R looks\n"
+          "                   straight ahead from where the head is turned\n"
           "                   (--hires N, --gl N, --gl-direct, --widescreen select the\n"
           "                   older enhancement layers)\n"
           "  --full-detail    nearest level of detail for every 3D object\n"
@@ -2249,6 +2382,7 @@ int main(int argc, char** argv) {
   bool gl_direct = false;
   bool renderer_original = false;  // --renderer original: pure Amiga output
   bool renderer_new = false;       // --renderer new: GL scene from game state
+  bool vr = false;                 // --vr: --renderer new on a head-mounted display
   int render_fps = 60;
   int hires = 0, gl_scale = 0;
   bool requested_hires = false, requested_gl = false;
@@ -2303,6 +2437,7 @@ int main(int argc, char** argv) {
       else if (r == "hires") { requested_hires = true; if (!hires) hires = 3; }
       else { fprintf(stderr, "--renderer must be original, new or hires\n"); return 2; }
     }
+    else if (a == "--vr") vr = renderer_new = true;
     else if (a == "--widescreen") widescreen = true;
     else if (a == "--render-fps" && i + 1 < argc) render_fps = std::atoi(argv[++i]);
     else if (a == "--protection") protection = true;
@@ -2339,6 +2474,10 @@ int main(int argc, char** argv) {
     gl_scale = hires = 0;
     widescreen = false;
     render_fps = 60;
+    if (vr) {
+      fprintf(stderr, "--vr needs --renderer new\n");
+      return 2;
+    }
   } else if (renderer_new) {
     // Own OpenGL path (src/render): none of the hi-res / --gl layers.
     requested_hires = requested_gl = gl_direct = false;
@@ -2562,6 +2701,15 @@ int main(int argc, char** argv) {
   host.direct_gl = gl_direct;
   host.new_renderer = renderer_new;
   host.new_max_fps = render_fps > 60 ? render_fps : 0;
+  host.vr_on = vr;
+  // Test aid: FA18_VR_SIM="yaw,pitch,roll[,fov[,size]]" (degrees; right, up,
+  // clockwise) draws --vr for a fixed head without a headset, both eyes
+  // side by side in the window.
+  if (const char* sim = std::getenv("FA18_VR_SIM"); sim && vr) {
+    host.vr_options.simulate = true;
+    std::sscanf(sim, "%f,%f,%f,%f,%d", &host.vr_options.yaw, &host.vr_options.pitch, &host.vr_options.roll,
+                &host.vr_options.fov, &host.vr_options.eye_size);
+  }
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
@@ -2591,6 +2739,7 @@ int main(int argc, char** argv) {
   machine.set_host(&host);
   if (!wav_path.empty()) host.open_wav(wav_path);
   int rc = machine.run();
+  host.vr.shutdown();  // while the OpenGL context exists
   host.close_wav();
   if (native_mode == "verify" || machine.verbose) machine.print_native_stats();
   if (!misses_path.empty() && machine.recomp_misses()) {

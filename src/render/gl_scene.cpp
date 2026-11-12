@@ -148,10 +148,12 @@ bool load_gl(GetProc p, GL& gl, std::string& err) {
 }
 
 // ---- shaders -------------------------------------------------------------------
-// Scene: v = u_m (a_pos + u_off) is view space (see display_list.hpp).  The
-// original's columns 159 - 160 x/z and rows 89 - 90 y/z of a 320x200 screen
-// become x = -x/z - u_proj.x, y = u_proj.y + u_proj.z y/z in clip space; a
-// constant z of 0 leaves only the w > 0 side of the frustum to clip against.
+// Scene: v = u_m (a_pos + u_off) is view space (see display_list.hpp), and
+// u_clip takes it to clip space (x, y, w).  For the window that is the
+// original's projection, columns 159 - 160 x/z and rows 89 - 90 y/z of a
+// 320x200 screen (x = -x/z - half a pixel, y = 0.105 + 0.9 y/z); for an eye
+// of a headset its own projection.  A constant z of 0 leaves only the w > 0
+// side of the frustum to clip against.
 
 const char* kSceneVertex = R"(
 #ifdef GL_ES
@@ -160,10 +162,10 @@ precision highp float;
 attribute vec3 a_pos;
 uniform mat3 u_m;
 uniform vec3 u_off;
-uniform vec3 u_proj;
+uniform mat3 u_clip;
 void main() {
-  vec3 v = u_m * (a_pos + u_off);
-  gl_Position = vec4(-v.x - u_proj.x * v.z, u_proj.y * v.z + u_proj.z * v.y, 0.0, v.z);
+  vec3 c = u_clip * (u_m * (a_pos + u_off));
+  gl_Position = vec4(c.xy, 0.0, c.z);
 }
 )";
 
@@ -176,12 +178,17 @@ void main() { gl_FragColor = u_colour; }
 )";
 
 const char* kImageVertex = R"(
-attribute vec2 a_pos;
+#ifdef GL_ES
+precision highp float;
+#endif
+attribute vec3 a_pos;
 attribute vec2 a_uv;
+uniform mat3 u_clip;
 varying vec2 v_uv;
 void main() {
   v_uv = a_uv;
-  gl_Position = vec4(a_pos, 0.0, 1.0);
+  vec3 c = u_clip * a_pos;
+  gl_Position = vec4(c.xy, 0.0, c.z);
 }
 )";
 
@@ -267,7 +274,7 @@ struct Batch {
 struct GlScene::Impl {
   GL gl{};
   GLuint scene_prog = 0, image_prog = 0, vbo = 0;
-  GLint u_m = -1, u_off = -1, u_proj = -1, u_colour = -1, u_image = -1, u_tex = -1;
+  GLint u_m = -1, u_off = -1, u_clip = -1, u_colour = -1, u_image = -1, u_tex = -1, u_image_clip = -1;
   struct Tex {
     GLuint id = 0;
     int w = 0, h = 0;
@@ -283,6 +290,22 @@ struct GlScene::Impl {
   std::vector<Batch> batches;
   std::vector<uint8_t> rgba;
   Stats stats;
+
+  // How a scene is projected: the window (the original's projection) or one
+  // eye of a headset.
+  struct Target {
+    GLint x = 0, y = 0, w = 0, h = 0;  // viewport, GL window coordinates
+    // Size in output pixels of the picture that the original's projection
+    // of this frame (clip -1..1) would make: sets the stroke of the lines.
+    double vw = 0, vh = 0;
+    float clip[9] = {};                // view space -> clip (x, y, w), column-major
+  };
+  void scene(const Frame& f, const uint32_t* palette, const Target& t);
+  void upload(int slot, const uint32_t* argb, int w, int h, bool blend);
+  void image(int slot, const float* quad, const float* clip, float sx, float sy, bool blend);
+  // Projection of one eye as a matrix on eye-space vectors (x left, y up,
+  // z forward), row-major.
+  static void eye_projection(const EyeView& e, double out[9]);
 
   GLuint compile(GLenum type, const char* src, std::string& err) {
     GLuint s = gl.CreateShader(type);
@@ -374,10 +397,11 @@ bool GlScene::init(GetProc proc, std::string& err) {
   if (!s.scene_prog || !s.image_prog) return false;
   s.u_m = s.gl.GetUniformLocation(s.scene_prog, "u_m");
   s.u_off = s.gl.GetUniformLocation(s.scene_prog, "u_off");
-  s.u_proj = s.gl.GetUniformLocation(s.scene_prog, "u_proj");
+  s.u_clip = s.gl.GetUniformLocation(s.scene_prog, "u_clip");
   s.u_colour = s.gl.GetUniformLocation(s.scene_prog, "u_colour");
   s.u_image = s.gl.GetUniformLocation(s.image_prog, "u_image");
   s.u_tex = s.gl.GetUniformLocation(s.image_prog, "u_tex");
+  s.u_image_clip = s.gl.GetUniformLocation(s.image_prog, "u_clip");
   s.gl.GenBuffers(1, &s.vbo);
   return true;
 }
@@ -454,14 +478,66 @@ void GlScene::begin(int win_w, int win_h) {
 
 void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& area) {
   Impl& s = *p_;
-  const GL& gl = s.gl;
   if (area.w <= 0 || area.h <= 0) return;
+  Impl::Target t;
+  // GL's window origin is bottom left
+  t.x = area.x;
+  t.y = s.win_h - area.y - area.h;
+  t.w = area.w;
+  t.h = area.h;
+  t.vw = area.w;
+  t.vh = area.h;
+  const float half = float(1.0 / (320.0 * std::max(1.0, double(f.widen))));
+  const float clip[9] = {-1, 0, 0, 0, 0.9f, 0, -half, 0.105f, 1};
+  std::copy(clip, clip + 9, t.clip);
+  s.scene(f, palette, t);
+}
+
+void GlScene::Impl::eye_projection(const EyeView& e, double out[9]) {
+  const double dx = double(e.tan_right) - double(e.tan_left), dy = double(e.tan_up) - double(e.tan_down);
+  const double p[9] = {-2.0 / dx, 0, -(double(e.tan_right) + double(e.tan_left)) / dx,
+                       0, 2.0 / dy, -(double(e.tan_up) + double(e.tan_down)) / dy,
+                       0, 0, 1};
+  // P * from_head
+  for (int r = 0; r < 3; ++r)
+    for (int c = 0; c < 3; ++c) {
+      double v = 0;
+      for (int k = 0; k < 3; ++k) v += p[r * 3 + k] * double(e.from_head[size_t(k * 3 + c)]);
+      out[r * 3 + c] = v;
+    }
+}
+
+void GlScene::draw_scene_eye(const Frame& f, const uint32_t* palette, const EyeView& eye) {
+  Impl& s = *p_;
+  if (eye.width <= 0 || eye.height <= 0) return;
+  // The frame's view space is the head's, scaled: true direction =
+  // (x widen / s0, y heighten / s1, z / s2).
+  const double k[3] = {double(f.widen) / double(f.camera.scale[0]), double(f.heighten) / double(f.camera.scale[1]),
+                       1.0 / double(f.camera.scale[2])};
+  double pe[9];
+  Impl::eye_projection(eye, pe);
+  Impl::Target t;
+  t.w = eye.width;
+  t.h = eye.height;
+  for (int r = 0; r < 3; ++r)
+    for (int c = 0; c < 3; ++c) t.clip[c * 3 + r] = float(pe[r * 3 + c] * k[c]);
+  // output pixels per unit of x/z and y/z of the frame's view space, at the
+  // centre of the eye's picture
+  t.vw = 2.0 * double(eye.width) / (double(eye.tan_right) - double(eye.tan_left)) * k[0] / k[2];
+  t.vh = 2.0 * double(eye.height) / (double(eye.tan_up) - double(eye.tan_down)) * k[1] / k[2] / 0.9;
+  s.scene(f, palette, t);
+}
+
+void GlScene::Impl::scene(const Frame& f, const uint32_t* palette, const Target& target) {
+  Impl& s = *this;
+  const GL& gl = s.gl;
   s.stats = {};
   s.buf.clear();
   s.batches.clear();
-  const double widen = std::max(1.0, double(f.widen));
-  // one low-res pixel / row in clip units (the view is 320 * widen x 200)
-  const double px = 2.0 / (320.0 * widen), py = 2.0 / 200.0;
+  const double widen = std::max(1e-3, double(f.widen)), heighten = std::max(1e-3, double(f.heighten));
+  // one low-res pixel / row in the clip units of the original's projection
+  // (the view is 320 * widen x 200 * heighten)
+  const double px = 2.0 / (320.0 * widen), py = 2.0 / (200.0 * heighten);
   const double half = 1.0 / (320.0 * widen);  // the projector's half-pixel offset
   // a low-res position (clip units) as a view-space point at depth 1
   auto clip_point = [&](double cx, double cy) { s.push(-cx - half, (cy - 0.105) / 0.9, 1.0); };
@@ -475,7 +551,7 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
   };
   // Lines are one low-res pixel wide in the original; at the window's
   // resolution a narrower stroke keeps their weight without the steps.
-  const double row_px = double(area.h) / 200.0;
+  const double row_px = target.vh / (200.0 * heighten);
   const double stroke = std::max(1.25, 0.6 * row_px) / row_px;  // in rows
   auto line = [&](V3 a, V3 b) {
     const double zmin = 1e-4 * std::max({std::fabs(a.z), std::fabs(b.z), 1e-6});
@@ -488,7 +564,7 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
     const double ax = -a.x / a.z - half, ay = 0.105 + 0.9 * a.y / a.z;
     const double bx = -b.x / b.z - half, by = 0.105 + 0.9 * b.y / b.z;
     // direction in window pixels, so the stroke is equally wide everywhere
-    double dx = (bx - ax) * area.w, dy = (by - ay) * area.h;
+    double dx = (bx - ax) * target.vw, dy = (by - ay) * target.vh;
     const double len = std::hypot(dx, dy);
     if (len < 1e-6) {
       dx = 1;
@@ -498,8 +574,8 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
       dy /= len;
     }
     const double w = 0.5 * stroke * row_px;  // half width in window pixels
-    const double ex = dx * w * 2 / area.w, ey = dy * w * 2 / area.h;      // along
-    const double nx = -dy * w * 2 / area.w, ny = dx * w * 2 / area.h;     // across
+    const double ex = dx * w * 2 / target.vw, ey = dy * w * 2 / target.vh;      // along
+    const double nx = -dy * w * 2 / target.vw, ny = dx * w * 2 / target.vh;     // across
     const double q[4][2] = {{ax - ex - nx, ay - ey - ny}, {ax - ex + nx, ay - ey + ny},
                             {bx + ex + nx, by + ey + ny}, {bx + ex - nx, by + ey - ny}};
     for (int i : {0, 1, 2, 0, 2, 3}) clip_point(q[i][0], q[i][1]);
@@ -615,9 +691,8 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
   (void)prim_floats;
 
   // ---- draw ----
-  // GL's window origin is bottom left
-  gl.Viewport(area.x, s.win_h - area.y - area.h, area.w, area.h);
-  gl.Scissor(area.x, s.win_h - area.y - area.h, area.w, area.h);
+  gl.Viewport(target.x, target.y, target.w, target.h);
+  gl.Scissor(target.x, target.y, target.w, target.h);
   gl.Enable(GL_SCISSOR_TEST);
   gl.Enable(GL_STENCIL_TEST);
   gl.StencilMask(0xFF);
@@ -630,7 +705,8 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
                 GL_STREAM_DRAW);
   gl.EnableVertexAttribArray(0);
   gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
-  gl.Uniform3f(s.u_proj, float(half), 0.105f, 0.9f);
+  // view space as built above (the original's projection inverted) -> clip
+  gl.UniformMatrix3fv(s.u_clip, 1, 0, target.clip);
 
   // world -> view of the exact camera (row scales hold the field of view)
   float cam[9];
@@ -638,6 +714,7 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
     for (int c = 0; c < 3; ++c) {
       float k = f.camera.scale[size_t(r)];
       if (r == 0) k /= float(widen);
+      if (r == 1) k /= float(heighten);
       cam[c * 3 + r] = f.camera.rot[size_t(r * 3 + c)] * k;  // column-major for GL
     }
   gl.UniformMatrix3fv(s.u_m, 1, 0, cam);
@@ -675,7 +752,8 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
   gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(s.buf.size() * sizeof(float)), s.buf.data(),
                 GL_STREAM_DRAW);
   gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
-  gl.Uniform3f(s.u_proj, 0.f, 0.f, 1.f);
+  const float flip[9] = {-1, 0, 0, 0, 1, 0, 0, 0, 1};
+  gl.UniformMatrix3fv(s.u_clip, 1, 0, flip);
   for (int i = 0; i < 16; ++i) {
     const uint32_t c = palette[i];
     gl.StencilFunc(GL_EQUAL, i, 0x0F);
@@ -689,12 +767,9 @@ void GlScene::draw_scene(const Frame& f, const uint32_t* palette, const Rect& ar
   gl.Viewport(0, 0, s.win_w, s.win_h);
 }
 
-void GlScene::draw_image(int slot, const uint32_t* argb, int w, int h, const Rect& dst, bool blend,
-                         bool smooth) {
-  Impl& s = *p_;
-  const GL& gl = s.gl;
-  if (slot < 0 || slot >= 4 || w <= 0 || h <= 0 || dst.w <= 0 || dst.h <= 0) return;
-  Impl::Tex& t = s.tex[slot];
+void GlScene::Impl::upload(int slot, const uint32_t* argb, int w, int h, bool blend) {
+  Impl& s = *this;
+  Tex& t = s.tex[slot];
   s.rgba.resize(size_t(w) * size_t(h) * 4);
   for (size_t i = 0; i < size_t(w) * size_t(h); ++i) {
     const uint32_t c = argb[i];
@@ -713,32 +788,34 @@ void GlScene::draw_image(int slot, const uint32_t* argb, int w, int h, const Rec
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s.rgba.data());
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     t.w = w;
     t.h = h;
   } else {
     gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, s.rgba.data());
   }
-  gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  const float x0 = 2.f * float(dst.x) / float(s.win_w) - 1.f;
-  const float x1 = 2.f * float(dst.x + dst.w) / float(s.win_w) - 1.f;
-  const float y0 = 1.f - 2.f * float(dst.y) / float(s.win_h);
-  const float y1 = 1.f - 2.f * float(dst.y + dst.h) / float(s.win_h);
-  const float q[] = {x0, y0, 0, 0, x1, y0, 1, 0, x1, y1, 1, 1,
-                     x0, y0, 0, 0, x1, y1, 1, 1, x0, y1, 0, 1};
+}
+
+// quad: 6 vertices of x, y, z, u, v; clip: column-major; sx, sy: output
+// pixels per texel (1: plain bilinear filtering).
+void GlScene::Impl::image(int slot, const float* quad, const float* clip, float sx, float sy, bool blend) {
+  Impl& s = *this;
+  const Tex& t = s.tex[slot];
+  if (!t.id) return;
+  gl.ActiveTexture(GL_TEXTURE0);
+  gl.BindTexture(GL_TEXTURE_2D, t.id);
   gl.UseProgram(s.image_prog);
   gl.Uniform1i(s.u_image, 0);
-  // smooth: plain bilinear; otherwise sharp enlarged pixels
-  const float sx = smooth ? 1.f : std::max(1.f, float(dst.w) / float(w));
-  const float sy = smooth ? 1.f : std::max(1.f, float(dst.h) / float(h));
-  gl.Uniform4f(s.u_tex, float(w), float(h), sx, sy);
+  gl.Uniform4f(s.u_tex, float(t.w), float(t.h), std::max(1.f, sx), std::max(1.f, sy));
+  gl.UniformMatrix3fv(s.u_image_clip, 1, 0, clip);
   gl.BindBuffer(GL_ARRAY_BUFFER, s.vbo);
-  gl.BufferData(GL_ARRAY_BUFFER, sizeof q, q, GL_STREAM_DRAW);
+  gl.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(30 * sizeof(float)), quad, GL_STREAM_DRAW);
   gl.EnableVertexAttribArray(0);
   gl.EnableVertexAttribArray(1);
-  gl.VertexAttribPointer(0, 2, GL_FLOAT, 0, 4 * sizeof(float), nullptr);
-  gl.VertexAttribPointer(1, 2, GL_FLOAT, 0, 4 * sizeof(float),
-                         reinterpret_cast<const void*>(2 * sizeof(float)));
+  gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 5 * sizeof(float), nullptr);
+  gl.VertexAttribPointer(1, 2, GL_FLOAT, 0, 5 * sizeof(float),
+                         reinterpret_cast<const void*>(3 * sizeof(float)));
   if (blend) {
     gl.Enable(GL_BLEND);
     gl.BlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -746,6 +823,82 @@ void GlScene::draw_image(int slot, const uint32_t* argb, int w, int h, const Rec
   gl.DrawArrays(GL_TRIANGLES, 0, 6);
   gl.Disable(GL_BLEND);
   gl.DisableVertexAttribArray(1);
+}
+
+void GlScene::draw_image(int slot, const uint32_t* argb, int w, int h, const Rect& dst, bool blend,
+                         bool smooth) {
+  Impl& s = *p_;
+  if (slot < 0 || slot >= 4 || w <= 0 || h <= 0 || dst.w <= 0 || dst.h <= 0) return;
+  s.upload(slot, argb, w, h, blend);
+  const float x0 = 2.f * float(dst.x) / float(s.win_w) - 1.f;
+  const float x1 = 2.f * float(dst.x + dst.w) / float(s.win_w) - 1.f;
+  const float y0 = 1.f - 2.f * float(dst.y) / float(s.win_h);
+  const float y1 = 1.f - 2.f * float(dst.y + dst.h) / float(s.win_h);
+  const float q[] = {x0, y0, 1, 0, 0, x1, y0, 1, 1, 0, x1, y1, 1, 1, 1,
+                     x0, y0, 1, 0, 0, x1, y1, 1, 1, 1, x0, y1, 1, 0, 1};
+  const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  // smooth: plain bilinear; otherwise sharp enlarged pixels
+  s.image(slot, q, ident, smooth ? 1.f : float(dst.w) / float(w), smooth ? 1.f : float(dst.h) / float(h),
+          blend);
+}
+
+void GlScene::set_image(int slot, const uint32_t* argb, int w, int h, bool blend) {
+  if (slot < 0 || slot >= 4 || w <= 0 || h <= 0) return;
+  p_->upload(slot, argb, w, h, blend);
+}
+
+void GlScene::draw_screen_eye(int slot, const EyeView& eye, const std::array<float, 9>& head_from_seat,
+                              const std::array<float, 3>& scale, float size, bool blend, bool console) {
+  Impl& s = *p_;
+  if (slot < 0 || slot >= 4 || !s.tex[slot].id || eye.width <= 0 || eye.height <= 0) return;
+  // The 320x200 screen in the directions the original's projection gives
+  // its pixels: columns 0..320 are x/z = 1..-1 and rows 0..200 are
+  // (1 - 0.105) / 0.9 .. (-1 - 0.105) / 0.9 of y/z in the scaled view space.
+  const float ax = size * scale[2] / scale[0], ay = size * scale[2] / scale[1];
+  const float xl = ax, xr = -ax, yt = ay * (1.f - 0.105f) / 0.9f, yb = ay * (-1.f - 0.105f) / 0.9f;
+  const float q[] = {xl, yt, 1, 0, 0, xr, yt, 1, 1, 0, xr, yb, 1, 1, 1,
+                     xl, yt, 1, 0, 0, xr, yb, 1, 1, 1, xl, yb, 1, 0, 1};
+  double pe[9];
+  Impl::eye_projection(eye, pe);
+  float clip[9];
+  for (int r = 0; r < 3; ++r)
+    for (int c = 0; c < 3; ++c) {
+      double v = 0;
+      for (int k = 0; k < 3; ++k) v += pe[r * 3 + k] * double(head_from_seat[size_t(k * 3 + c)]);
+      clip[c * 3 + r] = float(v);
+    }
+  // output pixels per texel where the eye looks straight at the screen
+  const float sx = float(eye.width) / (eye.tan_right - eye.tan_left) * 2.f * ax / float(s.tex[slot].w);
+  const float sy = float(eye.height) / (eye.tan_up - eye.tan_down) * (yt - yb) / float(s.tex[slot].h);
+  s.gl.Viewport(0, 0, eye.width, eye.height);
+  if (console) {
+    // what the panel stands on: black from its lower edge downwards
+    const float below = -60.f * ay;
+    const float c[] = {xl, yb, 1, xr, yb, 1, xr, below, 1, xl, yb, 1, xr, below, 1, xl, below, 1};
+    const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    const GL& gl = s.gl;
+    gl.UseProgram(s.scene_prog);
+    gl.UniformMatrix3fv(s.u_m, 1, 0, ident);
+    gl.Uniform3f(s.u_off, 0, 0, 0);
+    gl.UniformMatrix3fv(s.u_clip, 1, 0, clip);
+    gl.Uniform4f(s.u_colour, 0, 0, 0, 1);
+    gl.BindBuffer(GL_ARRAY_BUFFER, s.vbo);
+    gl.BufferData(GL_ARRAY_BUFFER, sizeof c, c, GL_STREAM_DRAW);
+    gl.EnableVertexAttribArray(0);
+    gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, 0, nullptr);
+    gl.DrawArrays(GL_TRIANGLES, 0, 6);
+  }
+  s.image(slot, q, clip, sx, sy, blend);
+}
+
+void GlScene::set_size(int win_w, int win_h) {
+  Impl& s = *p_;
+  s.win_w = win_w;
+  s.win_h = win_h;
+  s.gl.Viewport(0, 0, win_w, win_h);
+  s.gl.Disable(GL_SCISSOR_TEST);
+  s.gl.Disable(GL_STENCIL_TEST);
+  s.gl.ColorMask(1, 1, 1, 1);
 }
 
 bool GlScene::read_window(std::vector<uint8_t>& rgb, int win_w, int win_h) {

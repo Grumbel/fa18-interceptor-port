@@ -71,6 +71,12 @@ Verified with scripted runs (`--script`):
       replacements could be registered the same way); the asm parts (3D
       engine hunks 4–77) are better kept as generated code
 
+- [x] VR: `--vr` (OpenXR, docs/vr.md): head rotation, everything at
+      infinity; verified with Monado's simulated headset and
+      `tests/check_vr.sh`
+- [ ] VR: try on a real headset / SteamVR; stereo depth for near objects
+      (per-primitive view-space unit), 3D cockpit, controllers
+
 ## Findings worth knowing
 
 - Hunk layout: back to back from $20000; WHDLoad PatchSeg offsets are

@@ -636,7 +636,7 @@ struct Shadow::Impl {
   double prof[3] = {};
   uint64_t prof_n = 0;
 
-  bool run(float alpha, float widen, Frame& out);
+  bool run(float alpha, const View& view, Frame& out);
   void draw_2d();
   void fill_view(uint8_t value);
   void read_planes(std::vector<uint8_t>& out);
@@ -723,7 +723,7 @@ void Shadow::Impl::on_scene_done() {
   if (!verify || !game_cap.on) return;
   game_cap.on = false;
   Frame f;
-  if (!run(1.f, 1.f, f)) return;
+  if (!run(1.f, View{}, f)) return;
   std::string why;
   ++verified;
   if (!same_prims(game_cap, cap, why)) {
@@ -750,10 +750,11 @@ void Shadow::Impl::on_scene_done() {
                  (unsigned long long)verified, (unsigned long long)mismatched, cap.prims.size());
 }
 
-bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
+bool Shadow::Impl::run(float alpha, const View& view, Frame& out) {
   if (!cur.valid || failed) return false;
   alpha = std::clamp(alpha, 0.f, 1.f);
-  if (widen < 1.f) widen = 1.f;
+  // Row 0 and row 1 of the view matrix are divided by these.
+  double widen = view.head ? 1.0 : std::max(1.0, double(view.widen)), heighten = 1.0;
   bool interpolate = alpha < 1.f && prev.valid && prev.cam.external == cur.cam.external &&
                      cur.image.frame - prev.image.frame <= 16 && prev.image.ram.size() == cur.image.ram.size();
   if (interpolate) {
@@ -772,7 +773,7 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
   sm.restore_image(cur.image);
   const auto t_restore = Clock::now();
   cap.clear();
-  CamState cam;
+  CamState cam, scene_cam;
   M3 rot = cur.cam.rot;
   try {
     using namespace native;
@@ -780,13 +781,25 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
     sub_4217c();
     cam = read_camera(sm);
     if (interpolate) rot = slerp(prev.cam.rot, cur.cam.rot, alpha);
-    if (interpolate || widen != 1.f) {
+    M3 seat_rot = rot;  // the game's own view direction at this moment
+    if (view.head) {
+      M3 h;
+      for (int i = 0; i < 9; ++i) h.m[i] = double(view.head_from_seat[size_t(i)]);
+      rot = mul(h, rot);
+      // |x| <= z of the scaled view space is the tangent scale[2] / scale[0]
+      // in the original; make it tan_h (and the same vertically).
+      const double sz = std::max(1.0, double(cam.scale[2]));
+      widen = std::clamp(double(view.tan_h) * double(cam.scale[0]) / sz, 0.25, 16.0);
+      heighten = std::clamp(double(view.tan_v) * double(cam.scale[1]) / sz, 0.25, 16.0);
+    }
+    if (interpolate || widen != 1.0 || heighten != 1.0 || view.head) {
       // The matrix the original code culls and transforms with: the exact
       // rotation, row-scaled and rounded like its own.
       for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c) {
           double v = rot.m[r * 3 + c] * double(cam.scale[r]);
-          if (r == 0) v /= double(widen);
+          if (r == 0) v /= widen;
+          if (r == 1) v /= heighten;
           sm.w16(0x5aed0 + 2u * uint32_t(r * 3 + c), uint16_t(int16_t(std::lround(v))));
         }
     }
@@ -833,12 +846,21 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
       }
     }
     cap.on = false;
+    scene_cam = read_camera(sm);
     t_scene = Clock::now();
     if (overlay_enabled) {
       // The 2D drawing of this frame, twice: once on a cleared view and
       // once on a view of all ones.  A pixel that comes out the same was
       // drawn; one that keeps the fill is left to the 3D view.
       cap.stubs_on = false;
+      if (view.head) {
+        // The cockpit and the HUD belong to the game's view direction and
+        // field of view, not to the head's.
+        for (int r = 0; r < 3; ++r)
+          for (int c = 0; c < 3; ++c)
+            sm.w16(0x5aed0 + 2u * uint32_t(r * 3 + c),
+                   uint16_t(int16_t(std::lround(seat_rot.m[r * 3 + c] * double(cam.scale[r])))));
+      }
       sm.capture_image(before_2d);
       fill_view(0x00);
       draw_2d();
@@ -889,14 +911,15 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
     }
   }
   // ---- display list ----
-  CamState used = read_camera(sm);  // matrix and position the pipeline ran with
+  CamState used = scene_cam;        // matrix and position the pipeline ran with
   M3 q;                             // quantised matrix as numbers
   for (int i = 0; i < 9; ++i) q.m[i] = double(used.m[i]) / 256.0;
   M3 exact;                         // exact row-scaled rotation
   for (int r = 0; r < 3; ++r)
     for (int c = 0; c < 3; ++c) {
       double v = rot.m[r * 3 + c] * double(used.scale[r]) / 256.0;
-      if (r == 0) v /= double(widen);
+      if (r == 0) v /= widen;
+      if (r == 1) v /= heighten;
       exact.m[r * 3 + c] = v;
     }
   M3 qi;
@@ -911,7 +934,8 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
     out.refine[size_t(i)] = float(refine.m[i]);
   }
   for (int i = 0; i < 3; ++i) out.camera.scale[size_t(i)] = float(double(used.scale[i]) / 256.0);
-  out.widen = widen;
+  out.widen = float(widen);
+  out.heighten = float(heighten);
   out.verts = cap.verts;
   out.prims = cap.prims;
   out.backdrop = sm.r8(0x5ab93) ? 6 : 4;
@@ -966,6 +990,6 @@ uint64_t Shadow::newest_frame() const { return p_->cur.valid ? p_->cur.image.fra
 uint64_t Shadow::previous_frame() const {
   return p_->prev.valid ? p_->prev.image.frame : newest_frame();
 }
-bool Shadow::build(float alpha, float widen, Frame& out) { return p_->run(alpha, widen, out); }
+bool Shadow::build(float alpha, const View& view, Frame& out) { return p_->run(alpha, view, out); }
 
 }  // namespace render

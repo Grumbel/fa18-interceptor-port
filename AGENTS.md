@@ -53,7 +53,13 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   interpolated between two game frames; the leaf rasterisers record
   primitives, which are drawn in painter's order with the palette index in
   the stencil buffer.  The game is not affected.  Extend this pipeline
-  rather than re-implementing game logic for rendering.  Check with
+  rather than re-implementing game logic for rendering.  `--vr` shows it
+  on a head-mounted display through OpenXR (docs/vr.md; optional at build
+  time, `FA18_OPENXR`): head rotation on top of the game's camera, one
+  display list per picture drawn once per eye, the game's screen as a
+  picture where the original shows it, everything at infinity.  Not yet
+  tried on a real headset; `FA18_VR_SIM=yaw,pitch,roll` draws it without
+  one (`tests/check_vr.sh ORIGINAL.adf`).  Check with
   `tests/check_new_renderer.sh ORIGINAL.adf`; `--renderer original` is the
   plain Amiga picture.  The `--hires` / `--gl` / `--gl-direct` layers
   described below are the older enhancement paths.

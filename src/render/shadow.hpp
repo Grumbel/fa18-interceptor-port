@@ -20,6 +20,7 @@
 #include "amiga/machine.hpp"
 #include "render/display_list.hpp"
 
+#include <array>
 #include <memory>
 #include <string>
 
@@ -39,11 +40,27 @@ class Shadow {
   uint64_t newest_frame() const;
   uint64_t previous_frame() const;
 
+  // What the scene is built for.
+  struct View {
+    // Window: `widen` >= 1 extends the horizontal field of view the original
+    // code culls against (widescreen); the 4:3 centre keeps its geometry.
+    float widen = 1;
+    // Headset: the head's rotation relative to the game's view direction
+    // (row-major, x left, y up, z forward; game view -> head) and the
+    // tangents of the half angles of a symmetric frustum around the head's
+    // forward direction that holds both eyes' pictures.  The original code
+    // then culls and sorts for that frustum, whatever the game's own field
+    // of view, and Frame::widen / heighten tell how it relates to the
+    // original's.
+    bool head = false;
+    std::array<float, 9> head_from_seat{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    float tan_h = 1, tan_v = 1;
+  };
+
   // Display list for a moment between the previous (alpha 0) and the newest
-  // (alpha 1) game frame.  `widen` >= 1 extends the horizontal field of view
-  // the original code culls against (widescreen); the 4:3 centre keeps its
-  // geometry.  False if no frame is available or the shadow failed.
-  bool build(float alpha, float widen, Frame& out);
+  // (alpha 1) game frame.  False if no frame is available or the shadow
+  // failed.
+  bool build(float alpha, const View& view, Frame& out);
 
   // Debug: compare the shadow's primitives at alpha 1 with what the game
   // itself drew in that frame (FA18_SHADOW_VERIFY=1).

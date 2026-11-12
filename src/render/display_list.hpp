@@ -60,6 +60,15 @@ struct Camera {
   bool external = false;
 };
 
+// One eye of a head-mounted display.  Rotations are row-major, between
+// spaces with x left, y up, z forward.
+struct EyeView {
+  std::array<float, 9> from_head{1, 0, 0, 0, 1, 0, 0, 0, 1};  // head -> eye
+  // Tangents of the half angles, signed as in OpenXR (left and down negative).
+  float tan_left = -1, tan_right = 1, tan_up = 1, tan_down = -1;
+  int width = 0, height = 0;  // pixels of the eye's picture
+};
+
 struct Frame {
   Camera camera;
   // The primitives are in the view space of the quantised matrix the
@@ -71,6 +80,9 @@ struct Frame {
   // frustum is |x| <= z in view space, which spans `widen` times the width
   // of the original picture.
   float widen = 1;
+  // The same vertically: |y| <= z spans `heighten` times the original's
+  // rows above and below the view centre (1 except for a headset).
+  float heighten = 1;
   std::vector<Vec3> verts;
   std::vector<Prim> prims;       // painter's order
   // Ground: backdrop index (4 land, 6 open sea) and the altitude that

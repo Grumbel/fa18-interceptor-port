@@ -108,11 +108,11 @@ Environment switches: `FA18_NO_INTERPOLATION`, `FA18_SHADOW_ALPHA=x`
 
 - Pause and everything outside the 3D view is the game's 320x200 screen.
 - Cockpit and HUD are the original's pixels (drawn per picture, so they
-  move smoothly); a vector HUD and the 3D cockpit for VR come next.
+  move smoothly); a vector HUD and a 3D cockpit come next.
 - Derived vertices are not snapped (see above).
 - `$42f48` / `$3f284` run on the shadow only for their plane masks; about
   a third of the shadow's time.
 - Not yet tried on a real display by the author: vsync pacing at 120/144
   Hz, GLES 2 devices, the web build (single canvas).
-- VR: `widen` and the camera override are the hooks for a head pose; the
-  display list is renderer-independent (`display_list.hpp`).
+- VR: `--vr` (docs/vr.md) follows the head's rotation with everything at
+  infinity; stereo depth and a 3D cockpit are open.

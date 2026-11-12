@@ -10,6 +10,7 @@
 
 #include "render/display_list.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -46,6 +47,24 @@ class GlScene {
   // frame buffer; with `blend` the alpha channel is used.
   void draw_image(int slot, const uint32_t* argb, int w, int h, const Rect& dst, bool blend,
                   bool smooth);
+
+  // ---- head-mounted display (see vr.hpp) ----
+  // The scene as one eye sees it, into the bound framebuffer (begin() was
+  // called with the eye's size).  The frame must have been built for the
+  // head this eye belongs to (Shadow::View::head).
+  void draw_scene_eye(const Frame& f, const uint32_t* palette, const EyeView& eye);
+  // A picture for draw_screen_eye (kept until replaced).
+  void set_image(int slot, const uint32_t* argb, int w, int h, bool blend);
+  // The picture of `slot` as the original's 320x200 screen, at infinity in
+  // the directions the original's projection (row scales `scale`) gives its
+  // pixels, as seen from a head turned by `head_from_seat`.  `size` scales
+  // it about the view direction; `console` continues its lower edge
+  // downwards in black (the instrument panel does not float).
+  void draw_screen_eye(int slot, const EyeView& eye, const std::array<float, 9>& head_from_seat,
+                       const std::array<float, 3>& scale, float size, bool blend, bool console);
+  // The size of the bound framebuffer, without clearing it.
+  void set_size(int win_w, int win_h);
+
   // Window contents as RGB, top row first.
   bool read_window(std::vector<uint8_t>& rgb, int win_w, int win_h);
 
