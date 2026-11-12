@@ -1471,17 +1471,6 @@ static void log_cockpit_dynamics(const char* presenter, const amiga::Machine& m,
   }
 }
 
-bool strict_renderer = false;
-
-// In the strict (--renderer new) mode, black Amiga pixels inside the 3D
-// viewport are leftover 2D clears/specks, never HUD ink: show the GL scene.
-bool strict_speck(bool flight, bool paused, int y, int scene_rows, uint32_t rgb) {
-  if (!strict_renderer || !flight || paused || y >= scene_rows) return false;
-  // Chase/external camera ($5aa7d): the viewport holds no HUD ink at all, so
-  // every remaining Amiga pixel there is a blitter leftover.
-  return native::rd8(0x5aa7d) != 0 || (rgb & 0xffffff) == 0;
-}
-
 bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                   float alpha, bool refresh_center) {
   amiga::Machine::RasterAuditScope audit(m, amiga::Machine::RasterSource::Presenter);
@@ -1537,7 +1526,6 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
       cockpit_panel::enabled(hud.frame_from_writer, hud.frame_rails, fuel.active) &&
       std::getenv("FA18_COCKPIT_PANEL_BITMAP_REFERENCE") == nullptr;
   const CapturedGlobe globe = panel_asset_enabled ? captured_globe(key) : CapturedGlobe{};
-  const bool pure_gl = strict_renderer && flight && !paused;
   int static_pixels = 0, dynamic_pixels = 0;
   int rail_asset_pixels = 0;
   int front_asset_pixels = 0;
@@ -1576,17 +1564,6 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                        ((scene_row[x] & 15) | right_bit)];
       }
       for (int x = 0; x < W; ++x) {
-        if (pure_gl) {
-          // --renderer new in flight: GL scene only, no Amiga bitmap pixels.
-          {
-            const int scene_y = L && ly >= 0 && ly < ready->rows ? ly : y;
-            const uint8_t* src = &scene_pixels[size_t(scene_y * S + yy) * size_t(stride) +
-                                               size_t(left + x * S)];
-            for (int xx = 0; xx < S; ++xx)
-              dst[left + x * S + xx] = pal[size_t(y) * 32 + (src[xx] & 15)];
-          }
-          continue;
-        }
         if (const auto bg = hud_original_text_background(
                 x, y, hud, rgb, pal, native_text_erase)) {
           for (int xx = 0; xx < S; ++xx) dst[left + x * S + xx] = *bg;
@@ -1712,7 +1689,7 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
         // In Pause the bitplanes contain the frozen game's real 2D panel
         // and gauges, not a half-drawn 3D back buffer. Keep them visible.
         const bool missing_3d_row = flight && !paused && y < ready->rows && !L;
-        if (missing_3d_row || strict_speck(flight, paused, y, ready->rows, rgb[y * W + x]) ||
+        if (missing_3d_row ||
             (L && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
           // The screen may point to the preceding Amiga 3D buffer. Its
           // contents are temporally different from the new GL side bands;
@@ -1764,7 +1741,6 @@ bool compose_view(amiga::Machine& m, std::vector<uint32_t>& out, int side,
                    (unsigned long long)m.frame_count(), panel_asset_pixels);
     }
   }
-  if (pure_gl) return true;
   blend_native_reticle(out, side, S, hud);
   blend_native_frame_rails(out, side, S, hud);
   blend_native_frame_crown(out, side, S, hud);
@@ -1844,11 +1820,6 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
   out.scene_palette_last = gl_scene_rows::last_palette_row(ready->rows);
   const bool global_palette_reference =
       std::getenv("FA18_GL_COPPER_GLOBAL_CLAMP_REFERENCE") != nullptr;
-  if (strict_renderer && flight && !paused) {
-    out.fuel_vector = out.fuel_bar_vector = out.radar_vector = false;
-  }
-  out.pure = strict_renderer && flight && !paused;
-  const bool pure_gl = strict_renderer && flight && !paused;
   out.overlay.resize(size_t(W) * 200 * 4);
   out.palette.resize(size_t(32) * 200 * 4);
   out.rows.resize(200 * 4);
@@ -1893,7 +1864,6 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
       const uint8_t li = idx[y * W + x];
       const size_t ci = size_t(scene ? ly : 0) * W + size_t(x);
       uint8_t* p = &out.overlay[(size_t(y) * W + size_t(x)) * 4];
-      if (pure_gl) { p[0] = p[1] = p[2] = p[3] = 0; continue; }
       if (radar.source_at(x, y, rgb[size_t(y) * W + x])) {
         const uint32_t c = radar.backing(y);
         p[0] = uint8_t(c >> 16);
@@ -2052,7 +2022,7 @@ bool prepare_gpu_layers(amiga::Machine& m, GpuLayers& out) {
         ++dynamic_pixels;
       }
       const bool missing_3d_row = flight && !paused && y < ready->rows && !scene;
-      if (missing_3d_row || (scene && strict_speck(flight, paused, y, ready->rows, rgb[y * W + x])) ||
+      if (missing_3d_row ||
           (scene && li % 16 == L->snap[ci] && !L->unexplained[ci])) {
         p[0] = p[1] = p[2] = 0;
         p[3] = !missing_3d_row && (li & 16) ? 16 : 0;

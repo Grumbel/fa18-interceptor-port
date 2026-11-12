@@ -805,8 +805,6 @@ struct State {
   GLint u_coloured = -1, u_water_class = -1;
   // current frame
   bool capturing = false;
-  bool injecting = false;   // state-driven scene injection (inject_*)
-  std::function<void()> injector;
   bool has_frame = false, has_previous = false;
   uint64_t serial = 0, capture_tick = 0;
   uint64_t last_rendered_serial = 0;
@@ -961,13 +959,12 @@ void build_terrain() {
 
 // World units per view unit of the current object's vertex stage.
 double stage_unit() {
-  if (st.injecting) return 256.0;  // injected primitives are in eye units
   const uint32_t fp = native::cpu().a[6];
   if (st.distant) return std::ldexp(1.0, 8 + int16_t(rd16(fp - 8)));
   return std::ldexp(1.0, int16_t(rd16(0x5adb0)) + 8 - int16_t(rd16(fp - 6)));
 }
 
-bool capture_ok() { return st.ready && st.enabled && (st.injecting || (st.capturing && st.object >= 0)); }
+bool capture_ok() { return st.ready && st.enabled && st.capturing && st.object >= 0; }
 
 Prim& add_prim(GLenum mode, const Ops& o) {
   Prim p{};
@@ -1243,7 +1240,15 @@ void cancel_capture() {
   }
 }
 
+namespace {
+std::function<void(uint32_t, uint32_t, bool)> object_observer;
+}
+void set_object_observer(std::function<void(uint32_t, uint32_t, bool)> f) {
+  object_observer = std::move(f);
+}
+
 void begin_object(uint32_t mesh, uint32_t stream, bool distant) {
+  if (object_observer) object_observer(mesh, stream, distant);
   if (!active() || !st.capturing) return;
   ++st.object;
   st.mesh = mesh;
@@ -1461,41 +1466,8 @@ bool interpolation_available() { return active() && st.has_frame && st.has_previ
 uint64_t capture_serial() { return st.serial; }
 int capture_interval_vblanks() { return st.interval_vblanks; }
 
-void set_scene_injector(std::function<void()> f) { st.injector = std::move(f); }
-void inject_begin_object(bool flat) {
-  if (!st.injecting) return;
-  ++st.object;
-  st.mesh = 0;
-  st.stream = 0;
-  st.prims_in_object = 0;
-  st.distant = flat;
-  st.flat = flat;
-}
-void inject_poly(const double (*v)[3], int n, const Ops& o) {
-  if (!st.injecting || o.copy || n < 3) return;
-  std::vector<P3> pts;
-  for (int i = 0; i < n; ++i) pts.push_back({v[i][0] * 256.0, v[i][1] * 256.0, v[i][2] * 256.0});
-  clip_near(pts, true);
-  if (pts.size() < 3) return;
-  Prim& p = add_prim(GL_TRIANGLES, o);
-  for (size_t i = 1; i + 1 < pts.size(); ++i)
-    for (size_t j : {size_t(0), i, i + 1}) push(pts[j].x, pts[j].y, pts[j].z);
-  p.count = GLsizei(st.verts.size() / 3) - p.first;
-}
-void inject_line(const double a[3], const double b[3], const Ops& o) { note_line(a, b, o); }
-void inject_point(const double p[3], int kind, int radius, const Ops& o) { note_point(p, kind, radius, o); }
-
 void finish_capture() {
   if (!active() || !st.capturing) return;
-  if (st.injector) {
-    // State-driven scene: replace the captured object primitives.
-    st.verts.clear();
-    st.prims.clear();
-    st.object = -1;
-    st.injecting = true;
-    st.injector();
-    st.injecting = false;
-  }
   st.capturing = false;
   st.camera = capture_camera();
   st.has_frame = true;
@@ -1510,15 +1482,8 @@ void finish_capture() {
   ++st.frames;
 }
 
-// `S` is the vertical scale (output pixels per original row, 200 rows) and
-// `xs` the horizontal one (output pixels per original column). They are equal
-// for the integer layers (non-square display pixels are stretched later); the
-// window-sized renderer passes arbitrary floats with xs = h/240 so that pixels
-// stay square on a 4:3 presentation of the original image.
-static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float alpha,
-                       float xs = 0.f) {
-  if (xs <= 0.f) xs = S;
-  if (!active() || (!st.capturing && !st.has_frame) || w < 320 * xs - 0.5f || S <= 0.f) return false;
+static bool draw_layer(std::vector<uint8_t>* px, int w, int h, int S, float alpha) {
+  if (!active() || (!st.capturing && !st.has_frame) || w < 320 * S || S <= 0) return false;
   if (st.capturing) {
     // VBL presentation can occur halfway through the next 3D draw.  The
     // completed scene was moved into previous_* by scene_begin(); drawing
@@ -1532,7 +1497,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float al
     st.capturing = false;
     st.has_frame = true;
     st.has_previous = false;
-    const bool rendered = draw_layer(px, w, h, S, 1.f, xs);
+    const bool rendered = draw_layer(px, w, h, S, 1.f);
     st.has_previous = true;
     st.has_frame = false;
     st.capturing = true;
@@ -1630,7 +1595,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float al
   const auto t0 = std::chrono::steady_clock::now();
   frame_draw_calls = frame_draw_vertices = 0;
   if (!ensure_fbo(w, h)) return false;
-  const float rows = float(h) / S;
+  const float rows = float(h / S);
   gl.BindFramebuffer(GL_FRAMEBUFFER, st.fbo);
   gl.Viewport(0, 0, w, h);
   gl.UseProgram(st.prog);
@@ -1638,7 +1603,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float al
   gl.Uniform1f(st.u_water_class, 0.f);
   // A wider FBO must reveal more of the world, not stretch the central view.
   // With w=320*S this is exactly 1.0 and preserves the original projection.
-  gl.Uniform1f(st.u_xscale, float(320.f * xs) / float(w));
+  gl.Uniform1f(st.u_xscale, float(320 * S) / float(w));
 #ifndef FA18_OPENGLES2
   gl.Enable(GL_PROGRAM_POINT_SIZE);  // desktop GL; GLES always uses gl_PointSize
 #endif
@@ -1814,7 +1779,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float al
   // two draw calls + uniforms for each flat primitive. a_style stores
   // (palette-on-land, palette-on-water); u_water_class selects a channel.
   set_view(ident);
-  auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * S : 1.f; };
+  auto point_size = [&](const Prim& p) { return p.mode == GL_POINTS ? p.size * float(S) : 1.f; };
   if (!st.flat_batch.empty()) {
     GLsizei flat_count = GLsizei(st.flat_batch.size() / 5);
     if (reference_batches) {
@@ -1943,7 +1908,7 @@ static bool draw_layer(std::vector<uint8_t>* px, int w, int h, float S, float al
   return true;
 }
 
-bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {  // integer layers
+bool render_layer(std::vector<uint8_t>& px, int w, int h, int S, float alpha) {
   return draw_layer(&px, w, h, S, alpha);
 }
 
@@ -1952,27 +1917,17 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba, bool hud_visible,
                  const uint8_t* pause_rgba, bool pause_visible,
-                 const uint8_t* cockpit_rgba, bool fit) {
+                 const uint8_t* cockpit_rgba) {
   if (!active() || S <= 0 || side < 0 || layer.scene_rows <= 0 ||
       layer.overlay.size() != size_t(320 * 200 * 4) ||
       layer.palette.size() != size_t(32 * 200 * 4) ||
       layer.rows.size() != size_t(200 * 4) ||
       drawable_w <= 0 || drawable_h <= 0) return false;
-  // Pure GL mode draws nothing derived from Amiga 2D writes: no HUD state.
-  const remaster::NativeHudState hud_state =
-      layer.pure ? remaster::NativeHudState{} : remaster::prepared_gpu_hud_state();
+  const remaster::NativeHudState hud_state = remaster::prepared_gpu_hud_state();
   st.make_current();
   if (st.present_failed) return false;
-  // fit: render at the drawable's own pixel size. The view is 200 rows tall
-  // and as wide as the window aspect allows (4:3 == 320 columns).
-  const double wide_d = fit && drawable_h > 0 ? double(drawable_w) / drawable_h * 240.0
-                                              : double(320 + side * 2);
-  const int wide = int(wide_d);
-  const double side_d = (wide_d - 320.0) / 2.0;
-  const int width = fit ? drawable_w : wide * S;
-  const int height = fit ? drawable_h : layer.scene_rows * S;
-  const float scene_sy = fit ? float(drawable_h) / float(layer.scene_rows) : float(S);
-  const float scene_sx = fit ? float(drawable_h) / 240.f : float(S);
+  const int wide = 320 + side * 2;
+  const int width = wide * S, height = layer.scene_rows * S;
 
   if (!st.present_prog) {
     std::string err;
@@ -2008,7 +1963,7 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
     gl.Uniform1i(u.pause, 5);
     gl.Uniform1i(u.cockpit, 6);
   }
-  if (!draw_layer(nullptr, width, height, scene_sy, alpha, scene_sx)) return false;
+  if (!draw_layer(nullptr, width, height, S, alpha)) return false;
 
   auto bind_texture = [&](GLuint& tex, int unit, int w, int h, const void* pixels,
                           bool upload_pixels = true) {
@@ -2085,7 +2040,7 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
   gl.ColorMask(1, 1, 1, 1);
   gl.ClearColor(0, 0, 0, 1);
   gl.Clear(GL_COLOR_BUFFER_BIT);
-  const double aspect = fit ? double(drawable_w) / drawable_h : double(wide) / 240.0;
+  const double aspect = double(wide) / 240.0;
   const int vw = std::min(drawable_w, int(std::round(drawable_h * aspect)));
   const int vh = std::min(drawable_h, int(std::round(drawable_w / aspect)));
   gl.Viewport((drawable_w - vw) / 2, (drawable_h - vh) / 2, vw, vh);
@@ -2140,10 +2095,10 @@ bool present_gpu(const remaster::GpuLayers& layer, uint64_t layer_revision,
                    u.reticle, int(hud_state.reticle),
                    hud_state.reticle_rgb);
   }
-  gl.Uniform2f(u.dimensions, fit ? float(wide_d) : float(wide),
+  gl.Uniform2f(u.dimensions, float(wide),
                float(layer.scene_rows));
-  gl.Uniform1f(u.side, fit ? float(side_d) : float(side));
-  gl.Uniform1f(u.scale, scene_sy);
+  gl.Uniform1f(u.side, float(side));
+  gl.Uniform1f(u.scale, float(S));
   gl.Uniform1f(u.scene_palette_last, float(layer.scene_palette_last));
   bind_present_quad();
   gl.DrawArrays(GL_TRIANGLES, 0, 6);

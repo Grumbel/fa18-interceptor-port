@@ -59,20 +59,14 @@ struct Ops {
 // Capture hooks; cheap no-ops unless active().
 void scene_begin();                                          // top of game_frame
 void begin_object(uint32_t mesh, uint32_t stream, bool distant);  // LOD chosen
+// Called first in begin_object, also when this renderer is not in use: the
+// translated object routines announce every model they are about to draw
+// (the shadow machine of --renderer new groups its primitives by it).
+void set_object_observer(std::function<void(uint32_t mesh, uint32_t stream, bool distant)> f);
 void note_poly(const int16_t (*v)[3], int n, int shift, const Ops& o);  // $61286
 void note_line(const double a[3], const double b[3], const Ops& o);
 // kind 0: 1x1, 1: 2x1, 2: 2x2 low-res pixels, 3: disc of `radius` pixels
 void note_point(const double p[3], int kind, int radius, const Ops& o);
-
-// State-driven scene (--state-scene): at the end of each captured 3D frame the
-// injector replaces the captured object primitives; it calls inject_* below.
-// Coordinates are camera view space in eye units (256 world units), i.e. after
-// the view matrix, before the perspective division.
-void set_scene_injector(std::function<void()> f);
-void inject_begin_object(bool flat);
-void inject_poly(const double (*v)[3], int n, const Ops& o);
-void inject_line(const double a[3], const double b[3], const Ops& o);
-void inject_point(const double p[3], int kind, int radius, const Ops& o);
 
 // Render the frame into a hi-res layer of palette indices (w x h, top row
 // first, h = rows * S).  Returns false when nothing was rendered.
@@ -91,8 +85,7 @@ bool present_gpu(const remaster::GpuLayers& layers, uint64_t layer_revision,
                  int drawable_w, int drawable_h,
                  const uint8_t* hud_rgba = nullptr, bool hud_visible = false,
                  const uint8_t* pause_rgba = nullptr, bool pause_visible = false,
-                 const uint8_t* cockpit_rgba = nullptr,
-                 bool fit = false);  // fit: scene at the drawable's own pixel size
+                 const uint8_t* cockpit_rgba = nullptr);
 // Show a framebuffer that has no usable captured 3D scene (title, menu,
 // transitions, original/software graphics mode) on the same visible GL
 // window. The caller swaps the GL window after presenting; the original

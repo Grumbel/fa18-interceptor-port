@@ -9,8 +9,6 @@
 namespace amiga { struct Machine; }
 
 namespace remaster {
-
-extern bool strict_renderer;  // --renderer new: no raw Amiga specks in the 3D view
 extern bool scene_hooks;   // set by install()
 void install(amiga::Machine& m);  // PC hooks for prim observation + hires layer
 void scene_begin();        // start of the 3D scene draw ($2fc14)
@@ -103,7 +101,6 @@ NativeHudState prepared_gpu_hud_state();
 // Row RGBA: scene row, validity, left/right EHB bits.
 struct GpuLayers {
   std::vector<uint8_t> overlay, palette, rows;
-  bool pure = false;  // --renderer new in flight: GL scene only
   int scene_rows = 0;
   // Last original 3D palette row. This is used only by widescreen side
   // extensions; the cockpit/centre reads the live 200-row copper palette.

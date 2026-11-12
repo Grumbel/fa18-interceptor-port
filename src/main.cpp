@@ -3,7 +3,6 @@
 #include "control_help.hpp"
 #include "font6x10.hpp"
 #include "native/game_state.hpp"
-#include "native/state_scene.hpp"
 #include "render/gl_scene.hpp"
 #include "render/shadow.hpp"
 #include "native/terrain.hpp"
@@ -146,7 +145,6 @@ public:
   bool mouse_grab = false;
   bool fast = false;
   bool widescreen = false;
-  bool fit_screen = false;  // --renderer new: render size follows the window
   // --renderer new: the window is an OpenGL window drawn by render::GlScene
   // from the display lists of render::Shadow; no SDL_Renderer exists.
   bool new_renderer = false;
@@ -1394,8 +1392,7 @@ public:
                           side, machine->hires_scale, alpha, dw, dh,
                           new_hud, show_hud,
                           pause_visible ? pause_rgba.data() : nullptr, pause_visible,
-                          remaster::cockpit_atlas(*machine).rgba.data(),
-                          fit_screen))
+                          remaster::cockpit_atlas(*machine).rgba.data()))
       return false;
     if (const char* dump = std::getenv("FA18_GL_DIRECT_DUMP");
         dump && std::getenv("FA18_GL_DIRECT_DUMP_FRAME") &&
@@ -2105,11 +2102,12 @@ void usage() {
           "\n"
           "Graphics (the original renderer is the default):\n"
           "  --renderer R     original: the Amiga picture as-is\n"
-          "                   new:      OpenGL scene built from game state, widescreen\n"
+          "                   new:      OpenGL at the window's resolution and the display's\n"
+          "                             frame rate, widescreen; the game itself is unchanged\n"
           "                   hires:    software upscaling of the original renderer\n"
-          "  --render-fps N   'new' presentation: 60, 120, 180 or 240 Hz (not physics)\n"
-          "                   (--hires N, --gl-direct, --state-scene, --widescreen are\n"
-          "                   still accepted for scripts but are not needed)\n"
+          "  --render-fps N   'new': pictures per second without vsync (120, 180, 240)\n"
+          "                   (--hires N, --gl N, --gl-direct, --widescreen select the\n"
+          "                   older enhancement layers)\n"
           "  --full-detail    nearest level of detail for every 3D object\n"
           "  --stats          show game-world statistics\n"
           "  --fps            show observed presentation FPS\n"
@@ -2229,7 +2227,6 @@ int main(int argc, char** argv) {
   bool disable_amiga_scanout = false;
   amiga::ScanoutRegion hidden_scanout_region = amiga::ScanoutRegion::None;
   bool gl_direct = false;
-  bool state_scene_flag = false;
   bool renderer_original = false;  // --renderer original: pure Amiga output
   bool renderer_new = false;       // --renderer new: GL scene from game state
   int render_fps = 60;
@@ -2279,7 +2276,6 @@ int main(int argc, char** argv) {
       gl_scale = hires = std::atoi(argv[++i]);
     }
     else if (a == "--gl-direct") gl_direct = true;
-    else if (a == "--state-scene") state_scene_flag = true;
     else if (a == "--renderer" && i + 1 < argc) {
       const std::string r = argv[++i];
       if (r == "original") renderer_original = true;
@@ -2319,13 +2315,13 @@ int main(int argc, char** argv) {
       direct && std::strcmp(direct, "0") != 0) gl_direct = true;
   if (renderer_original) {
     // Hard toggle: nothing but the original Amiga bitmap, no GL layers.
-    requested_hires = requested_gl = gl_direct = state_scene_flag = false;
+    requested_hires = requested_gl = gl_direct = false;
     gl_scale = hires = 0;
     widescreen = false;
     render_fps = 60;
   } else if (renderer_new) {
     // Own OpenGL path (src/render): none of the hi-res / --gl layers.
-    requested_hires = requested_gl = gl_direct = state_scene_flag = false;
+    requested_hires = requested_gl = gl_direct = false;
     gl_scale = hires = 0;
     if (!std::getenv("FA18_NEW_4X3")) widescreen = true;
   }
@@ -2474,11 +2470,12 @@ int main(int argc, char** argv) {
       }
     };
   }
-  if (state_scene_flag || std::getenv("FA18_STATE_SCENE")) state_scene::install_gl(machine.disk_read("F-18 Interceptor"));
-  static render::Shadow shadow_test;
+  // Test aid: compare the shadow machine's primitives with the game's own
+  // drawing while the original renderer runs (tests/check_new_renderer.sh).
+  static render::Shadow shadow_verify;
   if (std::getenv("FA18_SHADOW_VERIFY") && !renderer_new) {
     std::string err;
-    if (!shadow_test.init(machine, data_dir, err)) fprintf(stderr, "shadow: %s\n", err.c_str());
+    if (!shadow_verify.init(machine, data_dir, err)) fprintf(stderr, "shadow: %s\n", err.c_str());
   }
   if (renderer_new) machine.record_scanout = true;
   if (!mesh_dump_dir.empty()) {
