@@ -214,6 +214,8 @@ struct Vr::Impl {
   double seat_yaw = 0;
   double origin[3] = {0, 0, 0};  // the head's centre when the view was centred
   bool recentre_pending = true;
+  float eye_override = -1;  // set_eye_distance()
+  float headset_ipd = 0;    // reported with the last picture
   std::string description;
 
   struct Eye {
@@ -562,14 +564,18 @@ Vr::Step Vr::begin_frame(HeadView& head) {
   if (s.sim) {
     const double k = kPi / 180.0, half = std::clamp(double(s.opt.fov), 10.0, 170.0) * k / 2;
     double pos[2][3];
+    const bool own = s.eye_override < 0;
+    const double ipd = own ? double(s.opt.ipd) : double(s.eye_override);
+    s.headset_ipd = s.opt.stereo ? s.opt.ipd : 0.f;
     for (int i = 0; i < 2; ++i) {
       pose[i] = vr_math::from_angles(double(s.opt.yaw) * k, double(s.opt.pitch) * k, double(s.opt.roll) * k);
       fov[i][0] = -half, fov[i][1] = half, fov[i][2] = half, fov[i][3] = -half;
       // eye 0 is the left one: OpenXR's x points right
-      const double side = (i == 0 ? -0.5 : 0.5) * double(s.opt.ipd);
+      const double side = (i == 0 ? -0.5 : 0.5) * ipd;
       for (int r = 0; r < 3; ++r) pos[i][r] = pose[i][size_t(r * 3)] * side;
     }
-    head = vr_math::head_view(pose, fov, size, 0.0, s.opt.stereo ? pos : nullptr);
+    const bool stereo = own ? s.opt.stereo : ipd > 0;
+    head = vr_math::head_view(pose, fov, size, 0.0, stereo ? pos : nullptr);
     return Step::Render;
   }
 #if defined(FA18_OPENXR)
@@ -621,9 +627,25 @@ Vr::Step Vr::begin_frame(HeadView& head) {
   for (int r = 0; r < 3; ++r) mid[r] = tracked ? (at[0][r] + at[1][r]) / 2 - s.origin[r] : 0.0;
   const double reach = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
   const double keep = reach > 0.5 ? 0.5 / reach : 1.0;
+  // Each eye's offset from the head's centre; an overridden distance
+  // scales it (or, if the runtime gives both eyes the same place, lies
+  // along the eye's x axis).
+  double off[2][3];
   for (int i = 0; i < 2; ++i)
-    for (int r = 0; r < 3; ++r) pos[i][r] = mid[r] * keep + (at[i][r] - (at[0][r] + at[1][r]) / 2);
-  head = vr_math::head_view(pose, fov, size, s.seat_yaw, s.opt.stereo ? pos : nullptr);
+    for (int r = 0; r < 3; ++r) off[i][r] = at[i][r] - (at[0][r] + at[1][r]) / 2;
+  const double apart = 2 * std::sqrt(off[0][0] * off[0][0] + off[0][1] * off[0][1] + off[0][2] * off[0][2]);
+  s.headset_ipd = float(apart);
+  const bool own = s.eye_override < 0;
+  if (!own) {
+    const double want = double(s.eye_override);
+    for (int i = 0; i < 2; ++i)
+      for (int r = 0; r < 3; ++r)
+        off[i][r] = apart > 1e-4 ? off[i][r] * want / apart : pose[i][size_t(r * 3)] * (i == 0 ? -0.5 : 0.5) * want;
+  }
+  for (int i = 0; i < 2; ++i)
+    for (int r = 0; r < 3; ++r) pos[i][r] = mid[r] * keep + off[i][r];
+  const bool stereo = own ? s.opt.stereo : s.eye_override > 0;
+  head = vr_math::head_view(pose, fov, size, s.seat_yaw, stereo ? pos : nullptr);
   return Step::Render;
 #else
   return Step::Idle;
@@ -726,5 +748,8 @@ bool Vr::exit_requested() const {
 }
 
 void Vr::recentre() { p_->recentre_pending = true; }
+void Vr::set_eye_distance(float metres) { p_->eye_override = metres; }
+float Vr::eye_distance() const { return p_->eye_override; }
+float Vr::headset_eye_distance() const { return p_->headset_ipd; }
 
 }  // namespace render

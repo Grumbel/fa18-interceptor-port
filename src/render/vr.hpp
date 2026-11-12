@@ -70,6 +70,13 @@ class Vr {
   bool exit_requested() const;
   // Take the direction the head looks in now as straight ahead.
   void recentre();
+  // Distance of the eyes in metres, replacing the headset's (debug menu):
+  // < 0 the headset's own (Options::ipd when simulated), 0 both eyes at
+  // the head's centre.
+  void set_eye_distance(float metres);
+  float eye_distance() const;
+  // The distance of the eyes the headset reported with the last picture.
+  float headset_eye_distance() const;
 
  private:
   struct Impl;

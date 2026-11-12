@@ -46,6 +46,9 @@ middle of the left eye's picture.
   runtime's eye poses, so the headset's IPD), and moving the head moves
   the eyes (relative to where the head was at the last recentring,
   clamped to 0.5 m).  `--vr-mono` puts both eyes at the head's centre.
+  Debug menu, Extras, "VR eye distance": the headset's own (the entry
+  shows the distance it reports), mono, or a fixed 32 mm to 5 m; larger
+  distances make the world look smaller and the depth stronger.
   The game's screen (cockpit, HUD) stays at infinity: a real HUD is
   collimated, the cockpit is still flat; the panel cannot be put at a
   finite distance alone because the HUD's frame runs down into it.

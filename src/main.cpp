@@ -921,9 +921,23 @@ public:
         case Page::Main: return 8;
         case Page::Graphics: return 8;
         case Page::Controls: return 3;
-        case Page::Extras: return 3;
+        case Page::Extras: return vr_on ? 4 : 3;
       }
       return 0;
+    };
+    // --vr: distance of the eyes, the headset's own or a fixed one (metres)
+    constexpr float eye_choices[] = {-1.f, 0.f, 0.032f, 0.064f, 0.1f, 0.2f, 0.5f, 1.f, 2.f, 5.f};
+    constexpr int n_eye_choices = int(sizeof eye_choices / sizeof eye_choices[0]);
+    auto change_eye_distance = [&](int delta) {
+      int i = 0;
+      while (i < n_eye_choices - 1 && eye_choices[i] != vr.eye_distance()) ++i;
+      vr.set_eye_distance(eye_choices[(i + (delta < 0 ? n_eye_choices - 1 : 1)) % n_eye_choices]);
+    };
+    auto eye_distance_label = [&] {
+      const auto mm = [](float m) { return std::to_string(int(std::lround(m * 1000.f))) + " mm"; };
+      const float d = vr.eye_distance();
+      if (d < 0) return "VR eye distance: headset (" + mm(vr.headset_eye_distance()) + ")";
+      return "VR eye distance: " + (d == 0 ? std::string("mono") : mm(d));
     };
     auto enter_page = [&](Page p) {
       if (page == Page::Main) main_sel = sel;
@@ -1069,6 +1083,7 @@ public:
           case 0: if (dir <= 0) back_page(); break;
           case 1: if (dir == 0) run_mesh_viewer(); break;
           case 2: machine->text_pace = !machine->text_pace; break;
+          case 3: change_eye_distance(dir); break;
         }
       }
     };
@@ -1211,6 +1226,7 @@ public:
           heading = "EXTRAS";
           items = {"Back", "Mesh viewer", std::string("Text pacing: ") +
                                              (machine->text_pace ? "on" : "off")};
+          if (vr_on) items.push_back(eye_distance_label());
           break;
       }
       int px = 8 * sc, py = 8 * sc;
