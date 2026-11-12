@@ -1,3 +1,7 @@
+> Superseded: `--renderer new` is drawn by the shadow machine (docs/new_renderer.md);
+> the state_scene code described here was removed.  Kept for its findings
+> (record layouts, model scale, LOD rule).
+
 # State-driven renderer (work in progress)
 
 Goal: render the 3D view and cockpit from the game's *state* (camera,

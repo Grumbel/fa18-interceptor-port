@@ -46,6 +46,17 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   layout, so disassembly addresses equal runtime addresses
 
 ## Remaster options (off by default; original behaviour untouched)
+- `--renderer new`: OpenGL at the window's resolution and the display's
+  frame rate, widescreen (`src/render/`, docs/new_renderer.md).  A second
+  ("shadow") Machine re-runs the original scene and cockpit code on a copy
+  of the game's memory for every presented picture, with camera and objects
+  interpolated between two game frames; the leaf rasterisers record
+  primitives, which are drawn in painter's order with the palette index in
+  the stencil buffer.  The game is not affected.  Extend this pipeline
+  rather than re-implementing game logic for rendering.  Check with
+  `tests/check_new_renderer.sh ORIGINAL.adf`; `--renderer original` is the
+  plain Amiga picture.  The `--hires` / `--gl` / `--gl-direct` layers
+  described below are the older enhancement paths.
 - Enhancements are runtime options, never part of the translated routines'
   default path, so the gate always runs the original behaviour.
 - `--analog` (also in the debug menu): gamepad left stick drives pitch and

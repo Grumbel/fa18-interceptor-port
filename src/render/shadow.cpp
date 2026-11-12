@@ -341,6 +341,15 @@ struct Capture {
       }
     }
     ++unsnapped;
+    if (std::getenv("FA18_SNAP_DEBUG")) {
+      bool found = false;
+      for (int j = 0; j < 250 && !found; ++j) {
+        const uint32_t slot = pool + 6u * uint32_t(j);
+        found = w(slot) == wx && w(slot + 2) == wy && w(slot + 4) == wz;
+      }
+      std::fprintf(stderr, "nosnap mesh %x flags %02x count %d %s (%d,%d,%d) s8 %d s6 %d\n", mesh, mesh_flags,
+                   count, found ? "in pool" : "not in pool", x, y, z, s16(w(fp - 8)), s16(w(fp - 6)));
+    }
     return false;
   }
   Vec3 vertex(uint32_t at, int shift) {
