@@ -288,6 +288,16 @@ bool Vr::Impl::init_xr(std::string& err) {
     return false;
   }
 
+  // SteamVR's runtime is not built for this program's library paths: it
+  // needs libuuid and libEGL to load at all and looks for the Vulkan loader
+  // by name ("failed to find vulkan library" in Steam's
+  // logs/xrclient_fa18.txt, XR_ERROR_RUNTIME_FAILURE here).  A library that
+  // is already loaded is found by its name, so load them from this
+  // program's own search path first (the Nix package has them in its
+  // RUNPATH).  Harmless where they are missing or not needed.
+  for (const char* lib : {"libuuid.so.1", "libGL.so.1", "libEGL.so.1", "libvulkan.so.1"})
+    dlopen(lib, RTLD_NOW | RTLD_GLOBAL);
+
   uint32_t n = 0;
   XrResult r = xrEnumerateInstanceExtensionProperties(nullptr, 0, &n, nullptr);
   if (XR_FAILED(r)) {
@@ -316,14 +326,17 @@ bool Vr::Impl::init_xr(std::string& err) {
   }
 
   XrInstanceCreateInfo ici{XR_TYPE_INSTANCE_CREATE_INFO};
-  std::snprintf(ici.applicationInfo.applicationName, XR_MAX_APPLICATION_NAME_SIZE, "F/A-18 Interceptor");
+  std::snprintf(ici.applicationInfo.applicationName, XR_MAX_APPLICATION_NAME_SIZE, "FA-18 Interceptor");
   ici.applicationInfo.applicationVersion = 1;
-  ici.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
+  ici.applicationInfo.apiVersion = XR_API_VERSION_1_0;
   ici.enabledExtensionCount = uint32_t(enable.size());
   ici.enabledExtensionNames = enable.data();
   r = xrCreateInstance(&ici, &instance);
   if (XR_FAILED(r)) {
     err = xr_error(XR_NULL_HANDLE, "xrCreateInstance", r);
+    if (r == XR_ERROR_RUNTIME_FAILURE)
+      err += " (the runtime failed to start; is it running? SteamVR writes the reason to Steam's "
+             "logs/xrclient_fa18.txt)";
     return false;
   }
   XrInstanceProperties ip{XR_TYPE_INSTANCE_PROPERTIES};

@@ -74,8 +74,23 @@ One picture costs one run of the shadow (about 2.5 ms) and two draws.
 
   Done on 2026-11-12 with Monado 25.1 for GLX (X11 window) and EGL
   (`SDL_VIDEODRIVER=offscreen`): session, both swapchains, a flight and
-  the menus, clean exit.  **Not yet tried on a real headset or with
-  SteamVR.**
+  the menus, clean exit.
+- SteamVR (2.18, X11, GLX) on 2026-11-12: session, 1764x1764 per eye, 75
+  pictures per second on the title screen.  How the flight looks in the
+  headset is still to be judged.
+
+## SteamVR and library paths
+
+SteamVR's runtime (`vrclient.so`) needs `libuuid.so.1`, `libGL.so.1` and
+`libEGL.so.1` and looks for `libvulkan.so.1` by name; on NixOS none of
+them is on a Nix-built program's search path.  Without libuuid no runtime
+is found; without the Vulkan loader `xrCreateInstance` fails with
+`XR_ERROR_RUNTIME_FAILURE` (-2) and Steam's `logs/xrclient_fa18.txt` says
+"failed to find vulkan library".  `vr.cpp` therefore loads the four by
+name before it touches OpenXR (a loaded library is found by its name),
+and the Nix package has them in its RUNPATH (`postFixup`), the dev shell
+in `LD_LIBRARY_PATH`.  `steam-run` is not needed.  That log is the place
+to look when SteamVR refuses something.
 
 ## Open
 

@@ -57,8 +57,8 @@ and port it to modern C++ with SDL2 for Linux (and other platforms).
   on a head-mounted display through OpenXR (docs/vr.md; optional at build
   time, `FA18_OPENXR`): head rotation on top of the game's camera, one
   display list per picture drawn once per eye, the game's screen as a
-  picture where the original shows it, everything at infinity.  Not yet
-  tried on a real headset; `FA18_VR_SIM=yaw,pitch,roll` draws it without
+  picture where the original shows it, everything at infinity.  Runs
+  with SteamVR and Monado; `FA18_VR_SIM=yaw,pitch,roll` draws it without
   one (`tests/check_vr.sh ORIGINAL.adf`).  Check with
   `tests/check_new_renderer.sh ORIGINAL.adf`; `--renderer original` is the
   plain Amiga picture.  The `--hires` / `--gl` / `--gl-direct` layers

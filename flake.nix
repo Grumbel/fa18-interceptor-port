@@ -77,6 +77,12 @@
             "-DCMAKE_BUILD_TYPE=Release"
           ] ++ cmakeExtraFlags;
 
+          # --vr with SteamVR: its runtime loads these by name and does not
+          # know the store (src/render/vr.cpp loads them first).
+          postFixup = ''
+            patchelf --add-rpath ${lib.makeLibraryPath (with pkgs; [ libuuid libglvnd vulkan-loader ])} $out/bin/fa18
+          '';
+
           meta = with lib; {
             mainProgram = "fa18";
             description = "Modern port of the 1988 Amiga flight simulator F/A-18 Interceptor";
@@ -253,6 +259,8 @@
             pkgsCross.m68k.buildPackages.binutils
           ];
           shellHook = ''
+            # --vr with SteamVR from build/ (see postFixup of the package)
+            export LD_LIBRARY_PATH=${lib.makeLibraryPath (with pkgs; [ libuuid libglvnd vulkan-loader ])}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             echo "FA-18 Interceptor dev shell"
             echo "  cmake -B build && cmake --build build"
             echo "  ./build/fa18 /path/to/game.adf"
