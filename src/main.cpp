@@ -4,6 +4,9 @@
 #include "font6x10.hpp"
 #include "native/game_state.hpp"
 #include "native/state_scene.hpp"
+#include "render/gl_scene.hpp"
+#include "render/shadow.hpp"
+#include "native/terrain.hpp"
 #include "native/controls.hpp"
 #include "native/gl_renderer.hpp"
 #include "native/cockpit_assets.hpp"
@@ -144,6 +147,18 @@ public:
   bool fast = false;
   bool widescreen = false;
   bool fit_screen = false;  // --renderer new: render size follows the window
+  // --renderer new: the window is an OpenGL window drawn by render::GlScene
+  // from the display lists of render::Shadow; no SDL_Renderer exists.
+  bool new_renderer = false;
+  render::Shadow shadow;
+  render::GlScene gls;
+  SDL_GLContext new_ctx = nullptr;
+  int new_max_fps = 0;          // presentations per second without vsync (0: display rate)
+  uint64_t new_last_present = 0;
+  uint64_t new_presents = 0, new_flight_presents = 0;
+  uint64_t new_build_ticks = 0, new_draw_ticks = 0;  // shadow / OpenGL time of the 3D pictures
+  render::Frame new_frame;
+  std::vector<uint32_t> new_overlay;
   bool direct_gl = false;   // --gl-direct / FA18_GL_DIRECT=1
   int render_fps = 60;  // GL-only redraws; emulated physics is always 60 Hz
   uint64_t last_gl_serial = 0;
@@ -199,7 +214,11 @@ public:
 #endif
     const int win_h = amiga::FB_H * scale * 6 / 5;
     const int win_w = widescreen ? win_h * 16 / 9 : amiga::FB_W * scale;
-    const Uint32 window_flags = SDL_WINDOW_RESIZABLE | (direct_gl ? SDL_WINDOW_OPENGL : 0);
+    const Uint32 window_flags = SDL_WINDOW_RESIZABLE |
+                                (direct_gl || new_renderer ? SDL_WINDOW_OPENGL : 0);
+    if (new_renderer) {
+      if (!init_new_window(win_w, win_h, window_flags)) return false;
+    } else {
     win = SDL_CreateWindow(window_title(),
                            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            win_w, win_h, window_flags);
@@ -213,6 +232,7 @@ public:
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     // NTSC lores pixels are slightly taller than wide; 320x240 approximates.
     SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
+    }
 #if defined(__EMSCRIPTEN__)
     // Force the canvas drawing buffer to the window size (CSS handles display).
     SDL_SetWindowSize(win, win_w, win_h);
@@ -225,8 +245,9 @@ public:
         fprintf(stderr, "emscripten window %dx%d\n", win_w, win_h);
     }
 #endif
-    tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                            amiga::FB_W, amiga::FB_H);
+    if (ren)
+      tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                              amiga::FB_W, amiga::FB_H);
     SDL_AudioSpec want{}, have{};
     want.freq = 48000;
     want.format = AUDIO_S16SYS;
@@ -672,7 +693,7 @@ public:
   }
 
   void run_mesh_viewer_standalone(const uint32_t* /*bg*/, int w, int h) {
-    SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
+    if (ren) SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
       std::vector<uint32_t> cv(size_t(w) * size_t(h));
       std::vector<uint8_t> exe = machine->disk_read("F-18 Interceptor");
       if (exe.empty()) {
@@ -809,13 +830,17 @@ public:
         vs.zoom = std::clamp(vs.zoom, 0.2f, 8.f);
 
         mesh_viewer::render_frame(cv, w, h, models, vs, live_pal, text_fn);
-        if (tex_w != w || tex_h != h) {
+        if (ren && (tex_w != w || tex_h != h)) {
           if (tex) SDL_DestroyTexture(tex);
           tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
           tex_w = w;
           tex_h = h;
         }
         bool gpu_viewer = false;
+        if (new_renderer) {
+          new_present_bitmap(cv.data(), w, h);
+          gpu_viewer = true;
+        }
         if (direct_gl && glr::ready() && !fast) {
           int dw = 0, dh = 0;
           SDL_GL_GetDrawableSize(win, &dw, &dh);
@@ -835,7 +860,7 @@ public:
   }
 
   void run_menu(const uint32_t* bg, int w, int h) {
-    SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
+    if (ren) SDL_RenderSetLogicalSize(ren, amiga::FB_W, amiga::FB_H * 6 / 5);
     menu_request = false;
     if (audio_dev) SDL_PauseAudioDevice(audio_dev, 1);
     enum class Page { Main, Graphics, Controls, Extras };
@@ -1236,7 +1261,7 @@ public:
                                 "GL output: SDL/CPU (startup)",
                     0xFFFFD040u);
       }
-      if (w != tex_w || h != tex_h) {
+      if (ren && (w != tex_w || h != tex_h)) {
         SDL_DestroyTexture(tex);
         tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
         tex_w = w;
@@ -1254,6 +1279,10 @@ public:
         open = false;
       }
       bool gpu_menu = false;
+      if (new_renderer) {
+        new_present_bitmap(cv.data(), w, h);
+        gpu_menu = true;
+      }
       if (direct_gl && glr::ready() && !fast) {
         int dw = 0, dh = 0;
         SDL_GL_GetDrawableSize(win, &dw, &dh);
@@ -1495,7 +1524,233 @@ public:
     report_presentation();
     return true;
   }
+  // ---- --renderer new -----------------------------------------------------
+  bool init_new_window(int win_w, int win_h, Uint32 window_flags) {
+    // The scene needs a stencil buffer (it holds the palette indices);
+    // multisampling smooths the polygon edges.  Try the best first.
+#if defined(FA18_OPENGLES2) || defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    const bool prefer_es = true;
+#else
+    const bool prefer_es = std::getenv("FA18_GLES") != nullptr;
+#endif
+    int want_samples = 4;
+    if (const char* v = std::getenv("FA18_MSAA")) want_samples = std::atoi(v);
+    std::string err = "no OpenGL context";
+    for (int attempt = 0; attempt < 4 && !new_ctx; ++attempt) {
+      const bool es = prefer_es ? attempt < 2 : attempt >= 2;
+      const int samples = (attempt & 1) ? 0 : want_samples;
+      if ((attempt & 1) && want_samples <= 1) continue;
+      SDL_GL_ResetAttributes();
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, es ? SDL_GL_CONTEXT_PROFILE_ES : 0);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, es ? 0 : 1);
+      SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+      SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+      SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+      SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, samples > 1 ? 1 : 0);
+      SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, samples > 1 ? samples : 0);
+      win = SDL_CreateWindow(window_title(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                             win_w, win_h, window_flags);
+      if (win) new_ctx = SDL_GL_CreateContext(win);
+      if (new_ctx && SDL_GL_MakeCurrent(win, new_ctx) == 0 &&
+          gls.init([](const char* n) { return SDL_GL_GetProcAddress(n); }, err)) {
+        fprintf(stderr, "graphics: new renderer, OpenGL%s, %dx multisampling\n", es ? " ES 2" : " 2.1",
+                samples > 1 ? samples : 1);
+        break;
+      }
+      if (!new_ctx) err = SDL_GetError();
+      if (new_ctx) SDL_GL_DeleteContext(new_ctx);
+      new_ctx = nullptr;
+      if (win) SDL_DestroyWindow(win);
+      win = nullptr;
+    }
+    if (!new_ctx) {
+      fprintf(stderr, "--renderer new needs OpenGL 2.1 or OpenGL ES 2 with a stencil buffer: %s\n",
+              err.c_str());
+      return false;
+    }
+    // Present with the display; without vsync the loop paces itself.
+    if (fast || SDL_GL_SetSwapInterval(std::getenv("FA18_NO_VSYNC") ? 0 : 1) != 0)
+      SDL_GL_SetSwapInterval(0);
+    return true;
+  }
+  // The emulated screen (menus, briefings, everything that is not the 3D
+  // view) on the OpenGL window; `overlay` adds the stats / fps layer.
+  void new_draw_bitmap(const uint32_t* px, int w, int h) {
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    gls.begin(dw, dh);
+    gls.draw_image(0, px, w, h, render::GlScene::centre_4x3(dw, dh), false, false);
+  }
+  void new_draw_overlays() {
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    const bool show_hud = stats_on || fps_on;
+    if (!show_hud) return;
+    if (hud_frame != frame_no) {
+      prepare_hud();
+      hud_frame = frame_no;
+    }
+    render::Rect r = render::GlScene::centre_4x3(dw, dh);
+    r.x = 0;  // anchored to the window's left edge
+    gls.draw_image(2, stats_buf.data(), STATS_W, STATS_H, r, true, true);
+  }
+  void new_present_bitmap(const uint32_t* px, int w, int h) {
+    new_draw_bitmap(px, w, h);
+    SDL_GL_SwapWindow(win);
+  }
+  void new_save_window(const std::string& path) {
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    std::vector<uint8_t> rgb;
+    if (!gls.read_window(rgb, dw, dh)) return;
+    if (FILE* f = fopen(path.c_str(), "wb")) {
+      fprintf(f, "P6\n%d %d\n255\n", dw, dh);
+      fwrite(rgb.data(), 1, rgb.size(), f);
+      fclose(f);
+    }
+  }
+  // True while the game shows its 3D view and the shadow has a frame of it.
+  bool new_in_flight() const {
+    return shadow.serial() > 0 && machine->r8(0x5aa8d) != 0 &&
+           machine->frame_count() - shadow.newest_frame() < 30;
+  }
+  // Draw one picture for the moment `sub` (0..1) into the current emulated
+  // frame; false if the 3D view is not available.
+  bool new_draw(const uint32_t* fb, float sub) {
+    if (!new_in_flight()) {
+      new_draw_bitmap(fb, amiga::FB_W, amiga::FB_H);
+      new_draw_overlays();
+      return false;
+    }
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(win, &dw, &dh);
+    // The picture lags one game frame behind the newest state, so that
+    // every moment shown lies between two frames the game computed.
+    const double newest = double(shadow.newest_frame());
+    const double interval = std::clamp(newest - double(shadow.previous_frame()), 1.0, 12.0);
+    const double now = double(machine->frame_count()) + double(sub);
+    float alpha = float(std::clamp((now - newest) / interval, 0.0, 1.0));
+    if (std::getenv("FA18_NO_INTERPOLATION")) alpha = 1.f;
+    if (const char* forced = std::getenv("FA18_SHADOW_ALPHA")) alpha = float(std::atof(forced));  // tests
+    const render::Rect centre = render::GlScene::centre_4x3(dw, dh);
+    const render::Rect area = widescreen ? render::GlScene::wide_area(dw, dh) : centre;
+    const float widen = float(area.w) / float(centre.w);
+    const uint64_t t0 = SDL_GetPerformanceCounter();
+    if (!shadow.build(alpha, widen, new_frame)) {
+      new_draw_bitmap(fb, amiga::FB_W, amiga::FB_H);
+      return false;
+    }
+    const uint64_t t1 = SDL_GetPerformanceCounter();
+    uint32_t palette[16];
+    const uint32_t* rows = machine->frame_row_pal();
+    for (int i = 0; i < 16; ++i) palette[i] = rows ? rows[size_t(20) * 32 + size_t(i)] : 0;
+    gls.begin(dw, dh);
+    gls.draw_scene(new_frame, palette, area);
+    if (rows && new_frame.overlay_index.size() == size_t(amiga::FB_W) * amiga::FB_H) {
+      // cockpit, HUD and messages as the game drew them, with the palette
+      // of each screen row (the panel has its own colours)
+      new_overlay.resize(new_frame.overlay_index.size());
+      for (int y = 0; y < amiga::FB_H; ++y)
+        for (int x = 0; x < amiga::FB_W; ++x) {
+          const size_t i = size_t(y) * amiga::FB_W + size_t(x);
+          new_overlay[i] = new_frame.overlay_mask[i]
+                               ? 0xFF000000u | (rows[size_t(y) * 32 + (new_frame.overlay_index[i] & 31)] & 0xFFFFFFu)
+                               : 0u;
+        }
+      gls.draw_image(1, new_overlay.data(), amiga::FB_W, amiga::FB_H, centre, true, false);
+    }
+    new_draw_overlays();
+    ++new_flight_presents;
+    new_build_ticks += t1 - t0;
+    new_draw_ticks += SDL_GetPerformanceCounter() - t1;
+    return true;
+  }
+  void present_new(const uint32_t* fb, int w, int h) {
+    ++frame_no;
+    {
+      std::string m = machine->take_state_message();
+      if (!m.empty()) menu_status = m;
+    }
+    if (mesh_viewer_request && script.empty()) {
+      mesh_viewer_request = false;
+      run_mesh_viewer_standalone(fb, w, h);
+    }
+    if (menu_request && (script.empty() || getenv("FA18_MENU_SHOT"))) run_menu(fb, w, h);
+    const uint64_t freq = SDL_GetPerformanceFrequency();
+    const uint64_t tick_start = next_frame;
+    next_frame += freq / 60;
+    const bool shot = frame_no == screenshot_frame || !pending_shot.empty();
+    if (!fast || shot) {
+      new_draw(fb, 0.f);
+      if (frame_no == screenshot_frame) new_save_window(screenshot_path);
+      if (!pending_shot.empty()) {
+        new_save_window(pending_shot);
+        pending_shot.clear();
+      }
+      SDL_GL_SwapWindow(win);
+      new_last_present = SDL_GetPerformanceCounter();
+      ++new_presents;
+    }
+    if (quit_after >= 0 && frame_no >= quit_after) quit = true;
+    handle_events();
+    if (quit) throw amiga::QuitRequested{};
+    uint64_t now = SDL_GetPerformanceCounter();
+    if (fast || int64_t(next_frame - now) < -int64_t(freq / 10)) {
+      next_frame = now;
+      return;
+    }
+    // Until the next emulated frame is due: more pictures of the moments in
+    // between.  With vsync the swap paces the loop; otherwise new_max_fps.
+    const uint64_t min_gap = freq / uint64_t(std::max(30, new_max_fps > 0 ? new_max_fps : 60));
+    for (;;) {
+      now = SDL_GetPerformanceCounter();
+      const int64_t left = int64_t(next_frame - now);
+      // not enough time for another picture before the game continues
+      if (left < int64_t(min_gap) / 2 + int64_t(freq / 1000)) break;
+      const int64_t since = int64_t(now - new_last_present);
+      if (since < int64_t(min_gap)) {
+        const int64_t wait_us = (int64_t(min_gap) - since) * 1000000 / int64_t(freq);
+        if (wait_us > 1500) SDL_Delay(uint32_t(wait_us / 1000 - 1));
+        continue;
+      }
+      if (!new_in_flight()) break;  // a still picture needs no more presentations
+      const float sub = float(double(now - tick_start) / double(freq / 60));
+      new_draw(fb, std::clamp(sub, 0.f, 1.f));
+      SDL_GL_SwapWindow(win);
+      new_last_present = SDL_GetPerformanceCounter();
+      ++new_presents;
+      handle_events();
+      if (quit) throw amiga::QuitRequested{};
+    }
+    while (true) {
+      const int64_t left = int64_t(next_frame - SDL_GetPerformanceCounter());
+      if (left <= 0) break;
+      const int64_t left_us = left * 1000000 / int64_t(freq);
+      if (left_us > 2000) SDL_Delay(uint32_t(left_us / 1000 - 1));
+    }
+    if (fps_on || std::getenv("FA18_PRESENT_DEBUG")) {
+      const uint32_t ms = SDL_GetTicks();
+      if (ms - present_report_ms >= 1000) {
+        observed_fps = float(new_presents) * 1000.f / float(ms - present_report_ms);
+        if (std::getenv("FA18_PRESENT_DEBUG"))
+          fprintf(stderr,
+                  "new renderer: %.1f pictures/s (%llu of the 3D view: scene %.2f ms, drawing %.2f ms each)\n",
+                  double(observed_fps), (unsigned long long)new_flight_presents,
+                  1000.0 * double(new_build_ticks) / double(freq) / double(std::max<uint64_t>(1, new_flight_presents)),
+                  1000.0 * double(new_draw_ticks) / double(freq) / double(std::max<uint64_t>(1, new_flight_presents)));
+        new_presents = new_flight_presents = 0;
+        new_build_ticks = new_draw_ticks = 0;
+        present_report_ms = ms;
+      }
+    }
+  }
+
   void present(const uint32_t* fb, int w, int h) {
+    if (new_renderer) {
+      present_new(fb, w, h);
+      return;
+    }
     ++frame_no;
     {
       std::string m = machine->take_state_message();
@@ -2069,13 +2324,10 @@ int main(int argc, char** argv) {
     widescreen = false;
     render_fps = 60;
   } else if (renderer_new) {
-    requested_gl = true;
-    requested_hires = false;
-    gl_scale = hires = 3;  // start size; follows the window when presenting
-    state_scene_flag = true;
-    gl_direct = true;
-    widescreen = true;
-    remaster::strict_renderer = true;
+    // Own OpenGL path (src/render): none of the hi-res / --gl layers.
+    requested_hires = requested_gl = gl_direct = state_scene_flag = false;
+    gl_scale = hires = 0;
+    if (!std::getenv("FA18_NEW_4X3")) widescreen = true;
   }
   if (requested_hires && requested_gl) {
     fprintf(stderr, "--hires and --gl select different 3D renderers; choose one\n");
@@ -2223,6 +2475,12 @@ int main(int argc, char** argv) {
     };
   }
   if (state_scene_flag || std::getenv("FA18_STATE_SCENE")) state_scene::install_gl(machine.disk_read("F-18 Interceptor"));
+  static render::Shadow shadow_test;
+  if (std::getenv("FA18_SHADOW_VERIFY") && !renderer_new) {
+    std::string err;
+    if (!shadow_test.init(machine, data_dir, err)) fprintf(stderr, "shadow: %s\n", err.c_str());
+  }
+  if (renderer_new) machine.record_scanout = true;
   if (!mesh_dump_dir.empty()) {
     std::filesystem::create_directories(mesh_dump_dir);
     std::vector<uint8_t> exe = machine.disk_read("F-18 Interceptor");
@@ -2285,13 +2543,23 @@ int main(int argc, char** argv) {
   host.fast = fast;
   host.widescreen = widescreen;
   host.direct_gl = gl_direct;
-  host.fit_screen = renderer_new;
+  host.new_renderer = renderer_new;
+  host.new_max_fps = render_fps > 60 ? render_fps : 0;
   host.render_fps = render_fps;
   glr::set_deferred_scene_readback(widescreen || render_fps > 60 || host.direct_gl);
   host.stats_on = stats;
   host.fps_on = fps;
   if (!script_path.empty()) host.script = load_script(script_path);
   if (!host.init(scale)) return 1;
+  if (renderer_new) {
+    std::string err;
+    if (!host.shadow.init(machine, data_dir, err)) {
+      fprintf(stderr, "new renderer: %s\n", err.c_str());
+      return 1;
+    }
+    terrain::Terrain t;
+    if (terrain::decode([&](uint32_t at) { return machine.r8(at); }, t)) host.gls.set_terrain(t);
+  }
   if (gl_scale > 0 && !init_gl(host.direct_gl ? host.win : nullptr))
     gl_failed = true;  // software hi-res renderer
   if (glr::active())

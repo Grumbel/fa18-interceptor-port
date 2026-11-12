@@ -169,7 +169,14 @@ if(FA18_COVERAGE)
   target_compile_options(native PRIVATE --coverage -O0)
 endif()
 
-add_executable(fa18 src/main.cpp src/stats_overlay.cpp $<TARGET_OBJECTS:native>)
+# The new renderer (--renderer new): shadow machine scene source and the
+# OpenGL / GLES 2 scene renderer.  Not part of the translated game code.
+file(GLOB RENDER_SRCS CONFIGURE_DEPENDS src/render/*.cpp src/render/*.hpp)
+add_library(render OBJECT ${RENDER_SRCS})
+target_include_directories(render PUBLIC src ${SDL2_INCLUDE_DIRS})
+target_link_libraries(render PUBLIC amiga)
+
+add_executable(fa18 src/main.cpp src/stats_overlay.cpp $<TARGET_OBJECTS:native> $<TARGET_OBJECTS:render>)
 if(FA18_COVERAGE)
   target_link_options(fa18 PRIVATE --coverage)
 endif()

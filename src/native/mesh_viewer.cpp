@@ -247,6 +247,7 @@ class Decoder {
     A(6) = FRAME;
     A(7) = STACK;
     op_addr_ = addr;
+    if (capture_ && std::getenv("FA18_MESH_OPS")) std::fprintf(stderr, "meshop %x off %x\n", addr, off);
     if (addr == 0x335f8) note("animation state of op $335f8 unknown (state 0)");
     fn();
     op_addr_ = 0;

@@ -307,6 +307,7 @@ void Machine::raster_audit_blit(uint8_t minterm, uint32_t words, bool line, bool
 }
 
 void Machine::log(const char* fmt, ...) {
+  if (quiet) return;
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -551,6 +552,26 @@ void Machine::add_pc_hook(uint32_t addr, std::function<void()> fn) {
   size_t idx = (addr - LOAD_BASE) >> 1;
   if (pc_hooks_.size() <= idx) pc_hooks_.resize(idx + 1, nullptr);
   pc_hooks_[idx] = new std::function<void()>(std::move(fn));
+}
+
+void Machine::add_stub(uint32_t addr, std::function<bool()> fn) {
+  size_t idx = (addr - LOAD_BASE) >> 1;
+  if (stubs_.size() <= idx) stubs_.resize(idx + 1, nullptr);
+  stubs_[idx] = new std::function<bool()>(std::move(fn));
+}
+
+void Machine::capture_image(Image& out) const {
+  out.ram.assign(ram_.begin(), ram_.begin() + heap_hw_);
+  std::copy(std::begin(cpu.d), std::end(cpu.d), out.d);
+  std::copy(std::begin(cpu.a), std::end(cpu.a), out.a);
+  out.frame = frame_count_;
+}
+
+void Machine::restore_image(const Image& in) {
+  std::copy(in.ram.begin(), in.ram.end(), ram_.begin());
+  heap_hw_ = std::max(heap_hw_, uint32_t(in.ram.size()));
+  std::copy(std::begin(in.d), std::end(in.d), cpu.d);
+  std::copy(std::begin(in.a), std::end(in.a), cpu.a);
 }
 
 void Machine::invoke_native(const native::Def* d) {
@@ -957,6 +978,13 @@ void Machine::execute(int64_t until) {
         // These are host reads, not the original 68000 reading its pixels.
         RasterAuditScope audit(*this, RasterSource::Presenter);
         (*pc_hooks_[hidx])();
+      }
+    }
+    if (!stubs_.empty()) {
+      uint32_t sidx = (pc - LOAD_BASE) >> 1;
+      if (sidx < stubs_.size() && stubs_[sidx] && !(pc & 1) && (*stubs_[sidx])()) {
+        cpu.pc = cpu.pop32();
+        continue;
       }
     }
     if (native_mode != NativeMode::Off && !in_reference_) {

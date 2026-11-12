@@ -170,6 +170,29 @@ public:
   // Register an observer for the routine entry at `addr` (see execute()).
   void add_pc_hook(uint32_t addr, std::function<void()> fn);
 
+  // ---- shadow machines (src/render) ---------------------------------------
+  // A second Machine booted from the same disk can take over the game state
+  // of the running one and execute parts of the game's code on that copy
+  // (the scene pipeline for an interpolated camera) without touching the
+  // game itself.  The image is the RAM below the heap high-water mark plus
+  // the registers; both machines must have been booted identically.
+  struct Image {
+    std::vector<uint8_t> ram;
+    uint32_t d[8] = {}, a[8] = {};
+    uint64_t frame = 0;  // frame_count() at capture
+  };
+  void capture_image(Image& out) const;
+  void restore_image(const Image& in);
+  // Replace the routine at `addr`: if `fn` returns true the routine (native,
+  // recompiled or interpreted) is skipped and returns like an rts.
+  void add_stub(uint32_t addr, std::function<bool()> fn);
+  // No log output (shadow machines boot silently).
+  bool quiet = false;
+  // Direct access for host-side tools that work on a private copy.
+  uint8_t* ram_data() { return ram_.data(); }
+  const uint8_t* ram_data() const { return ram_.data(); }
+  uint32_t ram_used() const { return heap_hw_; }
+
   uint64_t frame_count() const { return frame_count_; }
   // Diagnostic-only tracker for original bitmap writes and their later
   // consumers in GL mode. Does not suppress the blitter or mutate RAM.
@@ -224,6 +247,9 @@ public:
   const uint32_t* frame_row_key() const { return row_key_.data(); }
   const uint32_t* frame_row_pal() const { return row_pal_.data(); }
   int hires_scale = 0;  // remaster: 3D view render scale (0 = off)
+  // Keep the scan-out records (palette index per pixel, palette per row)
+  // without the remaster layers; the new renderer reads them.
+  bool record_scanout = false;
   // Switch the hi-res 3D view on/off at run time (installs the observers).
   void set_hires_scale(int s);
   bool analog_enabled = false;
@@ -417,6 +443,7 @@ private:
   // Observation hooks (remaster): called when execution reaches an address,
   // before the routine runs; they must not change machine state.
   std::vector<std::function<void()>*> pc_hooks_;
+  std::vector<std::function<bool()>*> stubs_;
   bool in_reference_ = false;
  public:
   uint32_t native_entry_sp_ = 0;  // a7 at entry of the running native C function
