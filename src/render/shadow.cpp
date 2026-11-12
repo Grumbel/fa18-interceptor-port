@@ -1,5 +1,6 @@
 #include "render/shadow.hpp"
 
+#include "native/gl_renderer.hpp"
 #include "native/globals.hpp"
 #include "native/orig.hpp"
 #include "native/terrain.hpp"
@@ -206,6 +207,12 @@ struct Capture {
   bool point_pending = false;
   Vec3 point{};
   uint64_t fills_2d = 0;
+  // The model being drawn ($31e4a: mesh header chosen), for snap().
+  bool in_object = false;
+  uint32_t mesh = 0;
+  uint8_t mesh_flags = 0;
+  bool snap_on = false;
+  uint64_t snapped = 0, unsnapped = 0;
   bool stubbed = false;
   bool stubs_on = true;  // off while the cockpit is drawn for real
 
@@ -213,6 +220,7 @@ struct Capture {
     verts.clear();
     prims.clear();
     point_pending = false;
+    in_object = false;
   }
 
   uint16_t w(uint32_t a) const { return m->r16(a); }
@@ -268,17 +276,91 @@ struct Capture {
     return prims.back();
   }
 
+  void on_object(uint32_t mesh_header, bool distant) {
+    in_object = on && !distant;  // distant ground objects: other frame layout, not snapped
+    mesh = mesh_header;
+    mesh_flags = m->r8(mesh_header + 7);
+  }
+
+  // The original transforms model vertices to 16-bit view-space words, so a
+  // vertex is up to a unit or two off and moves in unit steps while the
+  // camera moves.  If the captured words (x, y, z) are the transform of a
+  // vertex of the current model, return that vertex transformed without the
+  // rounding, in the same view space.  Checked against the words: anything
+  // that is not a plain model vertex (derived points, shadows, effects)
+  // stays as it is.
+  //
+  // $328ea: pool = M ((B (v >> s8)) + off) >> 8, with off = (fp-32 + $5ae28,
+  // fp-28 [+ $5ae2c], fp-24 + $5ae30) >> (8 - fp-6), M = $5aed0 and B the
+  // object's own rotation $5aebe (1/256) for articulated models.
+  bool snap(int16_t x, int16_t y, int16_t z, Vec3& out) {
+    if (!snap_on || !in_object) return false;
+    const uint32_t pool = 0x5d684;
+    const uint16_t wx = uint16_t(x), wy = uint16_t(y), wz = uint16_t(z);
+    const uint32_t fp = m->cpu.a[6];
+    const int count = std::max<int>(m->r8(mesh + 8), 1);
+    const int limit = std::min(count + 64, 250);
+    const bool articulated = mesh_flags & 1, flat = !articulated && (mesh_flags & 2);
+    for (int j = 0; j < limit; ++j) {
+      const uint32_t slot = pool + 6u * uint32_t(j);
+      if (w(slot) != wx || w(slot + 2) != wy || w(slot + 4) != wz) continue;
+      const int s8 = s16(w(fp - 8)) & 15, sh = 8 - int(s16(w(fp - 6)));
+      if (sh < 0 || sh > 24) return false;
+      const uint32_t src = mesh + 10 + (flat ? 4u : 6u) * uint32_t(j);
+      double q[3];
+      if (flat) {
+        q[0] = double(s16(w(src)) >> s8);
+        q[1] = 0;
+        q[2] = double(s16(w(src + 2)) >> s8);
+      } else {
+        for (int i = 0; i < 3; ++i) q[i] = double(s16(w(src + 2u * uint32_t(i))) >> s8);
+      }
+      if (articulated) {
+        double r[3];
+        for (int i = 0; i < 3; ++i)
+          r[i] = (q[0] * s16(w(0x5aebe + 6u * uint32_t(i))) + q[1] * s16(w(0x5aebe + 6u * uint32_t(i) + 2)) +
+                  q[2] * s16(w(0x5aebe + 6u * uint32_t(i) + 4))) / 256.0;
+        for (int i = 0; i < 3; ++i) q[i] = r[i];
+      }
+      const double k = 1.0 / double(1u << sh);
+      const double ox = double(int32_t(m->r32(fp - 32)) + int32_t(m->r32(0x5ae28))) * k;
+      const double oz = double(int32_t(m->r32(fp - 24)) + int32_t(m->r32(0x5ae30))) * k;
+      const double oy0 = double(int32_t(m->r32(fp - 28))) * k;
+      const double oy1 = double(int32_t(m->r32(fp - 28)) + int32_t(m->r32(0x5ae2c))) * k;
+      for (double oy : {articulated ? oy1 : oy0, articulated ? oy0 : oy1}) {
+        const double p[3] = {q[0] + ox, q[1] + oy, q[2] + oz};
+        double v[3];
+        for (int i = 0; i < 3; ++i)
+          v[i] = (p[0] * s16(w(0x5aed0 + 6u * uint32_t(i))) + p[1] * s16(w(0x5aed0 + 6u * uint32_t(i) + 2)) +
+                  p[2] * s16(w(0x5aed0 + 6u * uint32_t(i) + 4))) / 256.0;
+        if (std::fabs(v[0] - x) < 3.5 && std::fabs(v[1] - y) < 3.5 && std::fabs(v[2] - z) < 3.5) {
+          out = {float(v[0]), float(v[1]), float(v[2])};
+          ++snapped;
+          return true;
+        }
+      }
+    }
+    ++unsnapped;
+    return false;
+  }
+  Vec3 vertex(uint32_t at, int shift) {
+    const int16_t x = s16(w(at)), y = s16(w(at + 2)), z = s16(w(at + 4));
+    Vec3 v;
+    if (snap(x, y, z, v)) {
+      const float k = float(1u << shift);
+      return {v.x * k, v.y * k, v.z * k};
+    }
+    auto sh = [&](int16_t c) { return float(int16_t(uint32_t(int32_t(c)) << shift)); };
+    return {sh(x), sh(y), sh(z)};
+  }
+
   void on_polygon() {  // $38c0c: $61284 shift, $61286 count, $61288 vertices
     if (!on) return;
     const int shift = s16(w(0x61284)) & 31;
     const int n = s16(w(0x61286));
     if (n < 3 || n > 40) return;
     add(Prim::Poly, poly_op(), n);
-    for (int i = 0; i < n; ++i) {
-      const uint32_t a = 0x61288 + 6u * uint32_t(i);
-      auto sh = [&](uint32_t at) { return float(int16_t(uint32_t(int32_t(s16(w(at)))) << shift)); };
-      verts.push_back({sh(a), sh(a + 2), sh(a + 4)});
-    }
+    for (int i = 0; i < n; ++i) verts.push_back(vertex(0x61288 + 6u * uint32_t(i), shift));
   }
   void on_line(bool clipped) {  // $43a56 (clips) / $4397c (rejects)
     if (!on) return;
@@ -290,6 +372,7 @@ struct Capture {
         return;
     }
     if (clipped && p[0].z < 1 && p[1].z < 1) return;
+    for (int i = 0; i < 2; ++i) p[i] = vertex(0x61886 + 6u * uint32_t(i), 0);
     add(Prim::Line, line_op(), 2);
     verts.push_back(p[0]);
     verts.push_back(p[1]);
@@ -300,6 +383,7 @@ struct Capture {
     point = {float(x), float(y), float(z)};
     // the projector's own tests: outside the view nothing is plotted
     point_pending = on && z > 0 && std::abs(int(x)) < z && std::abs(int(y)) < z;
+    if (point_pending) snap(x, y, z, point);
   }
   void on_plot(int leaf) {  // $441fc 1x1, $44212 2x1, $44276 2x2, $43dcc disc
     if (!on) return;
@@ -535,8 +619,11 @@ struct Shadow::Impl {
   Machine::Image before_2d;
   std::vector<uint8_t> planes_a;
   bool overlay_enabled = true;
+  bool snap_enabled = std::getenv("FA18_NO_SNAP") == nullptr;
   uint64_t partial_pixels = 0;
   bool profile = std::getenv("FA18_SHADOW_PROFILE") != nullptr;
+  // FA18_SHADOW_PROFILE=N: report every N pictures (default 300)
+  uint64_t prof_every = std::max(1, std::atoi(std::getenv("FA18_SHADOW_PROFILE") ? std::getenv("FA18_SHADOW_PROFILE") : "300"));
   double prof[3] = {};
   uint64_t prof_n = 0;
 
@@ -720,6 +807,7 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
     sub_42f48();
     if (sm.r8(0x5ab93) == 0 || sm.r8(0x5aaa8) != 0) sub_3f284();
     cap.on = true;
+    cap.snap_on = snap_enabled && !verify;
     sub_43306();
     if (int32_t(sm.r32(0x5ad5e)) > -0x8000000) {
       call_c(0x2fa6c);  // the two ground-layer passes over the object list
@@ -781,9 +869,13 @@ bool Shadow::Impl::run(float alpha, float widen, Frame& out) {
     prof[0] += ms(t_start, t_restore);
     prof[1] += ms(t_restore, t_scene);
     prof[2] += ms(t_scene, t_2d);
-    if (++prof_n % 300 == 0) {
-      std::fprintf(stderr, "shadow: image %zu KB; restore %.2f ms, scene %.2f ms, cockpit %.2f ms\n",
-                   cur.image.ram.size() / 1024, prof[0] / 300, prof[1] / 300, prof[2] / 300);
+    if (++prof_n % prof_every == 0) {
+      std::fprintf(stderr,
+                   "shadow: image %zu KB; restore %.2f ms, scene %.2f ms, cockpit %.2f ms; "
+                   "vertices exact %llu, as drawn %llu\n",
+                   cur.image.ram.size() / 1024, prof[0] / double(prof_every), prof[1] / double(prof_every), prof[2] / double(prof_every),
+                   (unsigned long long)cap.snapped, (unsigned long long)cap.unsnapped);
+      cap.snapped = cap.unsnapped = 0;
       prof[0] = prof[1] = prof[2] = 0;
     }
   }
@@ -842,6 +934,9 @@ bool Shadow::init(amiga::Machine& game, const std::string& disk_path, std::strin
     }
   }
   s.cap.install(s.sm, true);
+  glr::set_object_observer([&s](uint32_t mesh, uint32_t, bool distant) {
+    if (native::g_machine == &s.sm) s.cap.on_object(mesh, distant);
+  });
   game.add_pc_hook(0x4217c, [&s] { s.on_view_setup(); });
   game.add_pc_hook(0x43306, [&s] { s.on_scene_start(); });
   if (std::getenv("FA18_SHADOW_VERIFY")) set_verify(true);
